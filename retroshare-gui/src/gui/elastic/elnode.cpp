@@ -71,11 +71,10 @@ Node::Node(const std::string& node_string,GraphWidget::NodeType type,GraphWidget
 		_auth = GraphWidget::ELASTIC_NODE_AUTH_FULL ;
 }
 
-const float Node::MASS_FACTOR = 10 ;
-const float Node::FRICTION_FACTOR = 10.8f ;
-const float Node::REPULSION_FACTOR = 4;
-const float Node::NODE_DISTANCE = 130.0f ;
-
+const float Node::MASS_FACTOR = 50.0f ;
+const float Node::FRICTION_FACTOR = 20.0f ; 
+const float Node::REPULSION_FACTOR = 10.0f ;
+const float Node::NODE_DISTANCE = 100.0f ;
 
 void Node::addEdge(Edge *edge)
 {
@@ -169,19 +168,29 @@ void Node::calculateForces(const double *map,int width,int height,int W,int H,fl
 		float dist = sqrtf(pos.x()*pos.x() + pos.y()*pos.y()) ;
 		float val = dist - graph->edgeLength() * w2 ;
 
-		xforce += 0.01*pos.x() * val / weight;
-		yforce += 0.01*pos.y() * val / weight;
+		xforce += 0.10*pos.x() * val / weight;
+		yforce += 0.10*pos.y() * val / weight;
 	}
 
 	xforce -= FRICTION_FACTOR * _speedx ;
 	yforce -= FRICTION_FACTOR * _speedy ;
 
-	// This term drags nodes away from the sides.
-	//
-	if(x < 15) xforce += 100.0/(x+0.1) ;
-	if(y < 15) yforce += 100.0/(y+0.1) ;
-	if(x > width-15) xforce -= 100.0/(width-x+0.1) ;
-	if(y > height-15) yforce -= 100.0/(height-y+0.1) ;
+    // --- PHYSIQUE DU CADRE ---
+    
+    // 1. Gravité centrale : ramène tout le monde vers la croix verte (0,0)
+    // Ignore width/height pour se baser sur le centre absolu
+    float k_gravity = 0.1f; 
+    xforce += (0.0f - x) * k_gravity;
+    yforce += (0.0f - y) * k_gravity;
+
+    // 2. Murs de sécurité (correspondent au cadre rouge -400/+400)
+    float limit = 400.0f; 
+    float k_wall = 100.0f; // Force de rebond
+
+    if (x < -limit) xforce += k_wall * (-limit - x); // Mur Gauche
+    if (y < -limit) yforce += k_wall * (-limit - y); // Mur Haut
+    if (x >  limit) xforce -= k_wall * (x - limit);  // Mur Droit
+    if (y >  limit) yforce -= k_wall * (y - limit);  // Mur Bas
 
 	// now time filter:
 
@@ -193,10 +202,7 @@ void Node::calculateForces(const double *map,int width,int height,int W,int H,fl
 	if(_speedx <-10) _speedx =-10.0f ;
 	if(_speedy <-10) _speedy =-10.0f ;
 
-	QRectF sceneRect = scene()->sceneRect();
-	newPos = pos() + QPointF(_speedx, _speedy) / friction_factor;
-	newPos.setX(qMin(qMax(newPos.x(), sceneRect.left()), sceneRect.right()));
-	newPos.setY(qMin(qMax(newPos.y(), sceneRect.top()) , sceneRect.bottom()));
+	newPos = pos() + QPointF(_speedx, _speedy);
 }
 
 bool Node::progress()
