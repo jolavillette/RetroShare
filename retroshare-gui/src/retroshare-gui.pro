@@ -982,8 +982,8 @@ SOURCES +=  main.cpp \
             gui/statistics/StatisticsWindow.cpp \
             gui/statistics/BwCtrlWindow.cpp \
             gui/statistics/RttStatistics.cpp \
-            gui/statistics/TunnelStatisticsDialog.cpp \
             gui/statistics/BWGraph.cpp \
+            gui/statistics/TunnelStatisticsDialog.cpp \
     util/RsSyntaxHighlighter.cpp \
     util/imageutil.cpp \
     gui/NetworkDialog/pgpid_item_model.cpp \
