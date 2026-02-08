@@ -148,6 +148,10 @@ rs_macos15.5:CONFIG -= rs_macos10.13
 CONFIG *= no_rs_jsonapi
 rs_jsonapi:CONFIG -= no_rs_jsonapi
 
+# To enable jemalloc as the system allocator, append "CONFIG+=rs_jemalloc" to qmake
+# jemalloc provides better multithreaded performance and lower fragmentation.
+rs_jemalloc: LIBS += -ljemalloc
+
 # To enable forums indexing append the following assignation to qmake command
 # line "CONFIG+=rs_deep_forums_index"
 CONFIG *= no_rs_deep_forums_index
