@@ -246,7 +246,6 @@ win32-g++|win32-clang-g++ {
     LIBS *= $$linkDynamicLibs(dLib)
 
 	RC_FILE = gui/images/retroshare_win.rc
-	QMAKE_MANIFEST_FILE += retroshare.manifest
 
 	# export symbols for the plugins
 	LIBS += -Wl,--export-all-symbols,--out-implib,lib/libretroshare-gui.a

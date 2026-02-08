@@ -35,3 +35,7 @@ BEGIN
         VALUE "Translation", 0x0809, 1200
     END
 END
+
+// Embed the application manifest to enable Segment Heap on Windows 10/11
+// 1 is ID, 24 is RT_MANIFEST
+1 24 "../../retroshare.manifest"
