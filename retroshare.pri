@@ -802,9 +802,16 @@ win32-g++|win32-clang-g++ {
 
     DEFINES *= NOGDI WIN32 WIN32_LEAN_AND_MEAN WINDOWS_SYS
 
-    # This defines the platform to be WinXP or later and is needed for
-    #  getaddrinfo (_WIN32_WINNT_WINXP)
-    DEFINES *= WINVER=0x0501
+    # Update Windows target version to Windows 10 or later (0x0A00)
+    # This is required for the OS to acknowledge the Segment Heap request
+    DEFINES *= WINVER=0x0A00
+    DEFINES *= _WIN32_WINNT=0x0A00
+
+    # Modern linker flags required for Segment Heap and security hardening
+    # --high-entropy-va: Enables 64-bit ASLR (essential for Segment Heap)
+    # --dynamicbase: Enables Address Space Layout Randomization (ASLR)
+    # --nxcompat: Enables Data Execution Prevention (DEP)
+    win32-g++|win32-clang-g++: QMAKE_LFLAGS += -Wl,--high-entropy-va -Wl,--dynamicbase -Wl,--nxcompat
 
     message(***retroshare.pri:Win32 PREFIX $$PREFIX INCLUDEPATH $$INCLUDEPATH QMAKE_LIBDIR $$QMAKE_LIBDIR DEFINES $$DEFINES)
 }
