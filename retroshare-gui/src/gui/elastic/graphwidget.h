@@ -60,6 +60,7 @@ public:
 	 void snapshotNodesPositions() ;
 	 void clearNodesPositions() ;
 	 void clearGraph() ;
+     ~GraphWidget();
 
 	void setFreeze(bool freeze);
 	bool isFrozen() const;
@@ -71,6 +72,10 @@ public:
 	 uint32_t edgeLength() const { return _edge_length ; }
 
 	 void forceRedraw() ;
+	 float* repulsionKernel() ;
+
+	 void setSelectedNode(Node* node) { _selected_node = node; }
+	 Node* selectedNode() const { return _selected_node; }
 protected:
     virtual void keyPressEvent(QKeyEvent *event);
     virtual void timerEvent(QTimerEvent *event);
@@ -93,6 +98,19 @@ private:
 	 uint32_t _edge_length ;
 	 float _friction_factor ;
 	 NodeId _current_node ;
+
+	 void convolveWithForce(double *forceMap, unsigned int S);
+
+	 // FFT resources
+	 double *forceMap;
+	 double **fft_bf;
+	 double **fft_tmp;
+	 int *fft_ip;
+	 double *fft_w;
+	 uint32_t fft_last_S;
+	 uint32_t _hit_counter;
+	 float *_repulsion_kernel;
+	 Node* _selected_node;
 };
 
 #endif
