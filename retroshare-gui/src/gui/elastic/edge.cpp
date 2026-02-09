@@ -36,13 +36,21 @@ Edge::Edge(Node *sourceNode, Node *destNode)
     setAcceptedMouseButtons(Qt::MouseButton::NoButton);
     source = sourceNode;
     dest = destNode;
-    source->addEdge(this);
-    dest->addEdge(this);
-    adjust();
+
+    if (source && dest)
+    {
+        source->addEdge(this);
+        dest->addEdge(this);
+        adjust();
+    }
 }
 
 Edge::~Edge()
 {
+    if (source)
+        source->removeEdge(this);
+    if (dest)
+        dest->removeEdge(this);
 }
 
 Node *Edge::sourceNode() const
@@ -53,7 +61,7 @@ Node *Edge::sourceNode() const
 void Edge::setSourceNode(Node *node)
 {
     source = node;
-    adjust();
+    if (source && dest) adjust();
 }
 
 Node *Edge::destNode() const
@@ -64,7 +72,7 @@ Node *Edge::destNode() const
 void Edge::setDestNode(Node *node)
 {
     dest = node;
-    adjust();
+    if (source && dest) adjust();
 }
 
 void Edge::adjust()
@@ -104,10 +112,12 @@ void Edge::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
 
     // Draw the line itself
     QLineF line(sourcePoint, destPoint);
+    painter->setRenderHint(QPainter::Antialiasing);
+
 	if (Settings->getSheetName() == ":Standard_Dark"){
-		painter->setPen(QPen(Qt::white, 1, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+		painter->setPen(QPen(QColor(255, 255, 255, 100), 1, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
 	} else {
-		painter->setPen(QPen(Qt::black, 1, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+		painter->setPen(QPen(QColor(0, 0, 0, 80), 1, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
 	}
     painter->drawLine(line);
 
