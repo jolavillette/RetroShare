@@ -783,29 +783,28 @@ public:
 	{
 		int *i;
 
-		i = (int *) malloc(sizeof(int) * n1);
+		i = (int *) RS_MALLOC(sizeof(int) * n1);
 		return i;
 	}
 
-	static void free_1d_int(int *i) { free(i); }
+	static void free_1d_int(int *i) { RS_FREE(i); }
 
 	static double *alloc_1d_double(int n1)
 	{
 		double *d;
 
-		d = (double *) malloc(sizeof(double) * n1);
+		d = (double *) RS_MALLOC(sizeof(double) * n1);
 		return d;
 	}
 
-
-	static void free_1d_double(double *d) { free(d); }
+	static void free_1d_double(double *d) { RS_FREE(d); }
 	static double **alloc_2d_double(int n1, int n2)
 	{
 		double **dd, *d;
 		int j;
 
-		dd = (double **) malloc(sizeof(double *) * n1);
-		d = (double *) malloc(sizeof(double) * n1 * n2);
+		dd = (double **) RS_MALLOC(sizeof(double *) * n1);
+		d = (double *) RS_MALLOC(sizeof(double) * n1 * n2);
 
 		dd[0] = d;
 		for (j = 1; j < n1; j++) {
@@ -814,7 +813,7 @@ public:
 		return dd;
 	}
 
-	static void free_2d_double(double **dd) { free(dd[0]); free(dd); }
+	static void free_2d_double(double **dd) { if(dd) { RS_FREE(dd[0]); RS_FREE(dd); } }
 
 
 	static void cdft2d(int n1, int n2, int isgn, double **a, int *ip, double *w)
