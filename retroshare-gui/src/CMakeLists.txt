@@ -234,7 +234,6 @@ list(
 
 	src/gui/elastic/graphwidget.cpp 
 	src/gui/elastic/edge.cpp 
-	src/gui/elastic/arrow.cpp 
 	src/gui/elastic/elnode.cpp 
 
 	src/gui/feeds/BoardsCommentsItem.cpp 
@@ -666,7 +665,6 @@ list(
 
 	src/gui/elastic/graphwidget.h 
 	src/gui/elastic/edge.h 
-	src/gui/elastic/arrow.h 
 	src/gui/elastic/elnode.h 
 
 	src/gui/feeds/BoardsCommentsItem.h 
