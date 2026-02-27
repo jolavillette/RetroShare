@@ -66,19 +66,11 @@ RsIdentityListModel::RsIdentityListModel(QObject *parent)
 
     connect(mThrottlingTimer, &QTimer::timeout, [this](){ checkInternalData(true); });
 
-    mEventHandlerId = 0;
-    if(rsEvents)
-    {
-        rsEvents->registerEventsHandler([this](std::shared_ptr<const RsEvent> event){
-            handleIdentityEvent(event);
-        }, mEventHandlerId, RsEventType::GXS_IDENTITY);
-    }
+
 }
 
 RsIdentityListModel::~RsIdentityListModel()
 {
-    if(mEventHandlerId && rsEvents)
-        rsEvents->unregisterEventsHandler(mEventHandlerId);
 }
 
 void RsIdentityListModel::handleIdentityEvent(std::shared_ptr<const RsEvent> event)
@@ -979,9 +971,15 @@ int RsIdentityListModel::getCategory(const QModelIndex& i) const
 }
 void RsIdentityListModel::setIdentities(const std::list<RsGroupMetaData>& identities_meta)
 {
-    preMods();
     beginResetModel();
-    clear();
+
+    // Inline clear logic without emitting redundant layout signals
+    mIdentities.clear();
+    mCategories.clear();
+    mCategories.resize(3);
+    mCategories[0].category_name = tr("My own identities");
+    mCategories[1].category_name = tr("My contacts");
+    mCategories[2].category_name = tr("All");
 
     for(auto id:identities_meta)
     {
@@ -999,17 +997,11 @@ void RsIdentityListModel::setIdentities(const std::list<RsGroupMetaData>& identi
         mIdentities.push_back(idinfo);
     }
 
-    if (mCategories.size()>0)
-    {
-        beginInsertRows(QModelIndex(),0,mCategories.size()-1);
-        endInsertRows();
-    }
-
     endResetModel();
-    postMods();
+
+    emit friendListChanged();
 
     mLastInternalDataUpdate = time(NULL);
-
 }
 
 void RsIdentityListModel::updateIdentityList()
