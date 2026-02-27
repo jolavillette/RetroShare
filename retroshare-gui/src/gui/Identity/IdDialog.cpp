@@ -1447,7 +1447,9 @@ void IdDialog::updateSelection(const QItemSelection& /* new_sel */,const QItemSe
 
 void IdDialog::updateIdListRequest()
 {
-    updateIdTimer.start(1000);
+    // Not restarted while it runs: a steady flow of identity events must not postpone the reload for ever.
+    if(!updateIdTimer.isActive())
+        updateIdTimer.start(1000);
 }
 
 void IdDialog::updateIdList()
@@ -2272,7 +2274,10 @@ void IdDialog::removeIdentity()
         return;
 
     if ((QMessageBox::question(this, tr("Really delete?"), tr("Do you really want to delete this identity?\nThis cannot be undone."), QMessageBox::Yes|QMessageBox::No, QMessageBox::No))== QMessageBox::Yes)
+    {
         rsIdentity->deleteIdentity(id);
+        updateIdListRequest();
+    }
 }
 
 void IdDialog::editIdentity()

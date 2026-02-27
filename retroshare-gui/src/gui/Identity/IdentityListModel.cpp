@@ -24,18 +24,17 @@
 #include <QDateTime>
 #include <QFontMetrics>
 #include <QModelIndex>
+#include <QTimer>
 #include <QTreeView>
 #include <QPainter>
 #include <QIcon>
 
 #include "gui/common/AvatarDefs.h"
-#include "util/qtthreadsutils.h"
 #include "util/HandleRichText.h"
 #include "util/DateTime.h"
 #include "gui/gxs/GxsIdDetails.h"
 #include "retroshare/rsexpr.h"
 
-#include "retroshare/rsevents.h"
 #include "IdentityListModel.h"
 
 //#define DEBUG_MODEL
@@ -45,14 +44,13 @@ std::ostream& operator<<(std::ostream& o, const QModelIndex& i);// defined elsew
 
 const QString RsIdentityListModel::FilterString("filtered");
 
-const uint32_t MAX_INTERNAL_DATA_UPDATE_DELAY = 300 ; 	// re-update the internal data every 5 mins. Should properly cover sleep/wake-up changes.
 const uint32_t MAX_NODE_UPDATE_DELAY = 10 ; 			// re-update the internal data every 5 mins. Should properly cover sleep/wake-up changes.
 
 static const uint32_t ID_DETAILS_UPDATE_DELAY = 5;	// update each node every 5 secs.
 
 RsIdentityListModel::RsIdentityListModel(QObject *parent)
     : QAbstractItemModel(parent)
-    , mLastInternalDataUpdate(0), mLastNodeUpdate(0)
+    , mLastNodeUpdate(0)
 {
     mFontSize = QApplication::font().pointSize();
 
@@ -60,103 +58,23 @@ RsIdentityListModel::RsIdentityListModel(QObject *parent)
     mIdentityUpdateTimer = new QTimer(this);
     connect(mIdentityUpdateTimer,SIGNAL(timeout()),this,SLOT(timerUpdate()));
 
-    mThrottlingTimer = new QTimer(this);
-    mThrottlingTimer->setSingleShot(true);
-    mThrottlingTimer->setInterval(200);
-
-    connect(mThrottlingTimer, &QTimer::timeout, [this](){ checkInternalData(true); });
-
-    mEventHandlerId = 0;
-    if(rsEvents)
-    {
-        rsEvents->registerEventsHandler([this](std::shared_ptr<const RsEvent> event){
-            handleIdentityEvent(event);
-        }, mEventHandlerId, RsEventType::GXS_IDENTITY);
-    }
+    // The three categories exist from the start, so that the view can restore their saved
+    // expansion state before the first identity list arrives.
+    initCategories();
 }
 
 RsIdentityListModel::~RsIdentityListModel()
 {
-    if(mEventHandlerId && rsEvents)
-        rsEvents->unregisterEventsHandler(mEventHandlerId);
 }
 
-void RsIdentityListModel::handleIdentityEvent(std::shared_ptr<const RsEvent> event)
+void RsIdentityListModel::initCategories()
 {
-    if (event->mType != RsEventType::GXS_IDENTITY) return;
-
-    auto id_event = std::dynamic_pointer_cast<const RsGxsIdentityEvent>(event);
-    if (!id_event) return;
-
-    RsQThreadUtils::postToObject([this, id_event](){
-        if (id_event->mIdentityEventCode == RsGxsIdentityEventCode::UPDATED_IDENTITY)
-        {
-            refreshIdentityDetails(RsGxsId(id_event->mIdentityId));
-        }
-        else if(id_event->mIdentityEventCode == RsGxsIdentityEventCode::NEW_IDENTITY || id_event->mIdentityEventCode == RsGxsIdentityEventCode::DELETED_IDENTITY)
-        {
-            if(!mThrottlingTimer->isActive())
-                mThrottlingTimer->start();
-        }
-    }, this);
-}
-
-void RsIdentityListModel::refreshIdentityDetails(const RsGxsId& id)
-{
-    // Reload details from the backend for a single identity.
-
-    RsIdentityDetails det;
-    if(!rsIdentity->getIdDetails(id, det))
-        return;
-
-    // Determine the correct category for this identity.
-
-    Category new_category;
-    if(rsIdentity->isOwnId(id))
-        new_category = CATEGORY_OWN;
-    else if(rsIdentity->isARegularContact(id))
-        new_category = CATEGORY_CTS;
-    else
-        new_category = CATEGORY_ALL;
-
-    // Find the identity in the current model and check if it moved categories.
-
-    QModelIndex idx = getIndexOfIdentity(id);
-
-    if(!idx.isValid())
-    {
-        // Identity not found in the model — trigger a full reload.
-        if(!mThrottlingTimer->isActive())
-            mThrottlingTimer->start();
-        return;
-    }
-
-    EntryIndex e;
-    convertInternalIdToIndex(idx.internalId(), e);
-
-    if(e.type != ENTRY_TYPE_IDENTITY || e.category_index >= mCategories.size())
-        return;
-
-    if(e.category_index != (uint16_t)new_category)
-    {
-        // Category changed (e.g. became a contact). A full reload is needed to re-sort.
-        if(!mThrottlingTimer->isActive())
-            mThrottlingTimer->start();
-        return;
-    }
-
-    // Same category — just update the cached details in place and notify the view.
-
-    if(e.identity_index < mCategories[e.category_index].child_identity_indices.size())
-    {
-        auto& info = mIdentities[mCategories[e.category_index].child_identity_indices[e.identity_index]];
-        info.nickname = det.mNickname;
-        info.owner = det.mPgpId;
-        info.flags = det.mFlags;
-        info.last_update_TS = time(nullptr);
-
-        emit dataChanged(idx, idx);
-    }
+    mIdentities.clear();
+    mCategories.clear();
+    mCategories.resize(3);
+    mCategories[CATEGORY_OWN].category_name = tr("My own identities");
+    mCategories[CATEGORY_CTS].category_name = tr("My contacts");
+    mCategories[CATEGORY_ALL].category_name = tr("All");
 }
 
 void RsIdentityListModel::timerUpdate()
@@ -809,17 +727,6 @@ QVariant RsIdentityListModel::displayRole(const EntryIndex& e, int col) const
 	}
 }
 
-// This function makes sure that the internal data gets updated. They are situations where the notification system cannot
-// send the information about changes, such as when the computer is put on sleep.
-
-void RsIdentityListModel::checkInternalData(bool force)
-{
-	rstime_t now = time(NULL);
-
-    if( (mLastInternalDataUpdate + MAX_INTERNAL_DATA_UPDATE_DELAY < now) || force)
-        updateIdentityList();
-}
-
 const RsIdentityListModel::HierarchicalCategoryInformation *RsIdentityListModel::getCategoryInfo(const EntryIndex& e) const
 {
     if(e.category_index >= mCategories.size())
@@ -907,24 +814,6 @@ QVariant RsIdentityListModel::decorationRole(const EntryIndex& entry,int col) co
     }
 }
 
-void RsIdentityListModel::clear()
-{
-    preMods();
-
-    mIdentities.clear();
-    mCategories.clear();
-
-    mCategories.resize(3);
-    mCategories[0].category_name = tr("My own identities");
-    mCategories[1].category_name = tr("My contacts");
-    mCategories[2].category_name = tr("All");
-
-	postMods();
-
-	emit friendListChanged();
-}
-
-
 void RsIdentityListModel::debug_dump() const
 {
     std::cerr << "==== IdentityListModel Debug dump ====" << std::endl;
@@ -1004,9 +893,10 @@ int RsIdentityListModel::getCategory(const QModelIndex& i) const
 }
 void RsIdentityListModel::setIdentities(const std::list<RsGroupMetaData>& identities_meta)
 {
-    preMods();
+    // A single model reset: no layout change nor row insertion nested in it.
     beginResetModel();
-    clear();
+
+    initCategories();
 
     for(auto id:identities_meta)
     {
@@ -1024,38 +914,8 @@ void RsIdentityListModel::setIdentities(const std::list<RsGroupMetaData>& identi
         mIdentities.push_back(idinfo);
     }
 
-    if (mCategories.size()>0)
-    {
-        beginInsertRows(QModelIndex(),0,mCategories.size()-1);
-        endInsertRows();
-    }
-
     endResetModel();
-    postMods();
-
-    mLastInternalDataUpdate = time(NULL);
-
 }
-
-void RsIdentityListModel::updateIdentityList()
-{
-    std::cerr << "Updating identity list" << std::endl;
-
-    std::list<RsGroupMetaData> ids ;
-
-    if(!rsIdentity->getIdentitiesSummaries(ids))
-    {
-        std::cerr << __PRETTY_FUNCTION__ << " failed to retrieve identity metadata." << std::endl;
-        return;
-    }
-
-    setIdentities(ids) ;
-
-// avoid flooding the console
-//    debug_dump();
-}
-
-
 
 void RsIdentityListModel::collapseItem(const QModelIndex& index)
 {
