@@ -446,9 +446,6 @@ GxsChannelPostsWidgetWithModel::GxsChannelPostsWidgetWithModel(const RsGxsGroupI
     GxsMessageFrameWidget(rsGxsChannels, parent),
     ui(new Ui::GxsChannelPostsWidgetWithModel)
 {
-    /* Invoke the Qt Designer generated object setup routine */
-    ui->setupUi(this);
-
     mNotifiedMissingMsgId = RsGxsMessageId();
     mEventHandlerId = 0;
     // Needs to be asynced because this function is called by another thread!
