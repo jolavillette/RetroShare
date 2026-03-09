@@ -199,6 +199,7 @@ private:
 
 	std::map<RsGxsGroupId,RsGxsMessageId> mLastSelectedPosts;
 	RsGxsMessageId mNavigatePendingMsgId;
+	RsGxsMessageId mNotifiedMissingMsgId;
 
 	/* UI - from Designer */
 	Ui::GxsChannelPostsWidgetWithModel *ui;

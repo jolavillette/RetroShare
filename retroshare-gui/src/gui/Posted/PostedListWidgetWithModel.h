@@ -176,6 +176,7 @@ private:
 	std::map<RsGxsGroupId,RsGxsMessageId> mLastSelectedPosts;
 #endif
 	RsGxsMessageId mNavigatePendingMsgId;
+	RsGxsMessageId mNotifiedMissingMsgId;
 
 	/* UI - from Designer */
 	Ui::PostedListWidgetWithModel *ui;

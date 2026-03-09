@@ -259,6 +259,8 @@ PostedListWidgetWithModel::PostedListWidgetWithModel(const RsGxsGroupId& postedI
 	/* Invoke the Qt Designer generated object setup routine */
 	ui->setupUi(this);
 
+	mNotifiedMissingMsgId = RsGxsMessageId();
+
     ui->postsTree->setModel(mPostedPostsModel = new RsPostedPostsModel(POSTS_CHUNK_SIZE));
     ui->postsTree->setItemDelegate(mPostedPostsDelegate = new PostedPostDelegate(this));
     ui->postsTree->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);	// prevents bug on w10, since row size depends on widget width
@@ -561,12 +563,12 @@ void PostedListWidgetWithModel::handleEvent_main_thread(std::shared_ptr<const Rs
 					t->refresh();
 			}
 		}
-			[[clang::fallthrough]];
-		case RsPostedEventCode::NEW_MESSAGE:             [[fallthrough]];
-		case RsPostedEventCode::NEW_POSTED_GROUP:        [[fallthrough]];
-		case RsPostedEventCode::UPDATED_POSTED_GROUP:    [[fallthrough]];
-		case RsPostedEventCode::UPDATED_MESSAGE:         [[fallthrough]];
-		case RsPostedEventCode::BOARD_DELETED:           [[fallthrough]];
+		Q_FALLTHROUGH();
+		case RsPostedEventCode::NEW_MESSAGE:             Q_FALLTHROUGH();
+		case RsPostedEventCode::NEW_POSTED_GROUP:        Q_FALLTHROUGH();
+		case RsPostedEventCode::UPDATED_POSTED_GROUP:    Q_FALLTHROUGH();
+		case RsPostedEventCode::UPDATED_MESSAGE:         Q_FALLTHROUGH();
+		case RsPostedEventCode::BOARD_DELETED:           Q_FALLTHROUGH();
 		case RsPostedEventCode::SYNC_PARAMETERS_UPDATED:
 		{
 			if(e->mPostedGroupId == groupId())
@@ -626,7 +628,18 @@ void PostedListWidgetWithModel::postPostLoad()
 	whileBlocking(ui->filter_LE)->setText(QString()); //Clear it before navigate, as it will update it.
 
 	if (!mNavigatePendingMsgId.isNull())
-		navigate(mNavigatePendingMsgId);
+	{
+		if (mPostedPostsModel->getIndexOfMessage(mNavigatePendingMsgId).isValid())
+		{
+			navigate(mNavigatePendingMsgId);
+		}
+		else if (mNotifiedMissingMsgId != mNavigatePendingMsgId)
+		{
+			mNotifiedMissingMsgId = mNavigatePendingMsgId;
+			QMessageBox::information(this, tr("RetroShare"),
+			                         tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
+		}
+	}
 #ifdef TO_REMOVE
 	else if( (mLastSelectedPosts.count(groupId()) > 0)
 	         && !mLastSelectedPosts[groupId()].isNull())
@@ -951,6 +964,7 @@ void PostedListWidgetWithModel::blank()
 
 bool PostedListWidgetWithModel::navigate(const RsGxsMessageId& msgId)
 {
+	mNotifiedMissingMsgId.clear();
 	ui->filter_LE->setText("ID:" + QString::fromStdString(msgId.toStdString()));
 
 	QModelIndex index = mPostedPostsModel->getIndexOfMessage(msgId);
@@ -960,6 +974,14 @@ bool PostedListWidgetWithModel::navigate(const RsGxsMessageId& msgId)
 		std::cerr << "(EE) Cannot navigate to msg " << msgId << " in board " << mGroup.mMeta.mGroupId << ": index unknown. Setting mNavigatePendingMsgId." << std::endl;
 
 		mNavigatePendingMsgId = msgId;    // not found. That means the forum may not be loaded yet. So we keep that post in mind, for after loading.
+
+		if (!isLoading() && mNotifiedMissingMsgId != msgId)
+		{
+			mNotifiedMissingMsgId = msgId;
+			QMessageBox::information(this, tr("RetroShare"),
+			                         tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
+		}
+
 		return true;                      // we have to return true here, otherwise the caller will intepret the async loading as an error.
 	}
 
@@ -968,6 +990,7 @@ bool PostedListWidgetWithModel::navigate(const RsGxsMessageId& msgId)
 	ui->tabWidget->setCurrentIndex(POSTED_TABS_POSTS);
 
 	mNavigatePendingMsgId.clear();
+	mNotifiedMissingMsgId.clear();
 
 	return true;
 }

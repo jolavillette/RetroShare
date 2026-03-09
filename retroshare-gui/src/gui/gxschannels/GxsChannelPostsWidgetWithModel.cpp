@@ -446,6 +446,10 @@ GxsChannelPostsWidgetWithModel::GxsChannelPostsWidgetWithModel(const RsGxsGroupI
     GxsMessageFrameWidget(rsGxsChannels, parent),
     ui(new Ui::GxsChannelPostsWidgetWithModel)
 {
+    /* Invoke the Qt Designer generated object setup routine */
+    ui->setupUi(this);
+
+    mNotifiedMissingMsgId = RsGxsMessageId();
     mEventHandlerId = 0;
     // Needs to be asynced because this function is called by another thread!
     rsEvents->registerEventsHandler( [this](std::shared_ptr<const RsEvent> event)
@@ -1150,7 +1154,18 @@ void GxsChannelPostsWidgetWithModel::postChannelPostLoad()
     emit groupChanged(this);
 
     if (!mNavigatePendingMsgId.isNull())
-        navigate(mNavigatePendingMsgId);
+    {
+        if (mChannelPostsModel->getIndexOfMessage(mNavigatePendingMsgId).isValid())
+        {
+            navigate(mNavigatePendingMsgId);
+        }
+        else if (mNotifiedMissingMsgId != mNavigatePendingMsgId)
+        {
+            mNotifiedMissingMsgId = mNavigatePendingMsgId;
+            QMessageBox::information(this, tr("RetroShare"),
+                                     tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
+        }
+    }
 
     else if( (mLastSelectedPosts.count(groupId()) > 0)
              && !mLastSelectedPosts[groupId()].isNull())
@@ -1590,6 +1605,7 @@ void GxsChannelPostsWidgetWithModel::blank()
 
 bool GxsChannelPostsWidgetWithModel::navigate(const RsGxsMessageId& msgId)
 {
+    mNotifiedMissingMsgId.clear();
     QModelIndex index = mChannelPostsModel->getIndexOfMessage(msgId);
 
     if(!index.isValid())
@@ -1597,6 +1613,14 @@ bool GxsChannelPostsWidgetWithModel::navigate(const RsGxsMessageId& msgId)
         std::cerr << "(EE) Cannot navigate to msg " << msgId << " in channel " << mGroup.mMeta.mGroupId << ": index unknown. Setting mNavigatePendingMsgId." << std::endl;
 
         mNavigatePendingMsgId = msgId;    // not found. That means the forum may not be loaded yet. So we keep that post in mind, for after loading.
+
+        if (!isLoading() && mNotifiedMissingMsgId != msgId)
+        {
+            mNotifiedMissingMsgId = msgId;
+            QMessageBox::information(this, tr("RetroShare"),
+                                     tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
+        }
+
         return true;                      // we have to return true here, otherwise the caller will intepret the async loading as an error.
     }
 
@@ -1608,6 +1632,7 @@ bool GxsChannelPostsWidgetWithModel::navigate(const RsGxsMessageId& msgId)
     ui->details_TW->setCurrentIndex(CHANNEL_TABS_DETAILS);
 
     mNavigatePendingMsgId.clear();
+    mNotifiedMissingMsgId.clear();
 
     return true;
 }

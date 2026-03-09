@@ -229,6 +229,7 @@ private:
 
 	std::map<RsGxsGroupId,RsGxsMessageId> mLastSelectedPosts;
 	RsGxsMessageId mNavigatePendingMsgId;
+	RsGxsMessageId mNotifiedMissingMsgId;
 	QList<RsGxsMessageId> mIgnoredMsgId;
 
     RsGxsForumModel *mThreadModel;
