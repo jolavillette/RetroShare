@@ -266,6 +266,7 @@ GxsForumThreadWidget::GxsForumThreadWidget(const RsGxsGroupId &forumId, QWidget 
     //mUpdating = false;
     mUnreadCount = 0;
     mNewCount = 0;
+    mNotifiedMissingMsgId = RsGxsMessageId();
 
     mInMsgAsReadUnread = false;
 
@@ -1544,6 +1545,7 @@ void GxsForumThreadWidget::expandSubtree() {
 
 bool GxsForumThreadWidget::navigate(const RsGxsMessageId &msgId)
 {
+	mNotifiedMissingMsgId.clear();
 	QModelIndex source_index = mThreadModel->getIndexOfMessage(msgId);
 
 	if(!source_index.isValid())
@@ -1551,6 +1553,14 @@ bool GxsForumThreadWidget::navigate(const RsGxsMessageId &msgId)
 		std::cerr << "(EE) Cannot navigate to msg " << msgId << " in forum " << mForumGroup.mMeta.mGroupId << ": index unknown. Setting mNavigatePendingMsgId." << std::endl;
 
 		mNavigatePendingMsgId = msgId;		// not found. That means the forum may not be loaded yet. So we keep that post in mind, for after loading.
+
+		if (!isLoading() && mNotifiedMissingMsgId != msgId)
+		{
+			mNotifiedMissingMsgId = msgId;
+			QMessageBox::information(this, tr("RetroShare"),
+			                         tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
+		}
+
 		return true;						// we have to return true here, otherwise the caller will intepret the async loading as an error.
 	}
 
@@ -1561,6 +1571,7 @@ bool GxsForumThreadWidget::navigate(const RsGxsMessageId &msgId)
 	ui->threadTreeWidget->setFocus();
 
 	mNavigatePendingMsgId.clear();
+	mNotifiedMissingMsgId.clear();
 
 	return true;
 }
@@ -1935,7 +1946,18 @@ void GxsForumThreadWidget::postForumLoading()
 #endif
 
 	if (!mNavigatePendingMsgId.isNull())
-		navigate(mNavigatePendingMsgId);
+	{
+		if (mThreadModel->getIndexOfMessage(mNavigatePendingMsgId).isValid())
+		{
+			navigate(mNavigatePendingMsgId);
+		}
+		else if (mNotifiedMissingMsgId != mNavigatePendingMsgId)
+		{
+			mNotifiedMissingMsgId = mNavigatePendingMsgId;
+			QMessageBox::information(this, tr("RetroShare"),
+			                         tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
+		}
+	}
 
 	else if( (mLastSelectedPosts.count(groupId()) > 0)
 	         && !mLastSelectedPosts[groupId()].isNull()
