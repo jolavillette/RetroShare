@@ -1533,13 +1533,6 @@ bool GxsForumThreadWidget::navigate(const RsGxsMessageId &msgId)
 
 		mNavigatePendingMsgId = msgId;		// not found. That means the forum may not be loaded yet. So we keep that post in mind, for after loading.
 
-		if (!isLoading() && mNotifiedMissingMsgId != msgId)
-		{
-			mNotifiedMissingMsgId = msgId;
-			QMessageBox::information(this, tr("RetroShare"),
-			                         tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
-		}
-
 		return true;						// we have to return true here, otherwise the caller will intepret the async loading as an error.
 	}
 
