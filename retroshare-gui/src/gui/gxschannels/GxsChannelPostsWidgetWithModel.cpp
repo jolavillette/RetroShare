@@ -1169,8 +1169,16 @@ void GxsChannelPostsWidgetWithModel::postChannelPostLoad()
         else if (mNotifiedMissingMsgId != mNavigatePendingMsgId)
         {
             mNotifiedMissingMsgId = mNavigatePendingMsgId;
-            QMessageBox::information(this, tr("RetroShare"),
-                                     tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
+            if (IS_GROUP_SUBSCRIBED(mGroup.mMeta.mSubscribeFlags))
+            {
+                QMessageBox::information(this, tr("RetroShare"),
+                                         tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
+            }
+            else
+            {
+                QMessageBox::information(this, tr("RetroShare"),
+                                         tr("The post is missing. Since you are not subscribed to this channel, please subscribe first and wait for synchronization."));
+            }
         }
     }
 

@@ -645,8 +645,16 @@ void PostedListWidgetWithModel::postPostLoad()
 		else if (mNotifiedMissingMsgId != mNavigatePendingMsgId)
 		{
 			mNotifiedMissingMsgId = mNavigatePendingMsgId;
-			QMessageBox::information(this, tr("RetroShare"),
-			                         tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
+			if (IS_GROUP_SUBSCRIBED(mGroup.mMeta.mSubscribeFlags))
+			{
+				QMessageBox::information(this, tr("RetroShare"),
+				                         tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
+			}
+			else
+			{
+				QMessageBox::information(this, tr("RetroShare"),
+				                         tr("The post is missing. Since you are not subscribed to this board, please subscribe first and wait for synchronization."));
+			}
 		}
 	}
 #ifdef TO_REMOVE
