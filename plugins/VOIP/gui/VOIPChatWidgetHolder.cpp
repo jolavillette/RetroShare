@@ -1259,6 +1259,10 @@ void VOIPChatWidgetHolder::addAudioData(const RsPeerId &peer_id, QByteArray* arr
 void VOIPChatWidgetHolder::sendVideoData()
 {
 	RsVOIPDataChunk chunk ;
+    RsPeerId targetId = getEffectivePeerId(false);
+
+    if (targetId.isNull())
+        return;
 
 	// Switch to H.264 once the peer has said it decodes it. Until then (older
 	// plugin, or its answer not received yet) video is sent as MPEG-4.
@@ -1266,18 +1270,22 @@ void VOIPChatWidgetHolder::sendVideoData()
 		videoProcessor->setPeerDecodesH264(true) ;
 
 	while(inputVideoDevice && inputVideoDevice->getNextEncodedPacket(chunk))
-		rsVOIP->sendVoipData(mChatWidget->getChatId().toPeerId(),chunk) ;
+		rsVOIP->sendVoipData(targetId,chunk) ;
 }
 
 void VOIPChatWidgetHolder::sendAudioData()
 {
+    RsPeerId targetId = getEffectivePeerId(false);
+    if (targetId.isNull())
+        return;
+
     while(inputAudioProcessor && inputAudioProcessor->hasPendingPackets()) {
         QByteArray qbarray = inputAudioProcessor->getNetworkPacket();
         RsVOIPDataChunk chunk;
         chunk.size = qbarray.size();
         chunk.data = (void*)qbarray.constData();
         chunk.type = RsVOIPDataChunk::RS_VOIP_DATA_TYPE_AUDIO ;
-        rsVOIP->sendVoipData(mChatWidget->getChatId().toPeerId(),chunk);
+        rsVOIP->sendVoipData(targetId,chunk);
     }
 }
 
