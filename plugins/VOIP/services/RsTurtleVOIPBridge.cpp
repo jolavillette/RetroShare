@@ -151,9 +151,13 @@ void RsTurtleVOIPBridge::sendRawDataViaTunnel(const RsPeerId& virtual_peer_id, v
 {
     if (mGxsTunnels == NULL || size == 0 || data == NULL) return;
 
+    // Distant VOIP media is real-time: push it as an UNRELIABLE datagram (reliable=false)
+    // so gxstunnel sends it once and never re-sends stale frames nor floods ACKs.
+    RsDbg() << "VOIP datagram: bridge pushing " << size << " bytes into tunnel " << virtual_peer_id.toStdString() << " (unreliable)" << std::endl ;
+
     // gxstunnel copies the buffer (it does NOT take ownership); the caller frees it.
     mGxsTunnels->sendData(RsGxsTunnelId(virtual_peer_id), VOIP_GXS_TUNNEL_SERVICE_ID,
-                          static_cast<const uint8_t*>(data), size);
+                          static_cast<const uint8_t*>(data), size, /*reliable=*/false);
 }
 
 void RsTurtleVOIPBridge::notifyTunnelStatus(const RsGxsTunnelId& tunnel_id, uint32_t tunnel_status)
