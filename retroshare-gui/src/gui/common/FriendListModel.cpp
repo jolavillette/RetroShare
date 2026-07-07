@@ -1292,10 +1292,10 @@ std::map<RsPgpId,uint32_t>::const_iterator RsFriendListModel::checkProfileIndex(
 	if(it2 == pgp_indices.end())
 	{
         if(!create)
-        {
-            std::cerr << "(EE) trying to display profile " << pgp_id <<" that is actually not a friend." << std::endl;
-            return it2;
-        }
+            return it2;	// Not an error: callers that pass create=false (the node loop, the group loop) probe for an
+			            	// existing profile and handle the miss themselves. The node loop builds an "invalidated" profile;
+			            	// the group loop logs a targeted warning below. So a miss here is an expected control-flow path.
+
 		HierarchicalProfileInformation hprof ;
 		rsPeers->getGPGDetails(pgp_id,hprof.profile_info);
 
@@ -1395,8 +1395,12 @@ void RsFriendListModel::updateInternalData()
 
 				auto it3 = checkProfileIndex(*it2,pgp_indices,mProfiles,false);
 
-				if(it3 == pgp_indices.end())// not found
+				if(it3 == pgp_indices.end())	// Not found: this group references a PGP profile that is neither an accepted
+				{				            	// friend nor the parent of any friend location, i.e. a stale/foreign group membership.
+					RsWarn() << "Group \"" << hgroup.group_info.name << "\" references profile " << *it2
+					         << " which is not a friend. Skipping it (stale group membership?)." ;
                     continue;
+				}
 
 				hgroup.child_profile_indices.push_back(it3->second);
 			}
