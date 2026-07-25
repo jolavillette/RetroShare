@@ -22,14 +22,26 @@
 
 #include <QLabel>
 #include <QCamera>
-#include <QCameraInfo>
-#include <QAbstractVideoSurface>
+#include <QVideoFrame>
 #include "interface/rsVOIP.h"
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#  include <QCameraDevice>
+#  include <QMediaDevices>
+#  include <QMediaCaptureSession>
+#  include <QVideoSink>
+#else
+#  include <QCameraInfo>
+#  include <QAbstractVideoSurface>
+#endif
 
 #include "gui/VideoProcessor.h"
 
 class VideoEncoder ;
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+// Qt5 only: Qt6 removed QAbstractVideoSurface; there the camera feeds a
+// QVideoSink through a QMediaCaptureSession instead (see QVideoDevice.cpp).
 // Minimal video surface used as the camera viewfinder to grab live frames.
 // We use a viewfinder surface rather than QVideoProbe because, on the macOS
 // AVFoundation backend, QVideoProbe::setSource() reports success but never
@@ -68,6 +80,7 @@ class RsCameraVideoSurface: public QAbstractVideoSurface
     signals:
         void frameAvailable(const QVideoFrame& frame);
 };
+#endif
 
 // Responsible from displaying the video. The source of the video is
 // a VideoDecoder object, which uses a codec.
@@ -125,7 +138,11 @@ class QVideoInputDevice: public QObject
 
         static void getAvailableDevices(QList<QString>& device_desc);
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        QString currentCameraDescriptionString() const { return _capture_device_info.description(); }
+#else
         QString currentCameraDescriptionString() const { return _capture_device_info.deviceName(); }
+#endif
 protected slots:
         void grabFrame(int id, QVideoFrame f) ;
         void handleSurfaceFrame(const QVideoFrame& f) ;
@@ -138,8 +155,14 @@ protected slots:
 	private:
 		VideoProcessor *_video_processor ;
         QCamera *_capture_device;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        QMediaCaptureSession *_capture_session;
+        QVideoSink *_video_sink;
+        QCameraDevice _capture_device_info;
+#else
         RsCameraVideoSurface *_video_surface;
         QCameraInfo _capture_device_info;
+#endif
 
 		QVideoOutputDevice *_echo_output_device ;
 
