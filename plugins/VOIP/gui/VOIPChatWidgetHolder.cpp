@@ -25,7 +25,6 @@
 #include <QLayout>
 #include <QPropertyAnimation>
 #include <QToolButton>
-#include <QDesktopWidget>
 #include <QMessageBox>
 
 //VOIP
