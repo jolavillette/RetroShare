@@ -38,6 +38,7 @@
 #include "gui/VideoProcessor.h"
 
 class VideoEncoder ;
+class MacCameraCapture ;
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 // Qt5 only: Qt6 removed QAbstractVideoSurface; there the camera feeds a
@@ -153,6 +154,10 @@ protected slots:
         void cameraCaptureInfo(CameraStatus status,QCamera::Error qt_cam_err_code);
 
 	private:
+		// Feed a captured frame to the encoder + local echo display. Used by the
+		// macOS AVFoundation path (frames arrive already as QImage).
+		void deliverCameraImage(const QImage& image);
+
 		VideoProcessor *_video_processor ;
         QCamera *_capture_device;
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -169,6 +174,12 @@ protected slots:
 		// Qt6/macOS: once the camera authorization has been granted we stop
 		// re-requesting it, otherwise every start() would fire another request.
 		bool _camera_permission_granted ;
+
+#if defined(Q_OS_MACOS)
+		// macOS captures via AVFoundation directly (Qt's video pipeline delivers
+		// no frames here); this owns the AVCaptureSession. NULL when stopped.
+		MacCameraCapture *_mac_capture ;
+#endif
 
 		std::list<RsVOIPDataChunk> _out_queue ;
 };
