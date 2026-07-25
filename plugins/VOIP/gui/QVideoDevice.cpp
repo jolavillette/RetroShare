@@ -31,6 +31,13 @@
 #else
 #  include <QCameraInfo>
 #endif
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+#  include <QPermissions>
+#  include <QApplication>
+#endif
+#if defined(Q_OS_MACOS)
+#  include "MacCameraPermission.h"
+#endif
 #include <util/rsdebug.h>
 #include "QVideoDevice.h"
 #include "VideoProcessor.h"
@@ -43,6 +50,7 @@ QVideoInputDevice::QVideoInputDevice(QWidget *parent)
 	_capture_device = NULL ;
 	_video_processor = NULL ;
 	_echo_output_device = NULL ;
+	_camera_permission_granted = false ;
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     _capture_session = NULL;
     _video_sink = NULL;
@@ -117,6 +125,52 @@ void QVideoInputDevice::start(const QString& description)
 	// make sure everything is re-initialised
 	//
 	stop() ;
+
+#if defined(Q_OS_MACOS)
+    // macOS: bypass Qt6's QPermission API entirely. qApp->requestPermission(
+    // QCameraPermission) returns Denied WITHOUT ever contacting the OS -- proven with
+    // the TCC log, where opening the VOIP panel triggers a kTCCServiceMicrophone
+    // request (granted) but NEVER a kTCCServiceCamera request. We therefore ask
+    // AVFoundation directly, which forces the real system request + prompt (same
+    // mechanism the microphone already uses), then re-enter start() once granted.
+    if(!_camera_permission_granted)
+    {
+        requestMacCameraAccess([this, description](bool granted)
+        {
+            if(granted)
+            {
+                _camera_permission_granted = true ;
+                start(description) ;   // re-enter, now authorized
+            }
+            else
+                RsDbg() << "DISTANT_VOIP: [mac] camera access not granted -- no preview" ;
+        });
+        return;
+    }
+#elif QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    // Other Qt6 platforms (Linux/Windows): Qt's QPermission API works, so use it.
+    // We do NOT gate on checkPermission()'s value (it can wrongly report Denied);
+    // we always call requestPermission() until we get an explicit Granted.
+    if(!_camera_permission_granted)
+    {
+        QCameraPermission cameraPermission;
+        RsDbg() << "DISTANT_VOIP: camera checkPermission() status="
+                << (int)qApp->checkPermission(cameraPermission) << " -- requesting anyway";
+
+        qApp->requestPermission(cameraPermission, this,
+            [this, description](const QPermission& perm)
+            {
+                if(perm.status() == Qt::PermissionStatus::Granted)
+                {
+                    _camera_permission_granted = true ;
+                    start(description) ;   // re-enter, now authorized
+                }
+                else
+                    RsDbg() << "DISTANT_VOIP: [ERROR] camera permission NOT granted after requestPermission()";
+            });
+        return;
+    }
+#endif
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     QCameraDevice caminfo ;

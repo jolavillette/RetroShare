@@ -166,6 +166,10 @@ protected slots:
 
 		QVideoOutputDevice *_echo_output_device ;
 
+		// Qt6/macOS: once the camera authorization has been granted we stop
+		// re-requesting it, otherwise every start() would fire another request.
+		bool _camera_permission_granted ;
+
 		std::list<RsVOIPDataChunk> _out_queue ;
 };
 
