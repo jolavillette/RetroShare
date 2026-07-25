@@ -63,7 +63,7 @@ endif()
 # QPermission API never contacts the OS for the camera on macOS, so the system
 # prompt is never shown. See gui/MacCameraPermission.{h,mm}.
 if(APPLE)
-    list(APPEND VOIP_SOURCES gui/MacCameraPermission.mm)
+    list(APPEND VOIP_SOURCES gui/MacCameraPermission.mm gui/MacCameraCapture.mm)
 endif()
 
 set(VOIP_FORMS
@@ -166,9 +166,11 @@ if(QT_VERSION_MAJOR EQUAL 6)
     target_link_libraries(VOIP PRIVATE Qt6::Core5Compat)
 endif()
 
-# macOS: MacCameraPermission.mm calls into AVFoundation directly.
+# macOS: MacCameraPermission.mm / MacCameraCapture.mm call into AVFoundation.
 if(APPLE)
-    target_link_libraries(VOIP PRIVATE "-framework AVFoundation" "-framework Foundation")
+    target_link_libraries(VOIP PRIVATE
+        "-framework AVFoundation" "-framework Foundation"
+        "-framework CoreVideo" "-framework CoreMedia")
 endif()
 
 target_compile_options(VOIP PRIVATE "-Wno-deprecated-declarations")
