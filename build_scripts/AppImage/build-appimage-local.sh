@@ -129,6 +129,18 @@ cp "$ROOT/data/retroshare.desktop" "$DESKTOP"
 sed -i 's/^Icon=.*/Icon=retroshare/' "$DESKTOP"
 sed -i 's|^Exec=/usr/bin/retroshare|Exec=retroshare-gui|' "$DESKTOP"
 
+# web UI: inside a relocated tree RetroShare looks for its data directory as
+# <exedir>/../share/retroshare, so the web files must land exactly there — an
+# absolute /usr/share path would resolve on the host, outside the AppImage.
+if [ -d "$ROOT/retroshare-webui/webui" ]; then
+    mkdir -p "$APPDIR/usr/share/retroshare/webui"
+    cp -r "$ROOT/retroshare-webui/webui/." "$APPDIR/usr/share/retroshare/webui/"
+    echo ">>> web UI bundled from retroshare-webui/webui"
+else
+    echo ">>> WARNING: retroshare-webui/webui is missing — the AppImage will ship"
+    echo "    no web interface. Configure the build with -DRS_WEBUI=ON."
+fi
+
 # --- 3. bundle Qt + libs and emit the .AppImage -------------------------------
 # linuxdeploy names the output from $VERSION; we rename it afterwards (step 4)
 # because the glibc floor can only be read once every library is bundled.

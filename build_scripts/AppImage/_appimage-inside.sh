@@ -69,6 +69,16 @@ cp "$SRC/data/retroshare.desktop" "$DESKTOP"
 sed -i 's/^Icon=.*/Icon=retroshare/' "$DESKTOP"
 sed -i 's|^Exec=/usr/bin/retroshare|Exec=retroshare-gui|' "$DESKTOP"
 
+# web UI: RetroShare resolves its data directory as <exedir>/../share/retroshare
+# when running from a relocated tree, so the web files must land exactly there.
+if [ -d "$SRC/retroshare-webui/webui" ]; then
+    mkdir -p "$APPDIR/usr/share/retroshare/webui"
+    cp -r "$SRC/retroshare-webui/webui/." "$APPDIR/usr/share/retroshare/webui/"
+    echo ">>> web UI bundled from retroshare-webui/webui"
+else
+    echo ">>> WARNING: retroshare-webui/webui is missing — no web interface bundled"
+fi
+
 # --- 3. bundle Qt + libs, emit the AppImage -----------------------------------
 # VERSION is passed in from the host for the output filename.
 cd "$OUT"
