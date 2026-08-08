@@ -303,7 +303,7 @@ endif()
 FetchContent_Declare(udp-discovery-cpp
 	${UDP-DISCOVERY-CPP_DOWNLOAD_OPTIONS}
 	OVERRIDE_FIND_PACKAGE
-	PATCH_COMMAND sed -i -e "s/^\\(cmake_minimum_required(VERSION 2.8\\))\$/\\1...4.3.4)/" CMakeLists.txt
+	PATCH_COMMAND sed -i -e "s/^cmake_minimum_required(VERSION 2.8)\$/cmake_minimum_required(VERSION 2.8...4.3.4)/" CMakeLists.txt
 )
 if(
 	NOT EXISTS ${CMAKE_FIND_PACKAGE_REDIRECTS_DIR}/udp-discovery-cpp-extra.cmake
