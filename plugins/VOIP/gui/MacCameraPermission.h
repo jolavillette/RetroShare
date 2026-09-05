@@ -1,7 +1,7 @@
 /*******************************************************************************
- * gui/elastic/arrow.h                                                         *
+ * plugins/VOIP/gui/MacCameraPermission.h                                      *
  *                                                                             *
- * Copyright (c) 2012, RetroShare Team <retroshare.project@gmail.com>          *
+ * Copyright (C) 2026 by Retroshare Team <retroshare.project@gmail.com>        *
  *                                                                             *
  * This program is free software: you can redistribute it and/or modify        *
  * it under the terms of the GNU Affero General Public License as              *
@@ -18,42 +18,23 @@
  *                                                                             *
  *******************************************************************************/
 
-// This code is inspired from http://doc.qt.io/qt-5/qtwidgets-graphicsview-diagramscene-arrow-h.html
+#ifndef MAC_CAMERA_PERMISSION_H
+#define MAC_CAMERA_PERMISSION_H
 
-#ifndef ARROW_H
-#define ARROW_H
+#include <functional>
 
-#include <QGraphicsItem>
+// macOS only. Requests camera access straight from AVFoundation, bypassing Qt6's
+// QPermission API.
+//
+// Why: on macOS, qApp->requestPermission(QCameraPermission) returns Denied WITHOUT
+// ever contacting the OS -- proven with the TCC log, where opening the VOIP panel
+// produces a kTCCServiceMicrophone request (granted) but NO kTCCServiceCamera
+// request at all. Calling [AVCaptureDevice requestAccessForMediaType:] ourselves
+// forces the real system request and prompt, exactly like the microphone path.
+//
+// cb is invoked with true if access is granted, false otherwise. When the status
+// is already determined it fires synchronously; when it is undetermined the system
+// prompt is shown and cb is invoked on the main thread once the user answers.
+void requestMacCameraAccess(std::function<void(bool)> cb);
 
-class Node;
-
-class Arrow : public QGraphicsItem
-{
-public:
-    Arrow(Node *sourceNode, Node *destNode);
-    ~Arrow();
-
-    Node *sourceNode() const;
-    void setSourceNode(Node *node);
-
-    Node *destNode() const;
-    void setDestNode(Node *node);
-
-    void adjust();
-
-    enum { Type = UserType + 3 };
-    int type() const { return Type; }
-    
-protected:
-    QRectF boundingRect() const;
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
-    
-private:
-    Node *source, *dest;
-
-    QPointF sourcePoint;
-    QPointF destPoint;
-    qreal arrowSize;
-};
-
-#endif
+#endif // MAC_CAMERA_PERMISSION_H
