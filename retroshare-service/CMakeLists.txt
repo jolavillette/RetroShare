@@ -65,19 +65,10 @@ include(FetchContent)
 # Find required dependencies
 # find_package for Botan and json-c failed to populate variables, remove them.
 # find_package(Botan 3 REQUIRED)
-# message(STATUS "Botan_FOUND=${Botan_FOUND}")
-# message(STATUS "BOTAN_LIBRARIES=${BOTAN_LIBRARIES}")
-# message(STATUS "BOTAN_INCLUDE_DIRS=${BOTAN_INCLUDE_DIRS}")
-# 
-# find_package(json-c REQUIRED)
-# message(STATUS "json-c_FOUND=${json-c_FOUND}")
-# message(STATUS "JSON-C_LIBRARIES=${JSON-C_LIBRARIES}")
-# message(STATUS "JSON-C_INCLUDE_DIRS=${JSON-C_INCLUDE_DIRS}")
-
-find_package(ZLIB REQUIRED)
-find_package(BZip2 REQUIRED)
-
-find_package(Git REQUIRED)
+# Git is optional: it is only used to stamp versions (git describe, with a
+# Source_Version file fallback for source tarballs) and by the FetchContent
+# network fallbacks, which are guarded by RS_FETCH_MISSING_DEPS.
+find_package(Git)
 
 ################################################################################
 
