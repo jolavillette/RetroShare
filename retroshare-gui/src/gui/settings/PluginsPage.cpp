@@ -67,6 +67,10 @@ settings::PluginsPage::PluginsPage(QWidget * parent, Qt::WindowFlags flags)
                                                    short_status_string = tr("[loading problem]");
 															  break ;
 
+				 case PLUGIN_STATUS_WRONG_API:     status_string = tr("Plugin built for a different API version. Rebuild it against this RetroShare.") ;
+                                                   short_status_string = tr("[wrong API version]");
+															  break ;
+
 				 case PLUGIN_STATUS_MISSING_SVN:   status_string = tr("No SVN number supplied. Please read plugin development manual.") ;
                                                    short_status_string = tr("[loading problem]");
 															  break ;

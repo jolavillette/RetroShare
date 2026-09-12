@@ -90,6 +90,7 @@ protected slots:
 	void itemDoubleClicked(QTreeWidgetItem *item, int column);
 	void updateCurrentLobby() ;
     void handleChatLobbyEvent(uint64_t lobby_id, RsChatLobbyEventCode event_type, const RsGxsId &gxs_id, const QString& str);
+    void handleLobbyHistoryEvent(const RsChatLobbyEvent* ev);
     void readChatLobbyInvites();
 	void showLobby(QTreeWidgetItem *lobby_item) ;
 	void showBlankPage(ChatLobbyId id, bool subscribed = false) ;
@@ -121,6 +122,8 @@ private:
 
 	bool filterItem(QTreeWidgetItem *item, const QString &text, int filterColumn);
 
+	void updateUnreadCounters();
+
 	RSTreeWidgetItemCompareRole *compareRole;
 	QTreeWidgetItem *privateLobbyItem;
 	QTreeWidgetItem *publicLobbyItem;
@@ -131,6 +134,8 @@ private:
 	ChatTabWidget *tabWidget ;
 
 	std::map<ChatLobbyId,ChatLobbyInfoStruct> _lobby_infos ;
+
+	std::map<ChatLobbyId,unsigned int> _unread_counts ;	// unread messages per room, for the tree counters
 
 	std::map<QTreeWidgetItem*,time_t> _icon_changed_map ;
 
