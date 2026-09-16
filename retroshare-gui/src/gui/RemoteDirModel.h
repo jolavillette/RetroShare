@@ -28,6 +28,7 @@
 
 #include <QAbstractItemModel>
 #include <QAction>
+#include <QColor>
 #include <QIcon>
 #include <QMenu>
 #include <QHash>
@@ -82,6 +83,12 @@ class RetroshareDirModel : public QAbstractItemModel
 		void getFilePath(const QModelIndex& index, std::string& fullpath);
 		void changeAgeIndicator(uint32_t indicator) { ageIndicator = indicator; }
 
+		/* Text colours used in remote mode for files we already have / are
+		 * downloading. Same scheme as SearchDialog; set from the stylesheet
+		 * through SharedFilesDialog's qproperties. */
+		void setTextColorLocal(const QColor& color) { mTextColorLocal = color; }
+		void setTextColorDownloading(const QColor& color) { mTextColorDownloading = color; }
+
 		bool requestDirDetails(void *ref, bool remote,DirDetails& d) const;
 
 		// MODIFICATION A: Virtual method to check if a branch has cumulative uploads
@@ -122,6 +129,9 @@ class RetroshareDirModel : public QAbstractItemModel
 		QVariant filterRole(const DirDetails& details,int coln) const;
 
 		uint32_t ageIndicator;
+
+		QColor mTextColorLocal;
+		QColor mTextColorDownloading;
 
 		QIcon categoryIcon;
 		QIcon peerIcon;

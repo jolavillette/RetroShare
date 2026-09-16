@@ -65,6 +65,7 @@ static const uint32_t FLAT_VIEW_MIN_DELAY_BETWEEN_UPDATES = 120 ;	// dont rebuil
 RetroshareDirModel::RetroshareDirModel(bool mode, QObject *parent)
   : QAbstractItemModel(parent), _visible(false)
   , ageIndicator(IND_ALWAYS)
+  , mTextColorLocal(Qt::red), mTextColorDownloading(0, 128, 0)
   , RemoteMode(mode)//, nIndex(1), indexSet(1) /* ass zero index cant be used */
   , mLastRemote(false), mLastReq(0), mUpdating(false)
   , mEventHandlerId(0)
@@ -887,19 +888,18 @@ QVariant RetroshareDirModel::data(const QModelIndex &index, int role) const
             return QVariant(QColor(Qt::green)) ;
         else if(ageIndicator != IND_ALWAYS && details.max_mtime + ageIndicator < time(NULL))
 			return QVariant(QColor(Qt::gray)) ;
-        else if(RemoteMode)
+        else if(RemoteMode && (details.type == DIR_TYPE_FILE || details.type == DIR_TYPE_EXTRA_FILE))
         {
+            // Same colour scheme as the search results (SearchDialog::insertFile):
+            // one colour for files we are currently downloading, another for files
+            // we already have in our own shares. As in the search dialog, a file
+            // being downloaded wins over one we already have.
             FileInfo info;
-            QVariant local_file_color = QVariant(QColor(Qt::red));
+            if(rsFiles->FileDetails(details.hash, RS_FILE_HINTS_DOWNLOAD, info))
+                return mTextColorDownloading;
             if(rsFiles->alreadyHaveFile(details.hash, info))
-                return local_file_color;
-
-            std::list<RsFileHash> downloads;
-            rsFiles->FileDownloads(downloads);
-            if(std::find(downloads.begin(), downloads.end(), details.hash) != downloads.end())
-                return local_file_color;
-            else
-                return QVariant();
+                return mTextColorLocal;
+            return QVariant();
         }
 		else
 			return QVariant() ; // standard
