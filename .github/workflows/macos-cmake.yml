@@ -40,17 +40,21 @@ jobs:
       with:
         persist-credentials: false
 
-    # Same pinned-commit init as the Ubuntu CMake CI (no --remote); librnp needs
-    # --recursive for its nested src/libsexpp.
-    - name: Init submodules (pinned commits)
+    # libretroshare + libsam3 track the tip of their fork branch (--remote, see
+    # .gitmodules: combo / fix/cross-platform-and-security) so the build follows
+    # those throwaway branches even when they are deleted and recreated. The other
+    # submodules stay pinned; librnp needs --recursive for its nested src/libsexpp.
+    - name: Init submodules (libretroshare/libsam3 track fork branch tip)
       run: |
         git submodule update --init \
-          libbitdht/ libretroshare/ openpgpsdk/ retroshare-webui/
+          libbitdht/ openpgpsdk/ retroshare-webui/
         git submodule update --init --recursive \
           supportlibs/librnp
         git submodule update --init \
-          supportlibs/restbed supportlibs/libsam3 \
+          supportlibs/restbed \
           supportlibs/udp-discovery-cpp supportlibs/rapidjson
+        git submodule update --init --remote \
+          libretroshare/ supportlibs/libsam3
         git --no-pager -C libretroshare log --max-count 1 --oneline
 
     - name: Install Homebrew dependencies
