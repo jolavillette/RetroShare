@@ -156,6 +156,13 @@ ImHistoryBrowser::ImHistoryBrowser(const ChatId &chatId, QTextEdit *edit,const Q
 
 ImHistoryBrowser::~ImHistoryBrowser()
 {
+    /* The handler registered in the constructor captures 'this' and posts to
+     * it from the RsEvents thread. Never unregistered, it kept firing after the
+     * dialog was gone: every CHAT_HISTORY_CHANGED event then posted a Qt event
+     * to a freed QObject, which blew up at the latest when QApplication drained
+     * the posted-event list at exit (SIGSEGV in cleanupThreadData()). */
+    rsEvents->unregisterEventsHandler(mEventHandlerId);
+
     Settings->setValueToGroup("HistorieBrowser", "Geometry", saveGeometry());
 
     if (m_createThread) {

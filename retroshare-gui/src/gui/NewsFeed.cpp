@@ -21,7 +21,10 @@
 #include <QDateTime>
 
 #include "NewsFeed.h"
+#include "gui/gxs/GxsPerfProbe.h"
 #include "ui_NewsFeed.h"
+
+#include "pqi/authssl.h"
 
 #include <retroshare/rsbanlist.h>
 #include <retroshare/rsgxschannels.h>
@@ -275,6 +278,11 @@ void NewsFeed::handleForumEvent(std::shared_ptr<const RsEvent> event)
 	const RsGxsForumEvent *pe = dynamic_cast<const RsGxsForumEvent*>(event.get());
 	if(!pe) return;
 
+	// Runs on the GUI thread and builds one full widget per incoming message,
+	// so a sync burst turns into a burst of widget construction here.
+	RsGuiPerf::Probe prof("newsFeed::handleForumEvent");
+	prof.detail(QString("code=%1").arg(static_cast<int>(pe->mForumEventCode)));
+
 	switch(pe->mForumEventCode)
 	{
 	case RsForumEventCode::MODERATOR_LIST_CHANGED:
@@ -478,6 +486,13 @@ void NewsFeed::handleSecurityEvent(std::shared_ptr<const RsEvent> event)
         return;
 
     auto& e(*pe);
+    
+    // Check if denied by AuthSSL (backend)
+    if(AuthSSL::instance().isNotifyDenied(e.mPgpId))
+    {
+        return;
+    }
+
     RsFeedTypeFlags flags = (RsFeedTypeFlags)Settings->getNewsFeedFlags();
 
     // 1 - treat the case of unknown PeerID
