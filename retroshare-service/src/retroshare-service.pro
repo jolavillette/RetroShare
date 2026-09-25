@@ -24,7 +24,11 @@ TARGET = retroshare-service
 
 !include("../../libretroshare/src/use_libretroshare.pri"):error("Including")
 
-SOURCES += retroshare-service.cc
+SOURCES += retroshare-service.cc \
+    util/retroshare-service_path.cpp
+
+HEADERS += \
+    util/retroshare-service_path.h
 
 ################################# Linux ########################################
 

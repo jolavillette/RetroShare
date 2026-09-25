@@ -27,6 +27,7 @@
 #include <QFileOpenEvent>
 #include <QLocale>
 #include <QLocalSocket>
+#include <QPalette>
 #include <QRegularExpression>
 #include <QSharedMemory>
 #include <QShortcut>
@@ -398,6 +399,30 @@ void RsApplication::resetLanguageAndStyle()
 //   Language depended stylesheet
 //     <Internal|External>_<locale>.lqss
 
+/* Rich-text links (<a href> in QLabel, QTextBrowser, chat and post bodies) take
+ * their colour from QPalette::Link when the HTML is parsed; a stylesheet cannot
+ * override it. The platform default (pure blue) is nearly invisible on the dark
+ * sheet's #19232D background, so give that sheet a readable link colour and put
+ * the platform colours back for any other sheet. */
+static void applyLinkPalette(const QString &sheetName)
+{
+    static const QColor platformLink = qApp->palette().color(QPalette::Link);
+    static const QColor platformLinkVisited = qApp->palette().color(QPalette::LinkVisited);
+
+    QPalette palette = qApp->palette();
+    if (sheetName == ":Standard_Dark") {
+        palette.setColor(QPalette::Link, QColor(0x25, 0x9A, 0xE9)); // the sheet's accent colour
+        palette.setColor(QPalette::LinkVisited, QColor(0xA9, 0x8B, 0xDD));
+    } else {
+        palette.setColor(QPalette::Link, platformLink);
+        palette.setColor(QPalette::LinkVisited, platformLinkVisited);
+    }
+
+    if (palette != qApp->palette()) {
+        qApp->setPalette(palette);
+    }
+}
+
 void RsApplication::loadStyleSheet(const QString &sheetName)
 {
     QString locale = QLocale().name();
@@ -495,6 +520,7 @@ void RsApplication::loadStyleSheet(const QString &sheetName)
         qApp->setStyleSheet("QToolTip { color: #ffffff; background-color: #2a82da; border: 1px solid white; }");
     } 
 #endif
+    applyLinkPalette(sheetName);
     qApp->setStyleSheet(styleSheet);
 }
 
@@ -557,41 +583,6 @@ void RsApplication::initPlugins()
 {
     loadStyleSheet(options.guiStyleSheetFile);
     LanguageSupport::translatePlugins(options.language);
-}
-
-/** Returns the directory RetroShare uses for its data files. */
-QString RsApplication::dataDirectory()
-{
-    if(!options.optBaseDir.empty())
-        return QString::fromUtf8(options.optBaseDir.c_str());
-    else
-        return defaultDataDirectory();
-}
-
-/** Returns the default location of RetroShare's data directory. */
-QString
-RsApplication::defaultDataDirectory()
-{
-#if defined(Q_OS_WIN)
-  return (win32_app_data_folder() + "\\RetroShare");
-#else
-  return (QDir::homePath() + "/.retroshare");
-#endif
-}
-
-/** Creates RsApplication's data directory, if it doesn't already exist. */
-bool
-RsApplication::createDataDirectory(QString *errmsg)
-{
-  QDir datadir(dataDirectory());
-  if (!datadir.exists()) {
-    QString path = datadir.absolutePath();
-    if (!datadir.mkpath(path)) {
-      return err(errmsg, 
-                 tr("Could not create data directory: %1").arg(path));
-    }
-  }
-  return true;
 }
 
 /** Set RsApplication's data directory - externally */

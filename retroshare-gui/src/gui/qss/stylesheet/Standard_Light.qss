@@ -2258,7 +2258,10 @@ QTreeView::item,
 QListView::item,
 QTableView::item,
 QColumnView::item {
-  color: #101010;
+  /* No 'color' here: a colour on the plain ::item rule overrides the
+     Qt::ForegroundRole set by the models (e.g. search results, friends'
+     files), so per-item colouring would silently disappear. The text
+     colour comes from the QAbstractItemView rule above. */
   background: transparent;
 }
 QTreeView:branch:!selected:hover,
