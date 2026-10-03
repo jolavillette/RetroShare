@@ -1,7 +1,7 @@
 /*******************************************************************************
- * gui/elastic/arrow.h                                                         *
+ * util/retroshare-service_path.h                                              *
  *                                                                             *
- * Copyright (c) 2012, RetroShare Team <retroshare.project@gmail.com>          *
+ * Copyright (C) 2026  Retroshare Team       <retroshare.project@gmail.com>    *
  *                                                                             *
  * This program is free software: you can redistribute it and/or modify        *
  * it under the terms of the GNU Affero General Public License as              *
@@ -18,42 +18,9 @@
  *                                                                             *
  *******************************************************************************/
 
-// This code is inspired from http://doc.qt.io/qt-5/qtwidgets-graphicsview-diagramscene-arrow-h.html
+#pragma once
 
-#ifndef ARROW_H
-#define ARROW_H
+#include <string>
 
-#include <QGraphicsItem>
-
-class Node;
-
-class Arrow : public QGraphicsItem
-{
-public:
-    Arrow(Node *sourceNode, Node *destNode);
-    ~Arrow();
-
-    Node *sourceNode() const;
-    void setSourceNode(Node *node);
-
-    Node *destNode() const;
-    void setDestNode(Node *node);
-
-    void adjust();
-
-    enum { Type = UserType + 3 };
-    int type() const { return Type; }
-    
-protected:
-    QRectF boundingRect() const;
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
-    
-private:
-    Node *source, *dest;
-
-    QPointF sourcePoint;
-    QPointF destPoint;
-    qreal arrowSize;
-};
-
-#endif
+/** Get file path of the main executable */
+std::string getMainExecutablePath(const char* argv0);

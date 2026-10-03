@@ -594,7 +594,6 @@ HEADERS +=  rshare.h \
             gui/advsearch/guiexprelement.h \
             gui/elastic/graphwidget.h \
             gui/elastic/edge.h \
-            gui/elastic/arrow.h \
             gui/elastic/elnode.h \
             gui/NewsFeed.h \
             gui/feeds/BoardsCommentsItem.h \
@@ -948,7 +947,6 @@ SOURCES +=  main.cpp \
             gui/advsearch/guiexprelement.cpp \
             gui/elastic/graphwidget.cpp \
             gui/elastic/edge.cpp \
-            gui/elastic/arrow.cpp \
             gui/elastic/elnode.cpp \
             gui/NewsFeed.cpp \
             gui/feeds/BoardsCommentsItem.cpp \

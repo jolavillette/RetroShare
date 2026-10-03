@@ -586,7 +586,7 @@ void RsGUIEventManager::startWaitingToasters()
 		/* Calculate positions */
 		QSize size = toaster->widget->size();
 
-		QRect desktopGeometry = RsApplication::primaryScreenGeometry();
+		QRect desktopGeometry = RsApplication::availablePrimaryScreenGeometry();
 
 		switch (toaster->position) {
 		case RshareSettings::TOASTERPOS_TOPLEFT:
@@ -681,7 +681,15 @@ void RsGUIEventManager::runningTick()
 		}
 
 		toaster->widget->move(newPos + diff);
-		diff += newPos - toaster->startPos;
+
+		int totalTravel = qAbs(toaster->endPos.y() - toaster->startPos.y());
+		if (totalTravel > 0) {
+			static const int TOASTER_SPACING = 10;
+			int currentTravel = qAbs(newPos.y() - toaster->startPos.y());
+			int pushDist = toaster->widget->height() + TOASTER_SPACING;
+			int direction = (toaster->endPos.y() < toaster->startPos.y()) ? -1 : 1;
+			diff.setY(diff.y() + direction * (currentTravel * pushDist / totalTravel));
+		}
 
 		QRect mask = QRect(0, 0, toaster->widget->width(), qAbs(toaster->startPos.y() - newPos.y()));
 		if (newPos.y() > toaster->startPos.y()) {

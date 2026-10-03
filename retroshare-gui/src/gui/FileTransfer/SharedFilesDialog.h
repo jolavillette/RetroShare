@@ -30,6 +30,7 @@
 
 #include <set>
 #include <QCheckBox>
+#include <QColor>
 #include <QItemSelection>
 
 class RetroshareDirModel;
@@ -40,12 +41,22 @@ class SharedFilesDialog : public RsAutoUpdatePage
 {
   Q_OBJECT
 
+  /* Colours of the friends' files that we already have / are downloading.
+   * Same scheme as SearchDialog; the values come from the stylesheet. */
+  Q_PROPERTY(QColor textColorLocal READ textColorLocal WRITE setTextColorLocal)
+  Q_PROPERTY(QColor textColorDownloading READ textColorDownloading WRITE setTextColorDownloading)
+
 public:
   /** Default Constructor */
   SharedFilesDialog(bool remote_mode,QWidget *parent = 0);
 
   /** Default Destructor */
   ~SharedFilesDialog() ;
+
+  QColor textColorLocal() const { return mTextColorLocal; }
+  QColor textColorDownloading() const { return mTextColorDownloading; }
+  void setTextColorLocal(const QColor& color);
+  void setTextColorDownloading(const QColor& color);
 
   virtual void hideEvent(QHideEvent *) ;
   virtual void showEvent(QShowEvent *) ;
@@ -143,6 +154,9 @@ protected:
   /* RetroshareDirModel */
   RetroshareDirModel *tree_model;
   RetroshareDirModel *flat_model;
+
+  QColor mTextColorLocal;
+  QColor mTextColorDownloading;
   RetroshareDirModel *model;
   
   SFDSortFilterProxyModel *tree_proxyModel;
