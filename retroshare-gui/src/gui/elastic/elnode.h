@@ -51,11 +51,13 @@ class Node : public QObject, public QGraphicsItem
 
 public:
     Node(const std::string& node_string,GraphWidget::NodeType type,GraphWidget::AuthType auth,GraphWidget *graphWidget,const RsPeerId& ssl_id,const RsPgpId& gpg_id);
+    ~Node();
 
     void addEdge(Edge *edge);
+    void removeEdge(Edge *edge);
     const QList<Edge *>& edges() const;
 
-	int type() const { return Type; }
+	GraphWidget::NodeType nodeType() const { return _type; }
 	std::string idString() const { return _gpg_id.toStdString() ; }
 	std::string descString() const { return _desc_string ; }
 
@@ -96,8 +98,6 @@ private:
 	 int mBBWidth ;
 	 int mNodeDrawSize;
 
-	 static Node *_selected_node ;
-
 	 RsPeerId _ssl_id ;
 	 RsPgpId _gpg_id ;
 
@@ -105,6 +105,7 @@ private:
      static const float FRICTION_FACTOR;
      static const float REPULSION_FACTOR;
      static const float NODE_DISTANCE;
+
 };
 
 #endif

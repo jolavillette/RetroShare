@@ -22,13 +22,66 @@
 
 #include <QLabel>
 #include <QCamera>
-#include <QCameraInfo>
+#include <QVideoFrame>
 #include "interface/rsVOIP.h"
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#  include <QCameraDevice>
+#  include <QMediaDevices>
+#  include <QMediaCaptureSession>
+#  include <QVideoSink>
+#else
+#  include <QCameraInfo>
+#  include <QAbstractVideoSurface>
+#endif
 
 #include "gui/VideoProcessor.h"
 
 class VideoEncoder ;
-class QCameraImageCapture;
+class MacCameraCapture ;
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+// Qt5 only: Qt6 removed QAbstractVideoSurface; there the camera feeds a
+// QVideoSink through a QMediaCaptureSession instead (see QVideoDevice.cpp).
+// Minimal video surface used as the camera viewfinder to grab live frames.
+// We use a viewfinder surface rather than QVideoProbe because, on the macOS
+// AVFoundation backend, QVideoProbe::setSource() reports success but never
+// delivers a single frame (camera LED turns on, but no image). A viewfinder
+// surface reliably receives every frame on all platforms.
+class RsCameraVideoSurface: public QAbstractVideoSurface
+{
+    Q_OBJECT
+
+    public:
+        explicit RsCameraVideoSurface(QObject *parent = nullptr) : QAbstractVideoSurface(parent) {}
+
+        QList<QVideoFrame::PixelFormat> supportedPixelFormats(
+                QAbstractVideoBuffer::HandleType handleType = QAbstractVideoBuffer::NoHandle) const override
+        {
+            Q_UNUSED(handleType);
+            // Advertise the formats the camera backends commonly produce; grabFrame()
+            // converts whatever we get (frame.image() + manual fallbacks).
+            return QList<QVideoFrame::PixelFormat>()
+                << QVideoFrame::Format_RGB32   << QVideoFrame::Format_ARGB32
+                << QVideoFrame::Format_BGRA32  << QVideoFrame::Format_RGB24
+                << QVideoFrame::Format_NV12    << QVideoFrame::Format_NV21
+                << QVideoFrame::Format_YUYV    << QVideoFrame::Format_UYVY
+                << QVideoFrame::Format_YUV420P << QVideoFrame::Format_Jpeg;
+        }
+
+        bool present(const QVideoFrame &frame) override
+        {
+            // present() may run on the capture thread (AVFoundation queue); emit a
+            // signal so the frame is marshalled to the GUI thread (queued connection).
+            if(frame.isValid())
+                emit frameAvailable(QVideoFrame(frame));
+            return true;
+        }
+
+    signals:
+        void frameAvailable(const QVideoFrame& frame);
+};
+#endif
 
 // Responsible from displaying the video. The source of the video is
 // a VideoDecoder object, which uses a codec.
@@ -86,9 +139,14 @@ class QVideoInputDevice: public QObject
 
         static void getAvailableDevices(QList<QString>& device_desc);
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        QString currentCameraDescriptionString() const { return _capture_device_info.description(); }
+#else
         QString currentCameraDescriptionString() const { return _capture_device_info.deviceName(); }
+#endif
 protected slots:
         void grabFrame(int id, QVideoFrame f) ;
+        void handleSurfaceFrame(const QVideoFrame& f) ;
         void errorHandling(CameraStatus status,QCamera::Error error);
 
 	signals:
@@ -96,13 +154,32 @@ protected slots:
         void cameraCaptureInfo(CameraStatus status,QCamera::Error qt_cam_err_code);
 
 	private:
+		// Feed a captured frame to the encoder + local echo display. Used by the
+		// macOS AVFoundation path (frames arrive already as QImage).
+		void deliverCameraImage(const QImage& image);
+
 		VideoProcessor *_video_processor ;
-		QTimer *_timer ;
         QCamera *_capture_device;
-        QCameraImageCapture *_image_capture;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        QMediaCaptureSession *_capture_session;
+        QVideoSink *_video_sink;
+        QCameraDevice _capture_device_info;
+#else
+        RsCameraVideoSurface *_video_surface;
         QCameraInfo _capture_device_info;
+#endif
 
 		QVideoOutputDevice *_echo_output_device ;
+
+		// Qt6/macOS: once the camera authorization has been granted we stop
+		// re-requesting it, otherwise every start() would fire another request.
+		bool _camera_permission_granted ;
+
+#if defined(Q_OS_MACOS)
+		// macOS captures via AVFoundation directly (Qt's video pipeline delivers
+		// no frames here); this owns the AVCaptureSession. NULL when stopped.
+		MacCameraCapture *_mac_capture ;
+#endif
 
 		std::list<RsVOIPDataChunk> _out_queue ;
 };

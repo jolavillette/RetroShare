@@ -38,6 +38,7 @@
 #endif
 
 #include <retroshare/rspeers.h>
+#include <retroshare/rsinit.h>
 
 #ifdef Q_OS_WIN
 #	include <util/retroshareWin32.h>
@@ -1187,11 +1188,16 @@ void RshareSettings::setWebinterfaceEnabled(bool enabled)
 
 QString RshareSettings::getWebinterfaceFilesDirectory()
 {
-#ifdef WINDOWS_SYS
-	return valueFromGroup("Webinterface","directory","./webui/").toString();
-#else
-    return valueFromGroup("Webinterface","directory","/usr/share/retroshare/webui/").toString();
-#endif
+	/* The web UI files are shipped in the RetroShare data directory, which
+	 * libretroshare already locates per platform: the bundle Resources on
+	 * macOS, the executable directory on Windows, the install prefix (or the
+	 * relocated tree of an AppImage) on Linux. Hardcoding a path here instead
+	 * used to make the GUI look outside its own bundle. */
+	const QString defaultDirectory =
+	        QString::fromStdString(RsAccounts::systemDataDirectory(false))
+	        + "/webui/";
+
+	return valueFromGroup("Webinterface","directory",defaultDirectory).toString();
 }
 
 void RshareSettings::setWebinterfaceFilesDirectory(const QString& s)
@@ -1276,15 +1282,6 @@ void RshareSettings::setJsonApiListenAddress(const QString& listenAddress)
 	setValueToGroup("JsonApi", "listenAddress", listenAddress);
 }
 
-QStringList RshareSettings::getJsonApiAuthTokens()
-{
-	return valueFromGroup("JsonApi", "authTokens", QStringList()).toStringList();
-}
-
-void RshareSettings::setJsonApiAuthTokens(const QStringList& authTokens)
-{
-	setValueToGroup("JsonApi", "authTokens", authTokens);
-}
 #endif // RS_JSONAPI
        
 int RshareSettings::getDateFormat()
