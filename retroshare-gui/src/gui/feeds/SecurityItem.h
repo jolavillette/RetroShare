@@ -60,6 +60,7 @@ private slots:
 	void openChat();
 
 	void updateItem();
+	void setConnectAttemptToolTips(bool profileKnown);
 
 private:
 	RsPgpId  mGpgId;
