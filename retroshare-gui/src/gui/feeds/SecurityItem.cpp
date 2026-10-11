@@ -259,6 +259,7 @@ void SecurityItem::updateItem()
 				friendRequesttoolButton->show();
 				requestLabel->show();
 				peerDetailsButton->show();
+				setConnectAttemptToolTips(false);
 			}
 
 			return;
@@ -322,6 +323,7 @@ void SecurityItem::updateItem()
 			{
 				friendRequesttoolButton->show();
 				requestLabel->show();
+				setConnectAttemptToolTips(true);
 			}
 			else 
 			{
@@ -336,6 +338,34 @@ void SecurityItem::updateItem()
 	}
 
 	return;
+}
+
+// The feed shows a refused TLS handshake as a "friend request", which puzzles
+// users: explain what happened and what accepting does. The handshake only
+// carries the node and profile ids, never a name, hence "unknown peer".
+void SecurityItem::setConnectAttemptToolTips(bool profileKnown)
+{
+	if(mType != RsFeedTypeFlags::RS_FEED_ITEM_SEC_CONNECT_ATTEMPT)
+		return;
+
+	QString what, accept;
+
+	if(profileKnown)
+	{
+		what = tr("This node tried to connect to you and was refused: its profile key is in your keyring but is not accepted as a friend.");
+		accept = tr("Accept this profile as a friend. All its nodes will then be allowed to connect, with PGP signature verification.");
+	}
+	else
+	{
+		what = tr("A node you do not know tried to connect to you and was refused: the profile key that signed its certificate is not in your friend list. "
+		          "This is not necessarily a deliberate friend request. Its name cannot be shown because you do not have its profile key.");
+		accept = tr("Add this node as a friend. Its profile key is not in your keyring, so it will be added as an SSL-only friend and its name cannot be verified. "
+		            "Check the service permissions you grant it.");
+	}
+
+	peerNameLabel->setToolTip(what);
+	requestLabel->setToolTip(what);
+	friendRequesttoolButton->setToolTip(accept);
 }
 
 void SecurityItem::toggle()
