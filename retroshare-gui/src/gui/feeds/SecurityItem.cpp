@@ -132,6 +132,14 @@ void SecurityItem::updateItemStatic()
 			requestLabel->hide();
 			avatar->setDefaultAvatar(":images/avatar_refused.png");
 			break;
+        case RsFeedTypeFlags::RS_FEED_ITEM_SEC_PEER_CLOSED_AFTER_AUTH:
+			title = tr("This node closes the connection right after authenticating us: you are probably on its ban list, or its IP whitelist requirement is not met.");
+			titleLabel->setToolTip(tr("The TLS handshake succeeds, so the node knows who we are, then it hangs up before sending anything. "
+			                          "This happened on several consecutive connection attempts. RetroShare keeps retrying every few minutes; "
+			                          "if it is not wanted, remove this node from your friends."));
+			requestLabel->hide();
+			avatar->setDefaultAvatar(":images/avatar_refused.png");
+			break;
         case RsFeedTypeFlags::RS_FEED_ITEM_SEC_UNKNOWN_IN:
 			title = tr("Unknown (Incoming) Connect Attempt");
 			requestLabel->hide();

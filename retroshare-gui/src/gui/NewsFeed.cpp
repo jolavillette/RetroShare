@@ -529,6 +529,8 @@ void NewsFeed::handleSecurityEvent(std::shared_ptr<const RsEvent> event)
         FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_IP_BLACKLISTED; break;
 	case RsAuthSslError::MISSING_CERTIFICATE:
         FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_MISSING_CERTIFICATE; break;
+	case RsAuthSslError::PEER_CLOSED_AFTER_AUTH:
+        FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_PEER_CLOSED_AFTER_AUTH; break;
 	default:
 		return; // display nothing
 	}
