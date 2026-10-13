@@ -613,6 +613,26 @@ BWGraph::BWGraph(QWidget *parent) : RSGraphWidget(parent)
     setFlags(RSGRAPH_FLAGS_SHOW_LEGEND) ;
 }
 
+void BWGraphSource::clearHistory()
+{
+    mTrafficHistory.clear() ;
+    _points.clear() ;
+    _totals.clear() ;
+}
+
+void BWGraph::showEvent(QShowEvent *e)
+{
+    RSGraphWidget::showEvent(e) ;
+    _local_source->start() ;
+}
+
+void BWGraph::hideEvent(QHideEvent *e)
+{
+    RSGraphWidget::hideEvent(e) ;
+    _local_source->stop() ;
+    _local_source->clearHistory() ;
+}
+
 BWGraph::~BWGraph()
 {
     //delete _local_source ;//Will be deleted by RSGraphWidget destructor
