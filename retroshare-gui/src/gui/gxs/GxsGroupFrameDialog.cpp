@@ -20,7 +20,14 @@
 
 #include <QMenu>
 #include <QMessageBox>
+#include <QTimer>
 #include <QToolButton>
+
+#if defined(__GLIBC__)
+#include <malloc.h>
+#include <atomic>
+#include <thread>
+#endif
 
 #include "GxsGroupFrameDialog.h"
 #include "ui_GxsGroupFrameDialog.h"
@@ -89,6 +96,22 @@ GxsGroupFrameDialog::GxsGroupFrameDialog(RsGxsIfaceHelper *ifaceImpl,const QStri
 	mSubscribedGroups = NULL;
 	mPopularGroups = NULL;
 	mOtherGroups = NULL;
+
+	mMallocTrimTimer = new QTimer(this);
+	mMallocTrimTimer->setSingleShot(true);
+	mMallocTrimTimer->setInterval(4000);
+	connect(mMallocTrimTimer, &QTimer::timeout, []()
+	{
+#if defined(__GLIBC__)
+		// glibc keeps the freed heap of a closed group (hundreds of MB for a
+		// large board) mapped forever; trimming walks every arena, so keep it
+		// off the GUI thread.
+		static std::atomic<bool> running(false);
+		if (running.exchange(true))
+			return;
+		std::thread([]() { malloc_trim(0); running = false; }).detach();
+#endif
+	});
 
 	/* Setup Queue */
 	mInterface = ifaceImpl;
@@ -280,6 +303,7 @@ void GxsGroupFrameDialog::setSingleTab(bool singleTab)
             delete w;
         }
 		ui->messageTabWidget->hideCloseButton(0);
+		scheduleMallocTrim();
 	}
 }
 
@@ -846,6 +870,7 @@ void GxsGroupFrameDialog::changedCurrentGroup(const QString& groupId)
         if(w)
 			w->setGroupId(RsGxsGroupId());
 
+		scheduleMallocTrim();
 		return;
 	}
 
@@ -869,7 +894,10 @@ void GxsGroupFrameDialog::changedCurrentGroup(const QString& groupId)
 			ui->messageTabWidget->setCurrentWidget(msgWidget);
 		}
         else
+        {
 			currentWidget()->setGroupId(mGroupId);
+			scheduleMallocTrim();
+        }
 	}
 }
 
@@ -902,6 +930,13 @@ void GxsGroupFrameDialog::messageTabCloseRequested(int index)
 
 	GxsMessageFrameWidget *msgWidget = dynamic_cast<GxsMessageFrameWidget*>(ui->messageTabWidget->widget(index));
 	delete msgWidget ;
+	scheduleMallocTrim();
+}
+
+// Restarting the timer coalesces a burst of closes into a single trim.
+void GxsGroupFrameDialog::scheduleMallocTrim()
+{
+	mMallocTrimTimer->start();
 }
 
 GxsMessageFrameWidget *GxsGroupFrameDialog::currentWidget() const

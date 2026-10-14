@@ -31,6 +31,8 @@
 
 #include <inttypes.h>
 
+class QTimer;
+
 #include "GxsIdTreeWidgetItem.h"
 #include "GxsGroupDialog.h"
 
@@ -211,9 +213,11 @@ protected:
 private:
 	GxsMessageFrameWidget *currentWidget() const;
 	bool useTabs();
+	void scheduleMallocTrim();
 
 	bool mInitialized;
 	bool mInFill;
+	QTimer *mMallocTrimTimer;
 
 	RsGxsGroupId mGroupId;
 
