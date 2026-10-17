@@ -388,8 +388,18 @@ void FriendSelectionWidget::secured_fillList()
 	else
 		rsPeers->getGPGAcceptedList(gpgIds);
 
-    // add own pgp id to the list
-    gpgIds.push_back(rsPeers->getGPGOwnId()) ;
+	// The own PGP profile is not a friend: it is neither a valid group member, nor a peer whose service
+	// permissions or keyring entry can be edited. Callers that really want it (none at the moment) ask for
+	// it explicitly with SHOW_OWN_GPG. Note that getGPGAllList() already contains it, hence the removal.
+	const RsPgpId ownId = rsPeers->getGPGOwnId();
+
+	if(mShowTypes & SHOW_OWN_GPG)
+	{
+		if(std::find(gpgIds.begin(), gpgIds.end(), ownId) == gpgIds.end())
+			gpgIds.push_back(ownId);
+	}
+	else
+		gpgIds.remove(ownId);
 
     std::list<RsPeerId> sslIds;
     std::list<RsPeerId>::iterator sslIt;
