@@ -29,6 +29,7 @@ option(RS_GUI "Build RetroShare GUI" ON)
 option(RS_SERVICE "Build RetroShare Service" ON)
 option(RS_FRIENDSERVER "Build RetroShare Friendserver" ON)
 option(RS_PLUGINS "Build RetroShare Plugins" OFF)
+option(RS_PLUGIN_RETROCHESS "Build the RetroChess plugin when it is checked out in plugins/RetroChess" ON)
 option(RS_USE_I2P_SAM3 "Enable I2P SAMv3 support" ON)
 
 # The "sam3" target is defined once here, at the top level, because it is linked
@@ -69,6 +70,18 @@ if(RS_GUI)
 	add_subdirectory(retroshare-gui)
 	if(RS_PLUGINS)
 		add_subdirectory(plugins)
+	endif()
+	# RetroChess is an out-of-tree plugin (github.com/RetroShare/Retrochess) whose
+	# README recommends cloning it into plugins/RetroChess; its CMakeLists.txt
+	# resolves this tree from there. Built when that checkout exists. Independent
+	# of RS_PLUGINS, which selects the in-tree plugins: RetroChess builds on Qt6
+	# by itself, so a Qt6 build with RS_PLUGINS=OFF still gets it.
+	if(RS_PLUGIN_RETROCHESS)
+		if(EXISTS "${CMAKE_SOURCE_DIR}/plugins/RetroChess/CMakeLists.txt")
+			add_subdirectory(plugins/RetroChess)
+		else()
+			message(STATUS "RetroChess plugin: no checkout in plugins/RetroChess, skipped")
+		endif()
 	endif()
 endif()
 
