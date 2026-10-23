@@ -289,6 +289,12 @@ SearchDialog
 	qproperty-textColorHighSources: rgb(0, 0, 228);
 }
 
+SharedFilesDialog
+{
+	qproperty-textColorLocal: red;
+	qproperty-textColorDownloading: green;
+}
+
 RSTextBrowser, MimeTextEdit
 {
 	/*qproperty-textColorQuote: rgb(120, 153, 34);*/

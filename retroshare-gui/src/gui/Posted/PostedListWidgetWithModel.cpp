@@ -19,6 +19,7 @@
  *******************************************************************************/
 
 #include <QDateTime>
+#include <QRegExp>
 #include <QMenu>
 #include <QSignalMapper>
 #include <QPainter>
@@ -248,6 +249,11 @@ QWidget *PostedPostDelegate::createEditor(QWidget *parent, const QStyleOptionVie
 	w->updateGeometry();
 	w->adjustSize();
 
+    // Ensure all parts of the editor bubble right-clicks to the view.
+    w->setContextMenuPolicy(Qt::NoContextMenu);
+    foreach(QWidget *child, w->findChildren<QWidget*>())
+        child->setContextMenuPolicy(Qt::NoContextMenu);
+
 	return w;
 }
 
@@ -267,6 +273,8 @@ PostedListWidgetWithModel::PostedListWidgetWithModel(const RsGxsGroupId& postedI
 {
 	/* Invoke the Qt Designer generated object setup routine */
 	ui->setupUi(this);
+
+	mNotifiedMissingMsgId = RsGxsMessageId();
 
     ui->postsTree->setModel(mPostedPostsModel = new RsPostedPostsModel(POSTS_CHUNK_SIZE));
     ui->postsTree->setItemDelegate(mPostedPostsDelegate = new PostedPostDelegate(this));
@@ -341,39 +349,70 @@ PostedListWidgetWithModel::PostedListWidgetWithModel(const RsGxsGroupId& postedI
 
 void PostedListWidgetWithModel::postContextMenu(const QPoint& point)
 {
-    QMenu menu(this);
+	QMenu menu(this);
 
-    // 1 - check that we are clicking on a post
+	// 1 - check that we are clicking on a post
 
-    QModelIndex index = ui->postsTree->indexAt(point);
+	QModelIndex index = ui->postsTree->indexAt(point);
 
-    if(!index.isValid())
-        return;
+	if(!index.isValid())
+		return;
 
-    // 2 - generate the menu for that post.
+	// 2 - generate the menu for that post.
 
-    RsPostedPost post = index.data(Qt::UserRole).value<RsPostedPost>() ;
+	RsPostedPost post = index.data(Qt::UserRole).value<RsPostedPost>() ;
 
-    menu.addAction(FilesDefs::getIconFromQtResourcePath(IMAGE_COPYLINK), tr("Copy RetroShare Link"), this, SLOT(copyMessageLink()))->setData(index);
+	// Add "Copy selected text" for expanded posts
+	QWidget *editor = ui->postsTree->indexWidget(index);
+	QLabel *notesLabel = editor ? editor->findChild<QLabel*>("notes") : NULL;
 
-    QByteArray urlarray(post.mLink.c_str());
-    QUrl url = QUrl::fromEncoded(urlarray.trimmed());
+	if (notesLabel && !notesLabel->selectedText().isEmpty())
+	{
+		QString sel = notesLabel->selectedText();
+		menu.addAction(FilesDefs::getIconFromQtResourcePath(":/images/copy.png"), tr("Copy selected text"), [sel]() {
+			QApplication::clipboard()->setText(sel);
+		});
+	}
 
-    std::cerr << "Using link: \"" << post.mLink << "\"" << std::endl;
+	menu.addAction(FilesDefs::getIconFromQtResourcePath(IMAGE_COPYLINK), tr("Copy RetroShare Link"), this, SLOT(copyMessageLink()))->setData(index);
 
-    if(url.scheme()=="http" || url.scheme()=="https")
-        menu.addAction(FilesDefs::getIconFromQtResourcePath(IMAGE_COPYHTTP), tr("Copy http Link"), this, SLOT(copyHttpLink()))->setData(index);
+    if (notesLabel && notesLabel->isVisible())
+    {
+        QByteArray urlarray(post.mLink.c_str());
+        QUrl url = QUrl::fromEncoded(urlarray.trimmed());
 
-    menu.addAction(FilesDefs::getIconFromQtResourcePath(IMAGE_AUTHOR), tr("Show author in People tab"), this, SLOT(showAuthorInPeople()))->setData(index);
+        if(url.scheme()=="http" || url.scheme()=="https")
+            menu.addAction(FilesDefs::getIconFromQtResourcePath(IMAGE_COPYHTTP), tr("Copy http Link"), this, SLOT(copyHttpLink()))->setData(index);
+
+        // Also extract and add any HTTP links found in the notes
+        QRegExp rx("<a\\s+href=\"(https?://[^\"]+)\"", Qt::CaseInsensitive);
+        rx.setMinimal(true);
+        QString notesHtml = QString::fromUtf8(post.mNotes.c_str());
+        int pos = 0;
+        QStringList links;
+        while ((pos = rx.indexIn(notesHtml, pos)) != -1) {
+            QString link = rx.cap(1);
+            if(!links.contains(link)) {
+                links << link;
+                QAction *copyLinkAction = menu.addAction(FilesDefs::getIconFromQtResourcePath(IMAGE_COPYHTTP), tr("Copy link: %1").arg(link));
+                connect(copyLinkAction, &QAction::triggered, [link]() {
+                    QApplication::clipboard()->setText(link);
+                });
+            }
+            pos += rx.matchedLength();
+        }
+    }
+
+	menu.addAction(FilesDefs::getIconFromQtResourcePath(IMAGE_AUTHOR), tr("Show author in People tab"), this, SLOT(showAuthorInPeople()))->setData(index);
 
 #ifdef TODO
-    // This feature is not implemented yet in libretroshare.
+	// This feature is not implemented yet in libretroshare.
 
-    if(IS_GROUP_PUBLISHER(mGroup.mMeta.mSubscribeFlags))
-        menu.addAction(FilesDefs::getIconFromQtResourcePath(":/images/edit_16.png"), tr("Edit"), this, SLOT(editPost()));
+	if(IS_GROUP_PUBLISHER(mGroup.mMeta.mSubscribeFlags))
+		menu.addAction(FilesDefs::getIconFromQtResourcePath(":/images/edit_16.png"), tr("Edit"), this, SLOT(editPost()));
 #endif
 
-    menu.exec(QCursor::pos());
+	menu.exec(QCursor::pos());
 }
 
 void PostedListWidgetWithModel::switchDisplayMode()
@@ -570,12 +609,12 @@ void PostedListWidgetWithModel::handleEvent_main_thread(std::shared_ptr<const Rs
 					t->refresh();
 			}
 		}
-			[[clang::fallthrough]];
-		case RsPostedEventCode::NEW_MESSAGE:             [[fallthrough]];
-		case RsPostedEventCode::NEW_POSTED_GROUP:        [[fallthrough]];
-		case RsPostedEventCode::UPDATED_POSTED_GROUP:    [[fallthrough]];
-		case RsPostedEventCode::UPDATED_MESSAGE:         [[fallthrough]];
-		case RsPostedEventCode::BOARD_DELETED:           [[fallthrough]];
+		Q_FALLTHROUGH();
+		case RsPostedEventCode::NEW_MESSAGE:             Q_FALLTHROUGH();
+		case RsPostedEventCode::NEW_POSTED_GROUP:        Q_FALLTHROUGH();
+		case RsPostedEventCode::UPDATED_POSTED_GROUP:    Q_FALLTHROUGH();
+		case RsPostedEventCode::UPDATED_MESSAGE:         Q_FALLTHROUGH();
+		case RsPostedEventCode::BOARD_DELETED:           Q_FALLTHROUGH();
 		case RsPostedEventCode::SYNC_PARAMETERS_UPDATED:
 		{
 			if(e->mPostedGroupId == groupId())
@@ -635,7 +674,26 @@ void PostedListWidgetWithModel::postPostLoad()
 	whileBlocking(ui->filter_LE)->setText(QString()); //Clear it before navigate, as it will update it.
 
 	if (!mNavigatePendingMsgId.isNull())
-		navigate(mNavigatePendingMsgId);
+	{
+		if (mPostedPostsModel->getIndexOfMessage(mNavigatePendingMsgId).isValid())
+		{
+			navigate(mNavigatePendingMsgId);
+		}
+		else if (mNotifiedMissingMsgId != mNavigatePendingMsgId)
+		{
+			mNotifiedMissingMsgId = mNavigatePendingMsgId;
+			if (IS_GROUP_SUBSCRIBED(mGroup.mMeta.mSubscribeFlags))
+			{
+				QMessageBox::information(this, tr("RetroShare"),
+				                         tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
+			}
+			else
+			{
+				QMessageBox::information(this, tr("RetroShare"),
+				                         tr("The post is missing. Since you are not subscribed to this board, please subscribe first and wait for synchronization."));
+			}
+		}
+	}
 #ifdef TO_REMOVE
 	else if( (mLastSelectedPosts.count(groupId()) > 0)
 	         && !mLastSelectedPosts[groupId()].isNull())
@@ -960,6 +1018,7 @@ void PostedListWidgetWithModel::blank()
 
 bool PostedListWidgetWithModel::navigate(const RsGxsMessageId& msgId)
 {
+	mNotifiedMissingMsgId.clear();
 	ui->filter_LE->setText("ID:" + QString::fromStdString(msgId.toStdString()));
 
 	QModelIndex index = mPostedPostsModel->getIndexOfMessage(msgId);
@@ -969,6 +1028,7 @@ bool PostedListWidgetWithModel::navigate(const RsGxsMessageId& msgId)
 		std::cerr << "(EE) Cannot navigate to msg " << msgId << " in board " << mGroup.mMeta.mGroupId << ": index unknown. Setting mNavigatePendingMsgId." << std::endl;
 
 		mNavigatePendingMsgId = msgId;    // not found. That means the forum may not be loaded yet. So we keep that post in mind, for after loading.
+
 		return true;                      // we have to return true here, otherwise the caller will intepret the async loading as an error.
 	}
 
@@ -977,6 +1037,7 @@ bool PostedListWidgetWithModel::navigate(const RsGxsMessageId& msgId)
 	ui->tabWidget->setCurrentIndex(POSTED_TABS_POSTS);
 
 	mNavigatePendingMsgId.clear();
+	mNotifiedMissingMsgId.clear();
 
 	return true;
 }

@@ -345,6 +345,21 @@ void p3FeedReader::stop()
 {
 	mStopped = true;
 
+	/* Signal every thread first, then wait for them: each tick sleeps one
+	 * second, so stopping them one at a time costs one second per thread. */
+	{
+		RsStackMutex stack(mPreviewMutex); /******* LOCK STACK MUTEX *********/
+
+		if (mPreviewDownloadThread) mPreviewDownloadThread->askForStop();
+		if (mPreviewProcessThread) mPreviewProcessThread->askForStop();
+	}
+	{
+		RsStackMutex stack(mFeedReaderMtx); /******* LOCK STACK MUTEX *********/
+
+		for (std::list<p3FeedReaderThread*>::iterator it = mThreads.begin(); it != mThreads.end(); ++it)
+			(*it)->askForStop();
+	}
+
 	{
 		RsStackMutex stack(mPreviewMutex); /******* LOCK STACK MUTEX *********/
 

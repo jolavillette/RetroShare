@@ -46,8 +46,6 @@
 #define IMAGE_TRUSTED        ":/images/rs-2.png"
 #define IMAGE_MAKEFRIEND     ":/images/user/add_user16.png"
 
-Node *Node::_selected_node = NULL ;
-
 Node::Node(const std::string& node_string,GraphWidget::NodeType type,GraphWidget::AuthType auth,GraphWidget *graphWidget,const RsPeerId& ssl_id,const RsPgpId& gpg_id)
     : graph(graphWidget),_desc_string(node_string),_type(type),_auth(auth),_ssl_id(ssl_id),_gpg_id(gpg_id)
 {
@@ -71,16 +69,30 @@ Node::Node(const std::string& node_string,GraphWidget::NodeType type,GraphWidget
 		_auth = GraphWidget::ELASTIC_NODE_AUTH_FULL ;
 }
 
-const float Node::MASS_FACTOR = 10 ;
-const float Node::FRICTION_FACTOR = 10.8f ;
-const float Node::REPULSION_FACTOR = 4;
-const float Node::NODE_DISTANCE = 130.0f ;
+Node::~Node()
+{
+    foreach (Edge *edge, edgeList) {
+        if (edge->sourceNode() == this) edge->setSourceNode(NULL);
+        if (edge->destNode() == this) edge->setDestNode(NULL);
+    }
+}
 
+const float Node::MASS_FACTOR = 50.0f ;
+const float Node::FRICTION_FACTOR = 20.0f ;
+const float Node::REPULSION_FACTOR = 10.0f ;
+const float Node::NODE_DISTANCE = 100.0f ;
 
 void Node::addEdge(Edge *edge)
 {
-    edgeList << edge;
-    edge->adjust();
+    if (edge && !edgeList.contains(edge)) {
+        edgeList << edge;
+        edge->adjust();
+    }
+}
+
+void Node::removeEdge(Edge *edge)
+{
+    edgeList.removeAll(edge);
 }
 
 const QList<Edge *>& Node::edges() const
@@ -104,99 +116,106 @@ const QList<Edge *>& Node::edges() const
 //				+di *( (1-dj)*map[2*(i+1+W*j)] + dj*map[2*(i+1+W*(j+1))]) ;
 //}
 
-void Node::calculateForces(const double *map,int width,int height,int W,int H,float x,float y,float friction_factor)
+void Node::calculateForces(const double *map, int /*width*/, int /*height*/, int W, int H, float x, float y, float friction_factor)
 {
-	if (!scene() || scene()->mouseGrabberItem() == this) 
+	if (!scene() || scene()->mouseGrabberItem() == this)
 	{
 		newPos = pos();
 		return;
 	}
 
-
 	// Sum up all forces pushing this item away
 	qreal xforce = 0;
 	qreal yforce = 0;
 
-	float dei=0.0f ;
-	float dej=0.0f ;
+	float dei = 0.0f;
+	float dej = 0.0f;
 
-	static float *e = NULL ;
-	static const int KS = 5 ;
+	const int KS = 5;
+	float *e = graph->repulsionKernel();
 
-	if(e == NULL)
-	{
-		e = new float[(2*KS+1)*(2*KS+1)] ;
-
-		for(int i=-KS;i<=KS;++i)
-			for(int j=-KS;j<=KS;++j)
-				e[i+KS+(2*KS+1)*(j+KS)] = exp( -(i*i+j*j)/30.0 ) ;	// can be precomputed
-	}
-
-	for(int i=-KS;i<=KS;++i)
-		for(int j=-KS;j<=KS;++j)
+	for (int i = -KS; i <= KS; ++i)
+		for (int j = -KS; j <= KS; ++j)
 		{
-			int X = std::min(W-1,std::max(0,(int)rint(x))) ;
-			int Y = std::min(H-1,std::max(0,(int)rint(y))) ;
+			int X = std::min(W - 1, std::max(0, (int)rint(x)));
+			int Y = std::min(H - 1, std::max(0, (int)rint(y)));
 
-			float val = map[2*((i+X+W)%W + W*((j+Y+H)%H))] ;
+			float val = map[2 * ((i + X + W) % W + W * ((j + Y + H) % H))];
 
-			dei += i * e[i+KS+(2*KS+1)*(j+KS)] * val ;
-			dej += j * e[i+KS+(2*KS+1)*(j+KS)] * val ;
+			dei += i * e[i + KS + (2 * KS + 1) * (j + KS)] * val;
+			dej += j * e[i + KS + (2 * KS + 1) * (j + KS)] * val;
 		}
 
-	xforce = REPULSION_FACTOR * dei/25.0;
-	yforce = REPULSION_FACTOR * dej/25.0;
+	xforce = REPULSION_FACTOR * dei / 25.0;
+	yforce = REPULSION_FACTOR * dej / 25.0;
 
 	// Now subtract all forces pulling items together
-	double weight = (n_edges() + 1) ;
+	double weight = (n_edges() + 1);
 
-	foreach (Edge *edge, edgeList) {
-		QPointF pos;
-		double w2 ;	// This factor makes the edge length depend on connectivity, so clusters of friends tend to stay in the
-						// same location.
-						//
+	foreach (Edge *edge, edgeList)
+	{
+		QPointF edge_pos;
+		double w2;	// makes the edge length depend on connectivity, so clusters of friends stay together
 		if (edge->sourceNode() == this)
 		{
-			pos = mapFromItem(edge->destNode(), 0, 0);
-			w2 = sqrtf(std::min(n_edges(),edge->destNode()->n_edges())) ;
+			edge_pos = mapFromItem(edge->destNode(), 0, 0);
+			w2 = sqrtf(std::min(n_edges(), edge->destNode()->n_edges()));
 		}
 		else
 		{
-			pos = mapFromItem(edge->sourceNode(), 0, 0);
-			w2 = sqrtf(std::min(n_edges(),edge->sourceNode()->n_edges())) ;
+			edge_pos = mapFromItem(edge->sourceNode(), 0, 0);
+			w2 = sqrtf(std::min(n_edges(), edge->sourceNode()->n_edges()));
 		}
 
-		float dist = sqrtf(pos.x()*pos.x() + pos.y()*pos.y()) ;
-		float val = dist - graph->edgeLength() * w2 ;
+		float dist = sqrtf(edge_pos.x() * edge_pos.x() + edge_pos.y() * edge_pos.y());
+		float val = dist - graph->edgeLength() * w2;
 
-		xforce += 0.01*pos.x() * val / weight;
-		yforce += 0.01*pos.y() * val / weight;
+		xforce += 0.10 * edge_pos.x() * val / weight;
+		yforce += 0.10 * edge_pos.y() * val / weight;
 	}
 
-	xforce -= FRICTION_FACTOR * _speedx ;
-	yforce -= FRICTION_FACTOR * _speedy ;
+	xforce -= FRICTION_FACTOR * _speedx;
+	yforce -= FRICTION_FACTOR * _speedy;
 
-	// This term drags nodes away from the sides.
-	//
-	if(x < 15) xforce += 100.0/(x+0.1) ;
-	if(y < 15) yforce += 100.0/(y+0.1) ;
-	if(x > width-15) xforce -= 100.0/(width-x+0.1) ;
-	if(y > height-15) yforce -= 100.0/(height-y+0.1) ;
+	// Pull towards the centre and soft walls, instead of clamping nodes on the scene border.
+	QPointF current_pos = pos();
+	QRectF scene_rect = scene()->sceneRect();
+	QPointF center = scene_rect.center();
 
-	// now time filter:
+	float k_gravity = 0.05f;
+	xforce += (center.x() - current_pos.x()) * k_gravity;
+	yforce += (center.y() - current_pos.y()) * k_gravity;
 
-	_speedx += xforce / MASS_FACTOR ;
-	_speedy += yforce / MASS_FACTOR ;
+	float margin = 50.0f;
+	float k_wall = 50.0f;
 
-	if(_speedx > 10) _speedx = 10.0f ;
-	if(_speedy > 10) _speedy = 10.0f ;
-	if(_speedx <-10) _speedx =-10.0f ;
-	if(_speedy <-10) _speedy =-10.0f ;
+	if (current_pos.x() < scene_rect.left() + margin)
+		xforce += k_wall * (scene_rect.left() + margin - current_pos.x());
+	if (current_pos.x() > scene_rect.right() - margin)
+		xforce -= k_wall * (current_pos.x() - (scene_rect.right() - margin));
+	if (current_pos.y() < scene_rect.top() + margin)
+		yforce += k_wall * (scene_rect.top() + margin - current_pos.y());
+	if (current_pos.y() > scene_rect.bottom() - margin)
+		yforce -= k_wall * (current_pos.y() - (scene_rect.bottom() - margin));
 
-	QRectF sceneRect = scene()->sceneRect();
-	newPos = pos() + QPointF(_speedx, _speedy) / friction_factor;
-	newPos.setX(qMin(qMax(newPos.x(), sceneRect.left()), sceneRect.right()));
-	newPos.setY(qMin(qMax(newPos.y(), sceneRect.top()) , sceneRect.bottom()));
+	// A single NaN would propagate to the whole graph through the force map.
+	if (std::isfinite(xforce) && std::isfinite(yforce) && std::isfinite(_speedx) && std::isfinite(_speedy))
+	{
+		_speedx += xforce / MASS_FACTOR;
+		_speedy += yforce / MASS_FACTOR;
+	}
+	else
+	{
+		_speedx = 0 ;
+		_speedy = 0 ;
+	}
+
+	const float max_speed = 30.0f;
+	_speedx = std::max(-max_speed, std::min(max_speed, (float)_speedx));
+	_speedy = std::max(-max_speed, std::min(max_speed, (float)_speedy));
+
+	// friction_factor grows with time, so the layout always comes to rest.
+	newPos = current_pos + QPointF(_speedx, _speedy) / friction_factor;
 }
 
 bool Node::progress()
@@ -237,90 +256,95 @@ QPainterPath Node::shape() const
     return path;
 }
 
-#if QT_VERSION >= 0x040700
-static QColor lightdark(const QColor& col,int l,int d)
-{
-	int h,s,v ;
-
-   col.getHsv(&h,&s,&v) ;
-
-	v = (int)floor(v * l/(float)d ) ;
-
-	return QColor::fromHsv(h,s,v) ;
-}
-#endif
-
 void Node::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *)
 {
-	static QColor type_color[4] = { QColor(Qt::yellow), QColor(Qt::green), QColor(Qt::cyan), QColor(Qt::black) } ;
+	static QColor type_color[4] = { QColor(255, 230, 0), QColor(0, 255, 130), QColor(0, 220, 255), QColor(180, 180, 180) };
 
-	QColor col0 ;
+	QColor col0;
 
-	if(_selected_node == NULL)
-		col0 = type_color[_type] ;
-	else if(_selected_node == this)
-		col0 = type_color[0] ;
-	else 
+	Node* selNode = graph ? graph->selectedNode() : NULL;
+	if (selNode == NULL)
+		col0 = type_color[_type];
+	else if (selNode == this)
+		col0 = type_color[0];
+	else
 	{
-		bool found = false ;
-		for(QList<Edge*>::const_iterator it(edgeList.begin());it!=edgeList.end();++it)
-			if( (*it)->sourceNode() == _selected_node || (*it)->destNode() == _selected_node)
+		bool found = false;
+		foreach (Edge *edge, edgeList)
+			if (edge->sourceNode() == selNode || edge->destNode() == selNode)
 			{
-				col0 = type_color[1] ;
-				found = true ;
-				break ;
+				col0 = type_color[1];
+				found = true;
+				break;
 			}
 
-		if(!found)
-			col0= type_color[2] ;
+		if (!found)
+		{
+			col0 = type_color[2];
+			col0.setAlpha(100);
+		}
 	}
+
+	// Less trusted keys are drawn darker.
+	col0 = col0.darker(100 + _auth * 50);
+
+	painter->setRenderHint(QPainter::Antialiasing);
 
 	painter->setPen(Qt::NoPen);
-	painter->setBrush(Qt::darkGray);
-	int mNodeDrawSize2 = mNodeDrawSize/2;
-	painter->drawEllipse(-mNodeDrawSize2+3, -mNodeDrawSize2+3, mNodeDrawSize, mNodeDrawSize);
+	painter->setBrush(QColor(0, 0, 0, 50));
+	int mNodeDrawSize2 = mNodeDrawSize / 2;
+	painter->drawEllipse(-mNodeDrawSize2 + 2, -mNodeDrawSize2 + 2, mNodeDrawSize, mNodeDrawSize);
 
-	QRadialGradient gradient(-3, -3, 10);
-	if (option->state & QStyle::State_Sunken) 
+	QRadialGradient gradient(-mNodeDrawSize / 5, -mNodeDrawSize / 5, mNodeDrawSize * 0.7);
+	if (option->state & QStyle::State_Sunken)
 	{
-		gradient.setCenter(3, 3);
-		gradient.setFocalPoint(3, 3);
-#if QT_VERSION >= 0x040700
-		gradient.setColorAt(1, lightdark(col0,120, 100+_auth*50));
-		gradient.setColorAt(0, lightdark(col0, 70, 100+_auth*50));
-#else
-		gradient.setColorAt(1, col0.light(120).dark(100+_auth*100));
-		gradient.setColorAt(0, col0.light(70).dark(100+_auth*100));
-#endif
-	} 
-	else 
+		gradient.setCenter(mNodeDrawSize / 5, mNodeDrawSize / 5);
+		gradient.setFocalPoint(mNodeDrawSize / 5, mNodeDrawSize / 5);
+		gradient.setColorAt(0, col0.darker(150));
+		gradient.setColorAt(1, col0.darker(100));
+	}
+	else
 	{
-#if QT_VERSION >= 0x040700
-		gradient.setColorAt(1, lightdark(col0, 50,100+_auth*50));
-		gradient.setColorAt(0, lightdark(col0,100,100+_auth*50));
-#else
-		gradient.setColorAt(1, col0.light(50).dark(100+_auth*100));
-		gradient.setColorAt(0, col0.dark(100+_auth*100));
-#endif
+		gradient.setColorAt(0, col0.lighter(120));
+		gradient.setColorAt(1, col0.darker(110));
 	}
 	painter->setBrush(gradient);
-	if (Settings->getSheetName() == ":Standard_Dark"){
-		painter->setPen(QPen(Qt::white, 0));
+
+	QPen pen;
+	if (Settings->getSheetName() == ":Standard_Dark") {
+		pen = QPen(Qt::white, 1);
 	} else {
-		painter->setPen(QPen(Qt::black, 0));
+		pen = QPen(Qt::black, 1);
 	}
+	if (option->state & QStyle::State_Selected) {
+		pen.setWidth(2);
+		pen.setColor(Qt::yellow);
+	}
+	painter->setPen(pen);
 	painter->drawEllipse(-mNodeDrawSize2, -mNodeDrawSize2, mNodeDrawSize, mNodeDrawSize);
-    
-    	QString txt = QString::fromUtf8(_desc_string.c_str());
-        float m = QFontMetricsF(graph->font()).height();
-        float f = m/16.0;
-        
-	painter->drawText(-10, 5*f, txt) ;
+
+	QString txt = QString::fromUtf8(_desc_string.c_str());
+	QFont font = graph->font();
+	font.setBold(true);
+	painter->setFont(font);
+
+	float m = QFontMetricsF(font).height();
+	float f = m / 16.0;
+
+	// Outline the label so it stays readable over edges.
+	painter->setPen(Settings->getSheetName() == ":Standard_Dark" ? Qt::black : Qt::white);
+	for(int dx=-1; dx<=1; ++dx)
+		for(int dy=-1; dy<=1; ++dy)
+			if(dx != 0 || dy != 0)
+				painter->drawText(-10 + dx, 5 * f + dy, txt);
+
+	painter->setPen(Settings->getSheetName() == ":Standard_Dark" ? Qt::white : Qt::black);
+	painter->drawText(-10, 5 * f, txt);
 
 	if (!mDeterminedBB)
 	{
-		QRect textBox = painter->boundingRect(-10, 5*f, QFontMetrics_horizontalAdvance(QFontMetricsF(graph->font()), txt), 1.5*m, Qt::AlignVCenter, QString::fromUtf8(_desc_string.c_str()));
-		mBBWidth = textBox.width()+40*f;
+		QRect textBox = painter->boundingRect(-10, 5 * f, QFontMetrics_horizontalAdvance(QFontMetricsF(font), txt), 1.5 * m, Qt::AlignVCenter, txt);
+		mBBWidth = textBox.width() + 40 * f;
 		mDeterminedBB = true;
 	}
 }
@@ -344,10 +368,8 @@ void Node::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
 	if(event->button() == Qt::LeftButton)
 	{
-		_selected_node = this ;
-		graph->forceRedraw() ;
+		if (graph) graph->setSelectedNode(this);
 	}
-
 	update();
 	QGraphicsItem::mousePressEvent(event);
 }
@@ -384,8 +406,11 @@ void Node::contextMenuEvent(QGraphicsSceneContextMenuEvent *event)
 
 void Node::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
-	 _selected_node = NULL ;
-	graph->forceRedraw() ;
+	if (graph) {
+		graph->setSelectedNode(NULL);
+		graph->wakeUp();
+		graph->forceRedraw();
+	}
 
     update();
     QGraphicsItem::mouseReleaseEvent(event);

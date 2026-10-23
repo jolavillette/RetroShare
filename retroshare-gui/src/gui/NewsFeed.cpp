@@ -21,7 +21,10 @@
 #include <QDateTime>
 
 #include "NewsFeed.h"
+#include "gui/gxs/GxsPerfProbe.h"
 #include "ui_NewsFeed.h"
+
+#include "pqi/authssl.h"
 
 #include <retroshare/rsbanlist.h>
 #include <retroshare/rsgxschannels.h>
@@ -31,7 +34,9 @@
 #include <retroshare/rspeers.h>
 #include <retroshare/rsplugin.h>
 #include <retroshare/rsposted.h>
+#ifdef RS_USE_WIRE
 #include <retroshare/rswire.h>
+#endif
 
 #include "util/misc.h"
 #include "util/qtthreadsutils.h"
@@ -50,8 +55,10 @@
 #include "feeds/PostedGroupItem.h"
 #include "feeds/SecurityItem.h"
 #include "feeds/SecurityIpItem.h"
+#ifdef RS_USE_WIRE
 #include "feeds/WireNotifyGroupItem.h"
 #include "feeds/WireNotifyPostItem.h"
+#endif
 #include "feeds/TLSItem.h"
 
 #include "settings/rsettingswin.h"
@@ -127,7 +134,8 @@ NewsFeed::NewsFeed(QWidget *parent) : MainPage(parent), ui(new Ui::NewsFeed),
 	    "   You can configure which events to show by pressing on <b>Options</b>. </p>"
 	    "<p>The various events shown are:"
 	    "   <ul>"
-	    "    <li>Connection attempts (useful to make friends with new people and control who's trying to reach you)</li>"
+	    "    <li>Connection attempts: nodes that reached your port but are not your friends. \"An unknown peer\" means that you do not have"
+	    "        its profile key, so its name cannot be known; it is not necessarily a deliberate friend request.</li>"
 	    "    <li>Channel, Forum and Board posts</li>"
 	    "    <li>Circle membership requests and invites</li>"
 	    "    <li>New Channels, Forums and Boards you can subscribe to</li>"
@@ -274,6 +282,11 @@ void NewsFeed::handleForumEvent(std::shared_ptr<const RsEvent> event)
 {
 	const RsGxsForumEvent *pe = dynamic_cast<const RsGxsForumEvent*>(event.get());
 	if(!pe) return;
+
+	// Runs on the GUI thread and builds one full widget per incoming message,
+	// so a sync burst turns into a burst of widget construction here.
+	RsGuiPerf::Probe prof("newsFeed::handleForumEvent");
+	prof.detail(QString("code=%1").arg(static_cast<int>(pe->mForumEventCode)));
 
 	switch(pe->mForumEventCode)
 	{
@@ -478,6 +491,13 @@ void NewsFeed::handleSecurityEvent(std::shared_ptr<const RsEvent> event)
         return;
 
     auto& e(*pe);
+    
+    // Check if denied by AuthSSL (backend)
+    if(AuthSSL::instance().isNotifyDenied(e.mPgpId))
+    {
+        return;
+    }
+
     RsFeedTypeFlags flags = (RsFeedTypeFlags)Settings->getNewsFeedFlags();
 
     // 1 - treat the case of unknown PeerID
@@ -529,6 +549,8 @@ void NewsFeed::handleSecurityEvent(std::shared_ptr<const RsEvent> event)
         FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_IP_BLACKLISTED; break;
 	case RsAuthSslError::MISSING_CERTIFICATE:
         FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_MISSING_CERTIFICATE; break;
+	case RsAuthSslError::PEER_CLOSED_AFTER_AUTH:
+        FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_PEER_CLOSED_AFTER_AUTH; break;
 	default:
 		return; // display nothing
 	}
