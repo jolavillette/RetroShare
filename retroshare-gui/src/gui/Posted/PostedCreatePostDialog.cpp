@@ -182,7 +182,7 @@ void PostedCreatePostDialog::createPost()
 	int msgsize = post.mLink.length() + post.mMeta.mMsgName.length() + post.mNotes.length() + imagebytes.size();
 	if(msgsize > MAXMESSAGESIZE) {
 		QString errormessage = QString(tr("Message is too large.<br />actual size: %1 bytes, maximum size: %2 bytes.")).arg(msgsize).arg(MAXMESSAGESIZE);
-		QMessageBox::warning(this, "RetroShare", errormessage, QMessageBox::Ok, QMessageBox::Ok);
+		QMessageBox::warning(this, tr("RetroShare"), errormessage, QMessageBox::Ok, QMessageBox::Ok);
 		return;
 	}
 

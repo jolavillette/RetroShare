@@ -105,7 +105,7 @@
            </font>
           </property>
           <property name="text">
-           <string notr="true">RetroShare</string>
+           <string>RetroShare</string>
           </property>
          </widget>
         </item>

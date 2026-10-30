@@ -838,7 +838,7 @@ void MainWindow::updateTrayCombine()
 
 void MainWindow::toggleStatusToolTip(bool toggle){
     if(!toggle)return;
-    QString tray = "RetroShare\n";
+    QString tray = tr("RetroShare") + "\n";
     tray += "\n" + nameAndLocation;
     trayIcon->setToolTip(tray);
 }

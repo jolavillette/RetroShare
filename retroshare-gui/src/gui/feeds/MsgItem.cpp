@@ -157,7 +157,7 @@ void MsgItem::updateItemStatic()
     QString srcName;
 
     if ((mi.msgflags & RS_MSG_SYSTEM) && mi.from.toRsPeerId() == rsPeers->getOwnId())
-		srcName = "RetroShare";
+		srcName = tr("RetroShare");
     else
     {
         if(mi.msgflags & RS_MSG_DISTANT)

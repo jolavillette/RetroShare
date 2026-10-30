@@ -374,7 +374,7 @@ void PopupChatWindow::calculateTitle(ChatDialog *dialog)
 		}
 		setWindowTitle(title);
 	} else {
-		setWindowTitle("RetroShare");
+		setWindowTitle(tr("RetroShare"));
 	}
 }
 

@@ -68,6 +68,7 @@ list(
 	src/gui/FileTransfer/TransferUserNotify.cpp 
 	src/gui/FileTransfer/BannedFilesDialog.cpp 
 
+	src/lang/brandtranslator.cpp 
 	src/lang/languagesupport.cpp 
 
 	src/util/RsProtectedTimer.cpp 
@@ -487,6 +488,7 @@ list(
 	src/gui/im_history/IMHistoryItemDelegate.h 
 	src/gui/im_history/IMHistoryItemPainter.h 
 
+	src/lang/brandtranslator.h 
 	src/lang/languagesupport.h 
 
 	src/util/RsSyntaxHighlighter.h 

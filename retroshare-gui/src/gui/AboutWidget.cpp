@@ -943,7 +943,7 @@ static QString addLibraries(const std::string &name, const std::list<RsLibraryIn
 void AboutWidget::on_copy_button_clicked()
 {
 	QString verInfo;
-	QString rsVerString = "RetroShare Version: ";
+	QString rsVerString = tr("RetroShare Version: ");
     rsVerString+=RsApplication::retroshareVersion(true);
 	verInfo+=rsVerString;
 

@@ -596,7 +596,7 @@ void GxsGroupFrameDialog::setSyncPostsDelay()
 
 void GxsGroupFrameDialog::restoreGroupKeys(void)
 {
-	QMessageBox::warning(this, "RetroShare", "ToDo");
+	QMessageBox::warning(this, tr("RetroShare"), "ToDo");
 
 #ifdef TOGXS
 	mInterface->groupRestoreKeys(mGroupId);

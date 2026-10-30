@@ -27,8 +27,11 @@
 #include <retroshare/rsinit.h>
 
 #include "languagesupport.h"
+#include "brandtranslator.h"
 
 static QMap<RsPlugin*, QTranslator*> translatorPlugins;
+static QTranslator *retroshareTranslator = NULL;
+static BrandTranslator *brandTranslator = NULL;
 
 #define EXTERNAL_TRANSLATION_DIR QString::fromUtf8(RsAccounts::systemDataDirectory().c_str())
 
@@ -171,6 +174,29 @@ static void removePluginTranslation()
     translatorPlugins.clear();
 }
 
+/* Must run before any translator wrapped by the BrandTranslator is deleted. */
+static void removeBrandTranslation()
+{
+    if (brandTranslator) {
+      QApplication::removeTranslator(brandTranslator);
+      delete(brandTranslator);
+      brandTranslator = NULL;
+    }
+}
+
+/* Installs the BrandTranslator on top of the current translators. */
+static void installBrandTranslation()
+{
+    removeBrandTranslation();
+
+    QList<QTranslator*> wrapped = translatorPlugins.values();
+    if (retroshareTranslator)
+      wrapped.append(retroshareTranslator);
+
+    brandTranslator = new BrandTranslator(wrapped);
+    QApplication::installTranslator(brandTranslator);
+}
+
 /** Sets the application's translator to the specified language. */
 bool
 LanguageSupport::translate(const QString &languageCode)
@@ -178,7 +204,8 @@ LanguageSupport::translate(const QString &languageCode)
   if (!isValidLanguageCode(languageCode))
     return false;
 
-  static QTranslator *retroshareTranslator = NULL;
+  removeBrandTranslation();
+
   if (retroshareTranslator) {
     // remove the previous translator, is needed, when switching to en
     QApplication::removeTranslator(retroshareTranslator);
@@ -188,8 +215,10 @@ LanguageSupport::translate(const QString &languageCode)
     removePluginTranslation();
   }
 
-  if (languageCode == "en")
+  if (languageCode == "en") {
+    installBrandTranslation();
     return true;
+  }
 
   /* Attempt to load the translations for Qt's internal widgets from their installed Qt directory. */
   QTranslator *systemQtTranslator = new QTranslator(rApp);
@@ -235,9 +264,11 @@ LanguageSupport::translate(const QString &languageCode)
 /** Sets the application's translator to the specified language for the plugins. */
 bool LanguageSupport::translatePlugins(const QString &languageCode)
 {
+	removeBrandTranslation();
 	removePluginTranslation();
 
 	if (rsPlugins == NULL) {
+		installBrandTranslation();
 		return true;
 	}
 
@@ -254,6 +285,7 @@ bool LanguageSupport::translatePlugins(const QString &languageCode)
 			}
 		}
 	}
+	installBrandTranslation();
 	return true;
 }
 /** Sets the application's locale according to the specified language. */

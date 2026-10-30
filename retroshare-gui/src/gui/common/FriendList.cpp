@@ -314,7 +314,7 @@ void FriendList::peerTreeWidgetCustomPopupMenu()
     iconLabel->setMaximumSize(iconLabel->frameSize().height() + pix.height(), pix.width());
     hbox->addWidget(iconLabel);
 
-    QLabel *textLabel = new QLabel("<strong>RetroShare</strong>", widget);
+    QLabel *textLabel = new QLabel("<strong>" + tr("RetroShare") + "</strong>", widget);
     textLabel->setObjectName("trans_Text");
     hbox->addWidget(textLabel);
 
