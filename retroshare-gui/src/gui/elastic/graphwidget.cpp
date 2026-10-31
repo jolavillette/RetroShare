@@ -36,7 +36,8 @@
 #include <math.h>
 
 GraphWidget::GraphWidget(QWidget *)
-    : timerId(0), mIsFrozen(false)
+    : timerId(0), mIsFrozen(false), forceMap(NULL), fft_bf(NULL), fft_tmp(NULL), fft_ip(NULL), fft_w(NULL), fft_last_S(0),
+      _hit_counter(0), _repulsion_kernel(NULL), _selected_node(NULL)
 {
     setCacheMode(CacheBackground);
     setViewportUpdateMode(BoundingRectViewportUpdate);
@@ -48,6 +49,16 @@ GraphWidget::GraphWidget(QWidget *)
     scale(qreal(0.8), qreal(0.8));
 }
 
+GraphWidget::~GraphWidget()
+{
+    if (forceMap) { delete[] forceMap; forceMap = NULL; }
+    if (fft_bf) { fft::free_2d_double(fft_bf); fft_bf = NULL; }
+    if (fft_tmp) { fft::free_2d_double(fft_tmp); fft_tmp = NULL; }
+    if (fft_ip) { fft::free_1d_int(fft_ip); fft_ip = NULL; }
+    if (fft_w) { fft::free_1d_double(fft_w); fft_w = NULL; }
+    if (_repulsion_kernel) { delete[] _repulsion_kernel; _repulsion_kernel = NULL; }
+}
+
 void GraphWidget::clearGraph()
 {
 	scene()->clear();
@@ -56,6 +67,7 @@ void GraphWidget::clearGraph()
 	_edges.clear();
 	_nodes.clear();
 	_friction_factor = 1.0f ;
+	_selected_node = NULL ;
 }
 
 GraphWidget::NodeId GraphWidget::addNode(const std::string& node_short_string,const std::string& node_complete_string,NodeType type,AuthType auth,const RsPeerId& ssl_id,const RsPgpId& gpg_id)
@@ -122,6 +134,12 @@ void GraphWidget::itemMoved()
 	 }
 }
 
+void GraphWidget::wakeUp()
+{
+	_friction_factor = 1.0f ;
+	itemMoved() ;
+}
+
 void GraphWidget::keyPressEvent(QKeyEvent *event)
 {
     switch (event->key()) {
@@ -151,17 +169,11 @@ void GraphWidget::keyPressEvent(QKeyEvent *event)
     }
 }
 
-static void convolveWithForce(double *forceMap,unsigned int S,int /*s*/)
+void GraphWidget::convolveWithForce(double *fMap, unsigned int S)
 {
-	static double **bf = NULL ;
-	static double **tmp = NULL ;
-    static int *ip = NULL ;
-    static double *w = NULL ;
-    static uint32_t last_S = 0 ;
-
-	if(bf == NULL)
+	if(fft_bf == NULL)
 	{
-		bf  = fft::alloc_2d_double(S, 2*S);
+		fft_bf  = fft::alloc_2d_double(S, 2*S);
 
         for(unsigned int i=0;i<S;++i)
             for(unsigned int j=0;j<S;++j)
@@ -169,45 +181,59 @@ static void convolveWithForce(double *forceMap,unsigned int S,int /*s*/)
 				int x = (i<S/2)?i:(S-i) ;
 				int y = (j<S/2)?j:(S-j) ;
 
-				bf[i][j*2+0] = log(sqrtf(0.1 + x*x+y*y)); // linear -> derivative is constant
-				bf[i][j*2+1] = 0 ;
+				fft_bf[i][j*2+0] = log(sqrtf(0.1 + x*x+y*y)); // linear -> derivative is constant
+				fft_bf[i][j*2+1] = 0 ;
 			}
 
-        ip = fft::alloc_1d_int(2 + (int) sqrt(S + 0.5));
-        w = fft::alloc_1d_double(S/2+S);
-        ip[0] = 0;
+        fft_ip = fft::alloc_1d_int(2 + (int) sqrt(S + 0.5));
+        fft_w = fft::alloc_1d_double(S/2+S);
+        fft_ip[0] = 0;
 
-		fft::cdft2d(S, 2*S, 1, bf, ip, w);
+		fft::cdft2d(S, 2*S, 1, fft_bf, fft_ip, fft_w);
 	}
 
-    if(last_S != S)
+    if(fft_last_S != S)
     {
-        if(tmp)
-            fft::free_2d_double(tmp) ;
+        if(fft_tmp)
+            fft::free_2d_double(fft_tmp) ;
 
-		tmp = fft::alloc_2d_double(S, 2*S);
-        last_S = S ;
+		fft_tmp = fft::alloc_2d_double(S, 2*S);
+        fft_last_S = S ;
     }
-    memcpy(tmp[0],forceMap,S*S*2*sizeof(double)) ;
+    memcpy(fft_tmp[0], fMap, S*S*2*sizeof(double)) ;
 
-	fft::cdft2d(S, 2*S, 1, tmp, ip, w);
+	fft::cdft2d(S, 2*S, 1, fft_tmp, fft_ip, fft_w);
 
 	for (unsigned int i=0;i<S;++i)
 		for (unsigned int j=0;j<S;++j)
 		{
-			float a = tmp[i][2*j+0]*bf[i][2*j+0] - tmp[i][2*j+1]*bf[i][2*j+1] ;
-			float b = tmp[i][2*j+0]*bf[i][2*j+1] + tmp[i][2*j+1]*bf[i][2*j+0] ;
+			float a = fft_tmp[i][2*j+0]*fft_bf[i][2*j+0] - fft_tmp[i][2*j+1]*fft_bf[i][2*j+1] ;
+			float b = fft_tmp[i][2*j+0]*fft_bf[i][2*j+1] + fft_tmp[i][2*j+1]*fft_bf[i][2*j+0] ;
 
-			tmp[i][2*j+0] = a ;
-			tmp[i][2*j+1] = b ;
+			fft_tmp[i][2*j+0] = a ;
+			fft_tmp[i][2*j+1] = b ;
 		}
 
-	fft::cdft2d(S, 2*S,-1, tmp, ip, w);
+	fft::cdft2d(S, 2*S,-1, fft_tmp, fft_ip, fft_w);
 
-    memcpy(forceMap,tmp[0],S*S*2*sizeof(double)) ;
+    memcpy(fMap, fft_tmp[0], S*S*2*sizeof(double)) ;
 
     for(uint32_t i=0;i<2*S*S;++i)
-        forceMap[i] /= S*S;
+        fMap[i] /= S*S;
+}
+
+float* GraphWidget::repulsionKernel()
+{
+	if(_repulsion_kernel == NULL)
+	{
+		const int KS = 5 ;
+		_repulsion_kernel = new float[(2 * KS + 1) * (2 * KS + 1)];
+
+		for (int i = -KS; i <= KS; ++i)
+			for (int j = -KS; j <= KS; ++j)
+				_repulsion_kernel[i + KS + (2 * KS + 1) * (j + KS)] = exp(-(i * i + j * j) / 30.0);
+	}
+	return _repulsion_kernel ;
 }
 
 void GraphWidget::timerEvent(QTimerEvent *event)
@@ -224,15 +250,13 @@ void GraphWidget::timerEvent(QTimerEvent *event)
 	}
 
 	 static const int S = 256 ;
-	 static double *forceMap = new double[2*S*S] ;
+	 if (!forceMap) forceMap = new double[2*S*S];
 
-	 // Update force map only once every 8 hits.
+	 // Update force map once every 2 hits: every 4 made the layout visibly jerky.
 	 //
-	 static uint32_t hit = 0 ;
-
 	 QRectF R(scene()->sceneRect()) ;
 
-	 if( (hit++ & 3) == 0)
+	 if( (_hit_counter++ & 1) == 0)
 	 {
 		 memset(forceMap,0,2*S*S*sizeof(double)) ;
 
@@ -258,7 +282,7 @@ void GraphWidget::timerEvent(QTimerEvent *event)
 		 }
 
 		 // compute convolution with 1/omega kernel.
-		 convolveWithForce(forceMap,S,20) ;
+		 convolveWithForce(forceMap,S) ;
 	 }
 
 	 foreach (Node *node, _nodes)
@@ -282,8 +306,7 @@ void GraphWidget::timerEvent(QTimerEvent *event)
 #endif
         timerId = 0;
     }
-	 _friction_factor *= 1.001f ;
-//	 std::cerr << "Friction factor = " << _friction_factor << std::endl;
+	 _friction_factor *= 1.01f ;
 }
 
 void GraphWidget::setEdgeLength(uint32_t l)

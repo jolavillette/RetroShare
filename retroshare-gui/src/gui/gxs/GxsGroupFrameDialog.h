@@ -31,6 +31,8 @@
 
 #include <inttypes.h>
 
+class QTimer;
+
 #include "GxsIdTreeWidgetItem.h"
 #include "GxsGroupDialog.h"
 
@@ -194,6 +196,13 @@ protected:
     virtual void updateGroupStatistics(const RsGxsGroupId &groupId);
     virtual void updateGroupStatisticsReal(const RsGxsGroupId &groupId);
 
+private:
+    /*! Re-apply the known local post/unread counts after a group tree refill. */
+    void restoreCachedGroupCounts();
+
+
+protected:
+
     // This needs to be overloaded by subclasses, possibly calling the blocking API, since it is used asynchronously.
     virtual bool getGroupStatistics(const RsGxsGroupId& groupId, GxsGroupStatistic& stat) = 0;
 
@@ -211,9 +220,11 @@ protected:
 private:
 	GxsMessageFrameWidget *currentWidget() const;
 	bool useTabs();
+	void scheduleMallocTrim();
 
 	bool mInitialized;
 	bool mInFill;
+	QTimer *mMallocTrimTimer;
 
 	RsGxsGroupId mGroupId;
 

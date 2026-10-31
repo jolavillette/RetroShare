@@ -148,7 +148,8 @@ protected:
                 return false;
             }
 
-            if (!m_dirModel->hasUploads(ref)) {
+            DirDetails details;
+            if (!m_dirModel->requestDirDetails(ref, m_dirModel->isRemote(), details) || details.uploads == 0) {
                 return false;
             }
         }
@@ -203,6 +204,20 @@ public:
     }
 };
 
+void SharedFilesDialog::setTextColorLocal(const QColor& color)
+{
+    mTextColorLocal = color;
+    if (tree_model) tree_model->setTextColorLocal(color);
+    if (flat_model) flat_model->setTextColorLocal(color);
+}
+
+void SharedFilesDialog::setTextColorDownloading(const QColor& color)
+{
+    mTextColorDownloading = color;
+    if (tree_model) tree_model->setTextColorDownloading(color);
+    if (flat_model) flat_model->setTextColorDownloading(color);
+}
+
 SharedFilesDialog::~SharedFilesDialog()
 {
     rsEvents->unregisterEventsHandler(mEventHandlerId);
@@ -215,7 +230,9 @@ SharedFilesDialog::~SharedFilesDialog()
  * Constructor for the base SharedFilesDialog.
  */
 SharedFilesDialog::SharedFilesDialog(bool remote_mode, QWidget *parent)
-  : RsAutoUpdatePage(1000,parent), model(NULL)
+  : RsAutoUpdatePage(1000,parent)
+  , mTextColorLocal(Qt::red), mTextColorDownloading(0, 128, 0)
+  , model(NULL)
 {
     /* Invoke the Qt Designer generated object setup routine */
     ui.setupUi(this);
@@ -264,6 +281,10 @@ SharedFilesDialog::SharedFilesDialog(bool remote_mode, QWidget *parent)
 
     tree_model = new TreeStyle_RDM(remote_mode);
     flat_model = new FlatStyle_RDM(remote_mode);
+
+    // The stylesheet may already have set the qproperties before the models existed.
+    setTextColorLocal(mTextColorLocal);
+    setTextColorDownloading(mTextColorDownloading);
 
     connect(flat_model, SIGNAL(layoutChanged()), this, SLOT(updateDirTreeView()) );
 

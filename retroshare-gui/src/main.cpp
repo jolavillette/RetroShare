@@ -58,6 +58,7 @@ CrashStackTrace gCrashStackTrace;
 #include "util/RsGxsUpdateBroadcast.h"
 #include "util/rsdir.h"
 #include "util/rstime.h"
+#include "util/rsdebug.h"
 #include "retroshare/rsinit.h"
 #include "util/RsQtVersion.h"
 
@@ -777,7 +778,9 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
 
     /* dive into the endless loop */
     int ti = rshare.exec();
+    RsInfo() << "shutdown: GUI event loop left, destroying the main window";
     delete w ;
+    RsInfo() << "shutdown: main window destroyed";
 
 #ifdef RS_JSONAPI
     JsonApiPage::checkShutdownJsonApi();
@@ -794,6 +797,7 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
     }
 
     RsControl::instance()->rsGlobalShutDown();
+    RsInfo() << "shutdown: library stopped, leaving main()";
 
     delete(soundManager);
     soundManager = NULL;

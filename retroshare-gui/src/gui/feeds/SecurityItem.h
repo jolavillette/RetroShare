@@ -55,11 +55,13 @@ private slots:
 
 	void friendRequest();
 	void removeFriend();
+	void banUser();
 	void peerDetails();
 	void sendMsg();
 	void openChat();
 
 	void updateItem();
+	void setConnectAttemptToolTips(bool profileKnown);
 
 private:
 	RsPgpId  mGpgId;
