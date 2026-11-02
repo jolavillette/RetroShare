@@ -271,7 +271,7 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
     widget->setLayout(hbox);
     statusBar()->addWidget(widget);
 
-    peerstatus = new PeerStatus();
+    peerstatus = new PeerStatus(statusBar());
     peerstatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowPeer", QVariant(true)).toBool());
     statusBar()->addWidget(peerstatus);
 
@@ -279,7 +279,7 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
 	{
         if(RsAccounts::isHiddenNode())
 		{
-			torstatus = new TorStatus();
+			torstatus = new TorStatus(statusBar());
 			torstatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowTor", QVariant(true)).toBool());
 			statusBar()->addWidget(torstatus);
 			torstatus->getTorStatus();
@@ -294,44 +294,44 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
 	{
 		torstatus = NULL ;
 
-		natstatus = new NATStatus();
+		natstatus = new NATStatus(statusBar());
 		if(hiddenmode) natstatus->setVisible(false);
 		else natstatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowNAT", QVariant(true)).toBool());
 		statusBar()->addWidget(natstatus);
 		natstatus->getNATStatus();
 
-		dhtstatus = new DHTStatus();
+		dhtstatus = new DHTStatus(statusBar());
 		if(hiddenmode) dhtstatus->setVisible(false);
 		else dhtstatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowDHT", QVariant(true)).toBool());
 		statusBar()->addWidget(dhtstatus);
 		dhtstatus->getDHTStatus();
 	}
 
-    hashingstatus = new HashingStatus();
+    hashingstatus = new HashingStatus(statusBar());
     hashingstatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowHashing", QVariant(true)).toBool());
     statusBar()->addPermanentWidget(hashingstatus, 1);
 
-    discstatus = new DiscStatus();
+    discstatus = new DiscStatus(statusBar());
     discstatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowDisc", QVariant(true)).toBool());
     statusBar()->addPermanentWidget(discstatus);
 
-    ratesstatus = new RatesStatus();
+    ratesstatus = new RatesStatus(statusBar());
     ratesstatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowRate", QVariant(true)).toBool());
     statusBar()->addPermanentWidget(ratesstatus);
 
-    opModeStatus = new OpModeStatus();
+    opModeStatus = new OpModeStatus(statusBar());
     opModeStatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowOpMode", QVariant(false)).toBool());
     statusBar()->addPermanentWidget(opModeStatus);
 
-    soundStatus = new SoundStatus();
+    soundStatus = new SoundStatus(statusBar());
     soundStatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowSound", QVariant(true)).toBool());
     statusBar()->addPermanentWidget(soundStatus);
 
-    toasterDisable = new ToasterDisable();
+    toasterDisable = new ToasterDisable(statusBar());
     toasterDisable->setVisible(Settings->valueFromGroup("StatusBar", "ShowToaster", QVariant(true)).toBool());
     statusBar()->addPermanentWidget(toasterDisable);
 
-    sysTrayStatus = new SysTrayStatus();
+    sysTrayStatus = new SysTrayStatus(statusBar());
     sysTrayStatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowSysTrayOnStatusBar", QVariant(false)).toBool());
     statusBar()->addPermanentWidget(sysTrayStatus);
 
