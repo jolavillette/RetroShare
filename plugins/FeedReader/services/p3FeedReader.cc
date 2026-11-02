@@ -366,16 +366,20 @@ void p3FeedReader::stop()
 		stopPreviewThreads_locked();
 	}
 
+	/* Wait for the threads WITHOUT holding mFeedReaderMtx: a thread finishing
+	 * a download calls onDownloadSuccess()/onDownloadError(), which take that
+	 * mutex, so joining it under the lock deadlocks the shutdown for ever. */
+	std::list<p3FeedReaderThread*> threads;
 	{
 		RsStackMutex stack(mFeedReaderMtx); /******* LOCK STACK MUTEX *********/
 
-		/* stop threads */
-		std::list<p3FeedReaderThread*>::iterator it;
-		for (it = mThreads.begin(); it != mThreads.end(); ++it) {
-			(*it)->fullstop();
-			delete(*it);
-		}
-		mThreads.clear();
+		threads.swap(mThreads);
+	}
+
+	/* stop threads */
+	for (std::list<p3FeedReaderThread*>::iterator it = threads.begin(); it != threads.end(); ++it) {
+		(*it)->fullstop();
+		delete(*it);
 	}
 }
 
