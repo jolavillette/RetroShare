@@ -36,6 +36,10 @@
 
 #include <retroshare/rspeers.h>
 
+#ifdef RS_TEXTCURSOR_PROBE
+#	include "TextCursorProbe.h"
+#endif
+
 MimeTextEdit::MimeTextEdit(QWidget *parent)
     : RSTextEdit(parent), mCompleter(0)
 {
@@ -44,6 +48,16 @@ MimeTextEdit::MimeTextEdit(QWidget *parent)
 	mForceCompleterShowNextKeyEvent = false;
 	highliter = new RsSyntaxHighlighter(this);
 	mOnlyPlainText = false;
+#ifdef RS_TEXTCURSOR_PROBE
+	TextCursorProbe::attach(this, "MimeTextEdit");
+#endif
+}
+
+MimeTextEdit::~MimeTextEdit()
+{
+#ifdef RS_TEXTCURSOR_PROBE
+	TextCursorProbe::detach(this);
+#endif
 }
 
 bool MimeTextEdit::canInsertFromMimeData(const QMimeData* source) const

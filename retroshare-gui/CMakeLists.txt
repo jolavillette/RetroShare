@@ -237,6 +237,24 @@ if(RS_USE_NATIVE_DIALOGS)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE RS_NATIVEDIALOGS)
 endif()
 
+# Diagnostics only: every MimeTextEdit (the chat inputs) logs a TEXTCURSOR-PROBE
+# line on stderr the moment its internal text cursor drops out of its document's
+# cursor set, the state that ends in a crash in ~QTextCursorPrivate when the
+# widget is destroyed. Reads Qt private headers, so Qt6 only.
+option(RS_TEXTCURSOR_PROBE "Log when a text edit's cursor drops out of its document (diagnostics, Qt6 only)" OFF)
+if(RS_TEXTCURSOR_PROBE)
+	if(NOT QT_VERSION_MAJOR EQUAL 6)
+		message(FATAL_ERROR "RS_TEXTCURSOR_PROBE needs Qt6")
+	endif()
+	if(NOT TARGET Qt6::GuiPrivate)
+		find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)
+	endif()
+	target_sources(${PROJECT_NAME} PRIVATE
+		src/gui/common/TextCursorProbe.cpp src/gui/common/TextCursorProbe.h)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE RS_TEXTCURSOR_PROBE)
+	target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::GuiPrivate)
+endif()
+
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/)
 
