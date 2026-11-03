@@ -76,9 +76,10 @@ DHTStatus::DHTStatus(QWidget *parent)
 /* "180–260", one number when both ends agree */
 static QString sizeRange(uint32_t lo, uint32_t hi)
 {
+	/* userFriendlyUnit() leaves "199 " when there is no unit */
 	if (hi <= lo)
-		return misc::userFriendlyUnit(lo, 1);
-	return misc::userFriendlyUnit(lo, 1) + QChar(0x2013) + misc::userFriendlyUnit(hi, 1);
+		return misc::userFriendlyUnit(lo, 1).trimmed();
+	return misc::userFriendlyUnit(lo, 1).trimmed() + QChar(0x2013) + misc::userFriendlyUnit(hi, 1).trimmed();
 }
 
 /* label value: the range, flagged when it rests on too few lookups yet */
