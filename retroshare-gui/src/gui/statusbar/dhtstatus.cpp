@@ -114,7 +114,7 @@ void DHTStatus::setSizeEstimate(const QString &prefix)
 	if (rsDht)
 		rsDht->getDhtSizeEstimate(est);
 
-	dhtnetworksizeLabel->setText(tr("RS %1 · all %2")
+	dhtnetworksizeLabel->setText(tr("RS: %1 · all: %2")
 	        .arg(sizeValue(est.lookupsAvailable, est.rsMin, est.rsMax, est.rsProvisional),
 	             sizeValue(est.lookupsAvailable, est.allMin, est.allMax, est.allProvisional)));
 
