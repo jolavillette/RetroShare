@@ -26,6 +26,7 @@
 #include <QPixmap>
 
 #include "retroshare/rsconfig.h"
+#include "retroshare/rsdht.h"
 #include "retroshare/rspeers.h"
 #include "gui/common/FilesDefs.h"
 
@@ -72,6 +73,46 @@ DHTStatus::DHTStatus(QWidget *parent)
     setLayout( hbox );
 }
 
+/* "203–282": what we saw – what we estimate; one number when they agree */
+static QString sizeRange(uint32_t lo, uint32_t hi)
+{
+	if (lo == 0 && hi == 0)
+		return QString(QChar(0x2013));
+	if (hi <= lo)
+		return misc::userFriendlyUnit(lo, 1);
+	return misc::userFriendlyUnit(lo, 1) + QString(QChar(0x2013)) + misc::userFriendlyUnit(hi, 1);
+}
+
+void DHTStatus::setSizeEstimate(const QString &prefix)
+{
+	RsDhtSizeEstimate est;
+	if (rsDht)
+		rsDht->getDhtSizeEstimate(est);
+
+	dhtnetworksizeLabel->setText(QString("%1 (%2)").arg(sizeRange(est.rsMin, est.rsMax),
+	                                                    sizeRange(est.allMin, est.allMax)));
+
+	QString tip = prefix + "<p><b>" + tr("RetroShare nodes in the DHT") + "</b><br>";
+	if (est.rsMin == 0)
+		tip += tr("None seen yet.");
+	else
+		tip += tr("%1 seen in our DHT routing table over the last 24 hours; about %2 "
+		          "when the nodes we have not crossed yet are estimated (%3 hours "
+		          "observed over the last 7 days).")
+		       .arg(est.rsMin).arg(est.rsMax).arg(est.rsObservedSecs / 3600);
+	tip += "</p><p><b>" + tr("Whole DHT") + "</b><br>";
+	if (est.allMin == 0)
+		tip += tr("Not measured yet: this needs a few random lookups (about half an hour).");
+	else
+		tip += tr("%1 nodes answer our random lookups; about %2 when the nodes we "
+		          "hear of but that never answer are counted (most DHT nodes do not "
+		          "answer an unknown node). From the last %3 lookups.")
+		       .arg(misc::userFriendlyUnit(est.allMin, 1), misc::userFriendlyUnit(est.allMax, 1))
+		       .arg(est.allSamples);
+	tip += "</p>";
+	dhtnetworksizeLabel->setToolTip(tip);
+}
+
 void DHTStatus::getDHTStatus()
 {
 	statusDHT->setVisible(!_compactMode);
@@ -110,8 +151,7 @@ void DHTStatus::getDHTStatus()
 				dhtnetworkLabel->setVisible(true);
 				dhtnetworksizeLabel->setVisible(true);
 
-				dhtnetworksizeLabel->setText(QString("%1 (%2)").arg(misc::userFriendlyUnit(config.netDhtRsNetSize, 1)).arg(misc::userFriendlyUnit(config.netDhtNetSize, 1)));
-				dhtnetworksizeLabel->setToolTip( text + tr("RetroShare users in DHT (Total DHT users)") );
+				setSizeEstimate(text);
 			}
 			else
 			{
@@ -122,8 +162,7 @@ void DHTStatus::getDHTStatus()
 				dhtnetworkLabel->setVisible(true);
 				dhtnetworksizeLabel->setVisible(true);
 
-				dhtnetworksizeLabel->setText(QString("%1 (%2)").arg(misc::userFriendlyUnit(config.netDhtRsNetSize, 1)).arg(misc::userFriendlyUnit(config.netDhtNetSize, 1)));
-				dhtnetworksizeLabel->setToolTip( text + tr("RetroShare users in DHT (Total DHT users)") );
+				setSizeEstimate(text);
 			}
 		}
 		else
