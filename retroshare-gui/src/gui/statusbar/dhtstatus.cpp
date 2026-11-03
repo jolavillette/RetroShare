@@ -73,14 +73,39 @@ DHTStatus::DHTStatus(QWidget *parent)
     setLayout( hbox );
 }
 
-/* "203–282": what we saw – what we estimate; one number when they agree */
+/* "180–260", one number when both ends agree */
 static QString sizeRange(uint32_t lo, uint32_t hi)
 {
-	if (lo == 0 && hi == 0)
-		return QString(QChar(0x2013));
 	if (hi <= lo)
 		return misc::userFriendlyUnit(lo, 1);
-	return misc::userFriendlyUnit(lo, 1) + QString(QChar(0x2013)) + misc::userFriendlyUnit(hi, 1);
+	return misc::userFriendlyUnit(lo, 1) + QChar(0x2013) + misc::userFriendlyUnit(hi, 1);
+}
+
+/* label value: the range, flagged when it rests on too few lookups yet */
+static QString sizeValue(bool available, uint32_t lo, uint32_t hi, bool provisional)
+{
+	if (!available)
+		return DHTStatus::tr("n/a");
+	if (hi == 0)
+		return DHTStatus::tr("measuring");
+	QString v = sizeRange(lo, hi);
+	if (provisional)
+		v += " " + DHTStatus::tr("provisional");
+	return v;
+}
+
+static QString sizeDetails(uint32_t lo, uint32_t hi, bool provisional, uint32_t lookups,
+                           uint32_t reach, uint32_t reachErr, uint32_t heard, uint32_t heardErr)
+{
+	if (hi == 0)
+		return DHTStatus::tr("Not measured yet: the first random lookups take a few minutes.");
+	QString t = DHTStatus::tr("Range %1, from %2 random lookups%3.")
+	        .arg(sizeRange(lo, hi)).arg(lookups)
+	        .arg(provisional ? DHTStatus::tr(" (provisional: fewer than 12 lookups, it will still move)") : QString());
+	t += "<br>" + DHTStatus::tr("Nodes that answer us: %1 (±%2%). With the silent ones at least two nodes report: %3 (±%4%).")
+	        .arg(misc::userFriendlyUnit(reach, 1)).arg(reachErr)
+	        .arg(misc::userFriendlyUnit(heard, 1)).arg(heardErr);
+	return t;
 }
 
 void DHTStatus::setSizeEstimate(const QString &prefix)
@@ -89,26 +114,31 @@ void DHTStatus::setSizeEstimate(const QString &prefix)
 	if (rsDht)
 		rsDht->getDhtSizeEstimate(est);
 
-	dhtnetworksizeLabel->setText(QString("%1 (%2)").arg(sizeRange(est.rsMin, est.rsMax),
-	                                                    sizeRange(est.allMin, est.allMax)));
+	dhtnetworksizeLabel->setText(tr("RS %1 · all %2")
+	        .arg(sizeValue(est.lookupsAvailable, est.rsMin, est.rsMax, est.rsProvisional),
+	             sizeValue(est.lookupsAvailable, est.allMin, est.allMax, est.allProvisional)));
 
-	QString tip = prefix + "<p><b>" + tr("RetroShare nodes in the DHT") + "</b><br>";
-	if (est.rsMin == 0)
-		tip += tr("None seen yet.");
+	QString tip = prefix + "<p><b>" + tr("RetroShare nodes online now") + "</b><br>";
+	if (!est.lookupsAvailable)
+		tip += tr("This build cannot measure it (its BitDHT lacks network size lookups).");
 	else
-		tip += tr("%1 seen in our DHT routing table over the last 24 hours; about %2 "
-		          "when the nodes we have not crossed yet are estimated (%3 hours "
-		          "observed over the last 7 days).")
-		       .arg(est.rsMin).arg(est.rsMax).arg(est.rsObservedSecs / 3600);
-	tip += "</p><p><b>" + tr("Whole DHT") + "</b><br>";
-	if (est.allMin == 0)
-		tip += tr("Not measured yet: this needs a few random lookups (about half an hour).");
+		tip += sizeDetails(est.rsMin, est.rsMax, est.rsProvisional, est.rsLookups,
+		                   est.rsReachable, est.rsReachableErr, est.rsHeard, est.rsHeardErr);
+	tip += "<br>" + tr("Checks: %1 seen in our DHT routing table over the last 24 h")
+	        .arg(est.rsSeen24h);
+	if (est.rsDistinct24h)
+		tip += tr("; about %1 distinct ones online during the last 24 h (routing table crossed with the lookups)")
+		        .arg(est.rsDistinct24h);
+	if (est.rsFriendCalibrated)
+		tip += tr("; about %1 online now, calibrated on our %2 friends present in the DHT (a low estimate: our table favours our friends)")
+		        .arg(est.rsFriendCalibrated).arg(est.rsFriendsInDht);
+	tip += ".</p><p><b>" + tr("Whole DHT") + "</b><br>";
+	if (!est.lookupsAvailable)
+		tip += tr("This build cannot measure it (its BitDHT lacks network size lookups).");
 	else
-		tip += tr("%1 nodes answer our random lookups; about %2 when the nodes we "
-		          "hear of but that never answer are counted (most DHT nodes do not "
-		          "answer an unknown node). From the last %3 lookups.")
-		       .arg(misc::userFriendlyUnit(est.allMin, 1), misc::userFriendlyUnit(est.allMax, 1))
-		       .arg(est.allSamples);
+		tip += sizeDetails(est.allMin, est.allMax, est.allProvisional, est.allLookups,
+		                   est.allReachable, est.allReachableErr, est.allHeard, est.allHeardErr)
+		       + "<br>" + tr("Most DHT nodes do not answer a node they do not know: the truth lies towards the high end.");
 	tip += "</p>";
 	dhtnetworksizeLabel->setToolTip(tip);
 }
