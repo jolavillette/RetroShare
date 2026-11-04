@@ -1022,11 +1022,13 @@ void ChatLobbyDialog::setWindowed(bool windowed)
 	QIcon icon ;
 	// chatLobbyPage could be NULL for first autosubscribe lobby as Dialog is created before main widget
 	ChatLobbyWidget *chatLobbyPage = dynamic_cast<ChatLobbyWidget*>(MainWindow::getPage(MainWindow::ChatLobby));
-	if (!mPCWindow)
-		mPCWindow = PopupChatWindow::getWindow(true);
-
 	if (windowed)
 	{
+		// Only a windowed lobby needs a popup window: creating one when docking
+		// left a hidden PopupChatWindow behind for every lobby at startup.
+		if (!mPCWindow)
+			mPCWindow = PopupChatWindow::getWindow(true);
+
 		if (chatLobbyPage)
 			chatLobbyPage->removeChatPage(this);
 		if (mPCWindow)
@@ -1052,7 +1054,12 @@ void ChatLobbyDialog::setWindowed(bool windowed)
 		undockButton->setIcon(icon) ;
 		undockButton->setIconSize(icon_size);
 	}
-	show();
+	// A parentless widget that gets show() becomes a top-level window. That is
+	// the case for auto-subscribed lobbies at startup: they are created before
+	// the lobby page exists, so they briefly appeared as windows (and taskbar
+	// buttons on Windows) until ChatLobbyWidget::addChatPage() reparented them.
+	if (parentWidget())
+		show();
 	if (chatLobbyPage)// If not defined, we are on autosubscribe loop of lobby widget constructor. So don't recall it.
         showDialog(RsChatFlags::RS_CHAT_FOCUS);
 }
