@@ -88,6 +88,11 @@ CrashStackTrace gCrashStackTrace;
 #endif
 #endif
 
+#include <QDir>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QPushButton>
+
 #ifdef Q_OS_WIN
 #if QT_VERSION >= QT_VERSION_CHECK (5, 7, 0)
 // see INSTALL.W32 in openssl
@@ -296,6 +301,36 @@ QString filedialog_existing_directory_hook(QWidget *parent, const QString &capti
 }
 #endif
 #endif
+
+/* Explains a Tor problem and offers to pick another tor executable, which is
+ * saved for the next start (it then takes precedence over the tor bundled next
+ * to RetroShare, which may be too old). Returns true if one was chosen. */
+static bool askForTorExecutable(QMessageBox::Icon icon, const QString& title, const QString& text)
+{
+	QMessageBox box(icon, title, text);
+	QPushButton *choose = box.addButton(QObject::tr("Choose a Tor executable..."), QMessageBox::ActionRole);
+	box.addButton(icon == QMessageBox::Critical ? QMessageBox::Close : QMessageBox::Ok);
+	box.exec();
+
+	if(box.clickedButton() != choose)
+		return false;
+
+	QString current = QString::fromStdString(RsTor::torExecutablePath());
+	QString path = QFileDialog::getOpenFileName(nullptr, QObject::tr("Select the Tor executable"),
+	                                            current.isEmpty() ? QString() : QFileInfo(current).absolutePath()
+#ifdef WINDOWS_SYS
+	                                            , QObject::tr("Tor executable (tor.exe)")
+#endif
+	                                            );
+	if(path.isEmpty())
+		return false;
+
+	Settings->setTorExecutablePath(path);
+	Settings->sync();
+
+	QMessageBox::information(nullptr, title, QObject::tr("RetroShare will use %1 from its next start. Please restart RetroShare.").arg(QDir::toNativeSeparators(path)));
+	return true;
+}
 
 int main(int argc, char *argv[])
 {
@@ -586,8 +621,19 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
 
     if(is_auto_tor)
     {
+        // Precedence: -t on the command line, then the path saved in the
+        // settings, then RetroShare's own lookup (bundled tor first).
+        QString saved_tor = Settings->getTorExecutablePath();
+
         if(!conf.userSuppliedTorExecutable.empty())
             RsTor::setTorExecutablePath(conf.userSuppliedTorExecutable);
+        else if(!saved_tor.isEmpty())
+        {
+            if(QFileInfo(saved_tor).isFile())
+                RsTor::setTorExecutablePath(saved_tor.toStdString());
+            else
+                RsWarn() << "Saved Tor executable " << saved_tor.toStdString() << " not found. Looking for another one." ;
+        }
 
         // Now that we know the Tor service running, and we know the SSL id, we can make sure it provides a viable hidden service
 
@@ -603,7 +649,7 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
 
         if(! RsTor::start() || RsTor::hasError())
         {
-            QMessageBox::critical(NULL,QObject::tr("Cannot start Tor Manager!"),QObject::tr("Tor cannot be started on your system: \n\n")+QString::fromStdString(RsTor::errorMessage())) ;
+            askForTorExecutable(QMessageBox::Critical,QObject::tr("Cannot start Tor Manager!"),QObject::tr("Tor cannot be started on your system: \n\n")+QString::fromStdString(RsTor::errorMessage())) ;
             return 1 ;
         }
 
@@ -619,12 +665,18 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
 
                 if(!error_msg.isNull())
                 {
-                    QMessageBox::critical(NULL,QObject::tr("Cannot start Tor"),QObject::tr("Sorry but Tor cannot be started on your system!\n\nThe error reported is:\"")+error_msg+"\"") ;
+                    tcd.hide();
+                    askForTorExecutable(QMessageBox::Critical,QObject::tr("Cannot start Tor"),QObject::tr("Sorry but Tor cannot be started on your system!\n\nThe error reported is:\"")+error_msg+"\"") ;
                     return 1;
                 }
             }
 
             tcd.hide();
+
+            // Tor works for now, but the Tor network may already condemn it.
+            std::string version_warning = RsTor::torVersionWarning();
+            if(!version_warning.empty())
+                askForTorExecutable(QMessageBox::Warning,QObject::tr("Your Tor is outdated"),QString::fromStdString(version_warning)) ;
 
             if(tcd.checkForHiddenService() != TorControlDialog::HIDDEN_SERVICE_STATUS_OK)
             {

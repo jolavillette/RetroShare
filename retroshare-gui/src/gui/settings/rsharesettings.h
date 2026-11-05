@@ -381,6 +381,11 @@ public:
 	QString getWebinterfaceFilesDirectory();
 	void setWebinterfaceFilesDirectory(const QString& dirname);
 
+	// Tor executable chosen by the user for auto-Tor nodes. Empty: let
+	// RetroShare look for one. The -t command line option takes precedence.
+	QString getTorExecutablePath();
+	void setTorExecutablePath(const QString& path);
+
     // proxy function that computes the best icon size among sizes passed as array, to match the recommended size on screen.
     int computeBestIconSize(int n_sizes, int *sizes, int recommended_size);
 

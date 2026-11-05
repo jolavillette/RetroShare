@@ -1199,6 +1199,16 @@ void RshareSettings::setWebinterfaceFilesDirectory(const QString& s)
     setValueToGroup("Webinterface","directory",s);
 }
 
+QString RshareSettings::getTorExecutablePath()
+{
+	return valueFromGroup("Tor","executablePath",QString()).toString();
+}
+
+void RshareSettings::setTorExecutablePath(const QString& path)
+{
+	setValueToGroup("Tor","executablePath",path);
+}
+
 
 bool RshareSettings::getPageAlreadyDisplayed(const QString& page_name)
 {
