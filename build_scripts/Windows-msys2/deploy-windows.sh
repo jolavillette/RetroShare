@@ -296,6 +296,46 @@ while true; do
 done
 rm -f "$TEMP_DEPENDENCY_LIST"
 
+# 9.2 Bundle Tor, for hidden nodes. RetroShare runs <exe dir>/tor/tor.exe
+# before any other tor it could find, so a stale copy here breaks hidden
+# nodes for good (0.6.7 shipped one). It is therefore taken from the MSYS2
+# package at every deploy, never from a stored binary: keep the package
+# current (pacman -Syu) before a release. RS_BUNDLE_TOR=0 skips this step.
+# It runs after step 9 on purpose: that loop never sees tor/, so it does not
+# copy tor's DLLs to the top folder.
+if [ "${RS_BUNDLE_TOR:-1}" = "1" ]; then
+    echo ">>> Bundling Tor..."
+    TOR_EXE="$MINGW_PREFIX/bin/tor.exe"
+    if [ -f "$TOR_EXE" ]; then
+        mkdir -p "$DEPLOY_DIR/tor"
+        cp "$TOR_EXE" "$DEPLOY_DIR/tor/"
+
+        # tor.exe runs from tor/ and Windows looks for its DLLs next to it,
+        # not in the parent folder: give it its own copies.
+        TOR_PREV_COUNT=-1
+        while true; do
+            TOR_DEPS=$(find "$DEPLOY_DIR/tor" \( -name "*.exe" -o -name "*.dll" \) -exec ldd {} \; 2>/dev/null \
+                | grep -i "$MINGW_PREFIX/bin" | awk '{print $3}' | sort -u)
+            TOR_COUNT=$(printf '%s\n' "$TOR_DEPS" | grep -c . || true)
+            if [ "$TOR_COUNT" -eq "$TOR_PREV_COUNT" ]; then
+                break
+            fi
+            TOR_PREV_COUNT=$TOR_COUNT
+            for dll_path in $TOR_DEPS; do
+                if [ -f "$dll_path" ] && [ ! -f "$DEPLOY_DIR/tor/$(basename "$dll_path")" ]; then
+                    cp "$dll_path" "$DEPLOY_DIR/tor/"
+                fi
+            done
+        done
+
+        TOR_VERSION_STR=$("$DEPLOY_DIR/tor/tor.exe" --version 2>/dev/null | head -n 1 | tr -d '\r')
+        echo "  Bundled: ${TOR_VERSION_STR:-tor.exe (version not reported)} with $TOR_COUNT DLL(s)"
+    else
+        echo "  WARNING: $TOR_EXE not found: this package will ship WITHOUT Tor."
+        echo "  Install it with: pacman -S ${MINGW_PACKAGE_PREFIX:-mingw-w64-ucrt-x86_64}-tor"
+    fi
+fi
+
 # Detect if we should strip debug symbols (only in explicit Release or MinSizeRel builds)
 IS_RELEASE_BUILD=false
 if [ -f "$BUILD_DIR/CMakeCache.txt" ]; then

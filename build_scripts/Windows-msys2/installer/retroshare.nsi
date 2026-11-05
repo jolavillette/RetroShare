@@ -55,7 +55,7 @@
 !define /date Date "%Y%m%d"
 
 # Detect tor
-${!defineifexist} TOR_EXISTS "${DEPLOYDIR}\tor.exe"
+${!defineifexist} TOR_EXISTS "${DEPLOYDIR}\tor\tor.exe"
 !ifdef TOR_EXISTS
 !define RSTYPE "-tor"
 !else
