@@ -1,0 +1,2 @@
+Round-trip test file: created on NovaShare master, cherry-picked onto RetroShare master.
+Never to be merged anywhere; delete with the novashare-roundtrip-test branches.
