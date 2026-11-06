@@ -195,11 +195,9 @@ public:
 
         // get pixmap
         QIcon icon = qvariant_cast<QIcon>(index.data(Qt::DecorationRole));
-        QPixmap pix = icon.pixmap(r.size());
-
-        // draw pixmap at center of item
-        const QPoint p = QPoint((r.width() - pix.width())/2, (r.height() - pix.height())/2);
-        painter->drawPixmap(r.topLeft() + p, pix);
+        // QIcon::paint() centres the icon in device-independent pixels. Centring by hand
+        // with pix.width() used device pixels and drew the icon half a row too high on HiDPI.
+        icon.paint(painter, r, Qt::AlignCenter);
     }
 };
 
