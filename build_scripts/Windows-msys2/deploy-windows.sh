@@ -330,6 +330,13 @@ if [ "${RS_BUNDLE_TOR:-1}" = "1" ]; then
 
         TOR_VERSION_STR=$("$DEPLOY_DIR/tor/tor.exe" --version 2>/dev/null | head -n 1 | tr -d '\r')
         echo "  Bundled: ${TOR_VERSION_STR:-tor.exe (version not reported)} with $TOR_COUNT DLL(s)"
+        # Tag the portable package -tor like the installer (RSTYPE in
+        # retroshare.nsi). The name is also the deploy folder, so rename it.
+        ARCHIVE_BASE="${ARCHIVE_BASE}-tor"
+        rm -rf "${BUILD_DIR:?}/${ARCHIVE_BASE}"
+        mv "$DEPLOY_DIR" "${BUILD_DIR}/${ARCHIVE_BASE}"
+        DEPLOY_DIR="${BUILD_DIR}/${ARCHIVE_BASE}"
+        echo "  Package renamed: ${ARCHIVE_BASE}"
     else
         echo "  WARNING: $TOR_EXE not found: this package will ship WITHOUT Tor."
         echo "  Install it with: pacman -S ${MINGW_PACKAGE_PREFIX:-mingw-w64-ucrt-x86_64}-tor"
