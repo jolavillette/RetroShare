@@ -51,7 +51,13 @@ p3FeedReaderThread::~p3FeedReaderThread()
 
 void p3FeedReaderThread::threadTick()
 {
-		rstime::rs_usleep(1000000);
+		/* one second, in slices, so that a stop request is honoured within
+		 * 100 ms instead of at the end of the full second */
+		for (int i = 0; i < 10 && !shouldStop(); ++i)
+			rstime::rs_usleep(100000);
+
+		if (shouldStop())
+			return;
 
 		/* every second */
 

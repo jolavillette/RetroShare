@@ -60,6 +60,12 @@ void TorControlDialog::handleEvent_main_thread(std::shared_ptr<const RsEvent> ev
     case RsTorManagerEventCode::TOR_STATUS_CHANGED:
     case RsTorManagerEventCode::TOR_CONNECTIVITY_CHANGED: statusChanged(fe->mTorStatus,fe->mTorConnectivityStatus);
                                                         break;
+
+    // e.g. tor exited: no status change may follow, so catch the error here,
+    // otherwise the startup loop waits for ever.
+    case RsTorManagerEventCode::TOR_MANAGER_ERROR:      mErrorMsg = QString::fromStdString(fe->mErrorMessage);
+                                                        if(mErrorMsg.isEmpty()) mErrorMsg = tr("Unknown Tor error");
+                                                        break;
     default: ;
     }
 }

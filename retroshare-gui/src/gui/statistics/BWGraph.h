@@ -45,6 +45,10 @@ public:
     BWGraphSource() ;
 	virtual ~BWGraphSource() {}
 
+    // Drops the collected history and curves (called when the graph is hidden: the source keeps
+    // collecting otherwise, at ~400 MB of 30-minute traffic history on a node with 60 friends).
+    void clearHistory() ;
+
     enum { SELECTOR_TYPE_FRIEND=0x00, SELECTOR_TYPE_SERVICE=0x01 };
     enum { GRAPH_TYPE_SINGLE=0x00, GRAPH_TYPE_ALL=0x01, GRAPH_TYPE_SUM=0x02 };
     enum { UNIT_KILOBYTES=0x00, UNIT_COUNT=0x01 };
@@ -55,6 +59,7 @@ public:
 	virtual void getCumulatedValues(std::vector<float>& vals) const;
     virtual void getValues(std::map<std::string,float>& values) const;
     virtual QString displayValue(float v) const;
+    virtual qreal unitBase() const { return 1024.0 ; }
     virtual QString legend(int i,float v,bool show_value=true) const;
     virtual void update();
     QString unitName() const ;
@@ -108,6 +113,10 @@ class BWGraph: public RSGraphWidget
 	public:
         BWGraph(QWidget *parent);
         ~BWGraph();
+
+        // Collect only while shown; a closed Statistics window is hidden, not destroyed.
+        void showEvent(QShowEvent *e) override ;
+        void hideEvent(QHideEvent *e) override ;
 
     void setSelector(int selector_type, int graph_type, const std::string& selector_client_string = std::string())  { _local_source->setSelector(selector_type,graph_type,selector_client_string) ; }
     void setDirection(int dir) { _local_source->setDirection(dir); }

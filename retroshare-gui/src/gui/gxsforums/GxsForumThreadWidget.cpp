@@ -24,6 +24,9 @@
 #include <QScrollBar>
 #include <QPainter>
 #include <QTimer>
+#include <QRegularExpression>
+#include <QTextCursor>
+#include <QTextDocument>
 
 #include "util/qtthreadsutils.h"
 #include "util/misc.h"
@@ -130,11 +133,9 @@ public:
         case 2: icon = FilesDefs::getIconFromQtResourcePath(IMAGE_WARNING_RED); break;
         }
 
-        QPixmap pix = icon.pixmap(r.size());
-
-        // draw pixmap at center of item
-        const QPoint p = QPoint((r.width() - pix.width())/2, (r.height() - pix.height())/2);
-        painter->drawPixmap(r.topLeft() + p, pix);
+        // QIcon::paint() centres the icon in device-independent pixels. Centring by hand
+        // with pix.width() used device pixels and drew the icon half a row too high on HiDPI.
+        icon.paint(painter, r, Qt::AlignCenter);
     }
 
     virtual QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& /*index*/) const override
@@ -189,11 +190,9 @@ public:
                 icon = FilesDefs::getIconFromQtResourcePath(":/images/message-state-read.png");
         }
 
-        QPixmap pix = icon.pixmap(r.size());
-
-        // draw pixmap at center of item
-        const QPoint p = QPoint((r.width() - pix.width())/2, (r.height() - pix.height())/2);
-        painter->drawPixmap(r.topLeft() + p, pix);
+        // QIcon::paint() centres the icon in device-independent pixels. Centring by hand
+        // with pix.width() used device pixels and drew the icon half a row too high on HiDPI.
+        icon.paint(painter, r, Qt::AlignCenter);
     }
 
     virtual QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& /*index*/) const override
@@ -264,8 +263,10 @@ GxsForumThreadWidget::GxsForumThreadWidget(const RsGxsGroupId &forumId, QWidget 
     //setUpdateWhenInvisible(true);
 
     //mUpdating = false;
+    mForceSearch = false;
     mUnreadCount = 0;
     mNewCount = 0;
+    mNotifiedMissingMsgId = RsGxsMessageId();
 
     mInMsgAsReadUnread = false;
 
@@ -312,6 +313,7 @@ GxsForumThreadWidget::GxsForumThreadWidget(const RsGxsGroupId &forumId, QWidget 
     connect(ui->downloadButton, SIGNAL(clicked()), this, SLOT(downloadAllFiles()));
 
     connect(ui->filterLineEdit, SIGNAL(textChanged(QString)), this, SLOT(filterItems(QString)));
+    connect(ui->filterLineEdit, SIGNAL(returnPressed()), this, SLOT(triggerSearch()));
     connect(ui->filterLineEdit, SIGNAL(filterChanged(int)), this, SLOT(filterColumnChanged(int)));
 
     connect(ui->threadedView_TB, SIGNAL(toggled(bool)), this, SLOT(toggleThreadedView(bool)));
@@ -328,6 +330,9 @@ GxsForumThreadWidget::GxsForumThreadWidget(const RsGxsGroupId &forumId, QWidget 
     ui->filterLineEdit->addFilter(QIcon(), tr("Title"), RsGxsForumModel::COLUMN_THREAD_TITLE, tr("Search Title"));
     ui->filterLineEdit->addFilter(QIcon(), tr("Date"), RsGxsForumModel::COLUMN_THREAD_DATE, tr("Search Date"));
     ui->filterLineEdit->addFilter(QIcon(), tr("Author"), RsGxsForumModel::COLUMN_THREAD_AUTHOR, tr("Search Author"));
+#ifdef RS_DEEP_FORUMS_INDEX
+    ui->filterLineEdit->addFilter(QIcon(), tr("Content"), RsGxsForumModel::COLUMN_THREAD_CONTENT, tr("Search Content"));
+#endif
 
     mLastViewType = -1;
 
@@ -1377,10 +1382,62 @@ void GxsForumThreadWidget::insertMessageData(const RsGxsForumMsg &msg)
             , backgroundColor, desiredContrast, desiredMinimumFontSize
         );
     ui->postText->setHtml(extraTxt);
+    highlightContentSearchWords();
 
     QStringList urls;
     RsHtml::findAnchors(ui->postText->toHtml(), urls);
     ui->downloadButton->setEnabled(urls.count() > 0);
+}
+
+void GxsForumThreadWidget::highlightContentSearchWords()
+{
+    /* Extra selections are painted over the document without changing it:
+     * copy, links and the post HTML are left untouched. Same matching as the
+     * index: words starting with one of the searched words, any case. */
+    QList<QTextEdit::ExtraSelection> selections;
+
+    if(!mContentSearchWords.isEmpty())
+    {
+        QStringList alternatives;
+        for(const QString& w : mContentSearchWords)
+            alternatives << QRegularExpression::escape(w);
+
+        const QRegularExpression re(
+                    "\\b(?:" + alternatives.join('|') + ")\\w*",
+                    QRegularExpression::CaseInsensitiveOption |
+                    QRegularExpression::UseUnicodePropertiesOption );
+
+        // Same colour as the chat search, with a readable text on top of it
+        const QColor background = Settings->getChatSearchFoundColor();
+        QTextCharFormat format;
+        format.setBackground(background);
+        format.setForeground(background.lightness() > 128 ? Qt::black : Qt::white);
+
+        constexpr int MAX_HIGHLIGHTS = 1000;
+        QTextDocument* doc = ui->postText->document();
+        QTextCursor found(doc);
+        while(selections.size() < MAX_HIGHLIGHTS)
+        {
+            found = doc->find(re, found);
+            if(found.isNull() || !found.hasSelection()) break;
+
+            QTextEdit::ExtraSelection selection;
+            selection.cursor = found;
+            selection.format = format;
+            selections << selection;
+        }
+
+        // Bring the first match into view, useful in long posts
+        if(!selections.isEmpty())
+        {
+            QTextCursor first = selections.first().cursor;
+            first.clearSelection();
+            ui->postText->setTextCursor(first);
+            ui->postText->ensureCursorVisible();
+        }
+    }
+
+    ui->postText->setExtraSelections(selections);
 }
 
 void GxsForumThreadWidget::previousMessage()
@@ -1544,6 +1601,7 @@ void GxsForumThreadWidget::expandSubtree() {
 
 bool GxsForumThreadWidget::navigate(const RsGxsMessageId &msgId)
 {
+	mNotifiedMissingMsgId.clear();
 	QModelIndex source_index = mThreadModel->getIndexOfMessage(msgId);
 
 	if(!source_index.isValid())
@@ -1551,6 +1609,7 @@ bool GxsForumThreadWidget::navigate(const RsGxsMessageId &msgId)
 		std::cerr << "(EE) Cannot navigate to msg " << msgId << " in forum " << mForumGroup.mMeta.mGroupId << ": index unknown. Setting mNavigatePendingMsgId." << std::endl;
 
 		mNavigatePendingMsgId = msgId;		// not found. That means the forum may not be loaded yet. So we keep that post in mind, for after loading.
+
 		return true;						// we have to return true here, otherwise the caller will intepret the async loading as an error.
 	}
 
@@ -1561,6 +1620,7 @@ bool GxsForumThreadWidget::navigate(const RsGxsMessageId &msgId)
 	ui->threadTreeWidget->setFocus();
 
 	mNavigatePendingMsgId.clear();
+	mNotifiedMissingMsgId.clear();
 
 	return true;
 }
@@ -1852,7 +1912,7 @@ void GxsForumThreadWidget::changedViewBox(int view_mode)
 
 void GxsForumThreadWidget::filterColumnChanged(int column)
 {
-    filterItems(ui->filterLineEdit->text());
+    // The search runs on 'Enter' only, see filterItems()
 
     // save index
     Settings->setValueToGroup("ForumThreadWidget", "filterColumn", column);
@@ -1860,12 +1920,53 @@ void GxsForumThreadWidget::filterColumnChanged(int column)
 
 void GxsForumThreadWidget::filterItems(const QString& text)
 {
-    QStringList lst = text.split(" ",QtSkipEmptyParts) ;
+    /* Every search (title, date, author, content) runs on 'Enter' only:
+     * filtering a big forum at each key stroke makes the UI stutter. Clearing
+     * the field still shows the whole forum at once. */
+    if (!text.isEmpty() && !mForceSearch)
+        return;
 
     int filterColumn = ui->filterLineEdit->currentFilter();
+    QStringList lst = text.split(" ",QtSkipEmptyParts) ;
 
     uint32_t count;
-    mThreadModel->setFilter(filterColumn,lst,count) ;
+    if(filterColumn == RsGxsForumModel::COLUMN_THREAD_CONTENT && !lst.empty())
+    {
+        /* Split like the forum index does: runs of letters and digits, non
+         * ASCII characters included. Kept to highlight them in the posts. */
+        mContentSearchWords.clear();
+        QString word;
+        for(const QChar c : text)
+        {
+            if(c.isLetterOrNumber() || c.unicode() >= 0x80) word += c;
+            else if(!word.isEmpty()) { mContentSearchWords << word; word.clear(); }
+        }
+        if(!word.isEmpty()) mContentSearchWords << word;
+
+        // Clear the current selection, the shown post may not match
+        mThreadId = RsGxsMessageId();
+        blankPost();
+        insertMessage(); // Will display forum description if mThreadId is null
+
+        std::map<RsGxsMessageId, std::string> matches; // id -> snippet
+        std::vector<RsGxsSearchResult> results;
+
+#ifdef RS_DEEP_FORUMS_INDEX
+        // Post bodies of this forum only, no result limit
+        rsGxsForums->localForumSearch(groupId(), text.toStdString(), results, 0);
+
+        for(const auto& res : results)
+            if(!res.mMsgId.isNull())
+                matches[res.mMsgId] = res.mSearchContext;
+#endif
+        mThreadModel->setContentFilter(matches, lst, count);
+    }
+    else
+    {
+        // Title, date or author search, or search cleared
+        mContentSearchWords.clear();
+        mThreadModel->setFilter(filterColumn, lst, count);
+    }
 
     // We do this in order to trigger a new filtering action in the proxy model.
     QSortFilterProxyModel_setFilterRegularExpression(mThreadProxyModel, QString(RsGxsForumModel::FilterString)) ;
@@ -1912,7 +2013,7 @@ void GxsForumThreadWidget::filterItems(const QString& text)
         }
     }
 
-    if(count > 0)
+    if(count == 0 && !text.isEmpty())
         ui->filterLineEdit->setToolTip(tr("No result.")) ;
     else
         ui->filterLineEdit->setToolTip(tr("Found %1 results.").arg(count)) ;
@@ -1935,7 +2036,26 @@ void GxsForumThreadWidget::postForumLoading()
 #endif
 
 	if (!mNavigatePendingMsgId.isNull())
-		navigate(mNavigatePendingMsgId);
+	{
+		if (mThreadModel->getIndexOfMessage(mNavigatePendingMsgId).isValid())
+		{
+			navigate(mNavigatePendingMsgId);
+		}
+		else if (mNotifiedMissingMsgId != mNavigatePendingMsgId)
+		{
+			mNotifiedMissingMsgId = mNavigatePendingMsgId;
+			if (IS_GROUP_SUBSCRIBED(mForumGroup.mMeta.mSubscribeFlags))
+			{
+				QMessageBox::information(this, tr("RetroShare"),
+				                         tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
+			}
+			else
+			{
+				QMessageBox::information(this, tr("RetroShare"),
+				                         tr("The post is missing. Since you are not subscribed to this forum, please subscribe first and wait for synchronization."));
+			}
+		}
+	}
 
 	else if( (mLastSelectedPosts.count(groupId()) > 0)
 	         && !mLastSelectedPosts[groupId()].isNull()
@@ -2154,4 +2274,11 @@ void GxsForumThreadWidget::showAuthorInPeople(const RsGxsForumMsg& msg)
 
     MainWindow::showWindow(MainWindow::People);
     idDialog->navigate(RsGxsId(msg.mMeta.mAuthorId));
+}
+
+void GxsForumThreadWidget::triggerSearch()
+{
+    mForceSearch = true;
+    filterItems(ui->filterLineEdit->text());
+    mForceSearch = false;
 }

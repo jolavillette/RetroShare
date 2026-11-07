@@ -148,6 +148,12 @@ private:
     void updateOutProxyIndicator();
     void loadFilteredIps() ;
 
+    // Auto-Tor nodes: which tor executable to run, and its version state.
+    void setUpTorExecutableElements();
+    void updateTorVersionLabel();
+    QLineEdit *mTorExecutable_LE = nullptr;
+    QLabel *mTorVersion_LB = nullptr;
+
     Ui::ServerPage ui;
 
     QNetworkAccessManager *manager ;

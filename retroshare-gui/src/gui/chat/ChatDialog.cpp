@@ -28,6 +28,7 @@
 #include "ChatDialog.h"
 #include "gui/common/PeerDefs.h"
 #include "PopupChatDialog.h"
+#include "gui/RsGUIEventManager.h"
 #include "PopupDistantChatDialog.h"
 #include "ChatLobbyDialog.h"
 #include "PopupChatWindow.h"
@@ -175,9 +176,16 @@ void ChatDialog::init(const ChatId &id, const QString &title)
         // play sound when recv a message
         SoundManager::play(SOUND_NEW_CHAT_MESSAGE);
 
+    bool newConversation = (getExistingChat(msg.chat_id) == NULL);
+
     ChatDialog *cd = getChat(msg.chat_id, (RsChatFlags)Settings->getChatFlags());
     if(cd)
+    {
         cd->addChatMsg(msg);
+
+        if(msg.chat_id.isDistantChatId() && RsGUIEventManager::getInstance())
+            RsGUIEventManager::getInstance()->notifyDistantChatMessage(cd, msg, newConversation);
+    }
     else
         std::cerr << "ChatDialog::chatMessageReceived(): no ChatDialog for this message. Ignoring Message: " << msg.msg << std::endl;
 }

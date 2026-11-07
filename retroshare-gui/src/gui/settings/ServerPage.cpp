@@ -36,8 +36,16 @@
 #include "retroshare/rsinit.h"
 #include "retroshare/rspeers.h"
 #include "retroshare/rsturtle.h"
+#include "retroshare/rstor.h"
 
 #include <QCheckBox>
+#include <QDir>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
 #include <QMovie>
 #include <QMenu>
 #include <QNetworkProxy>
@@ -128,6 +136,8 @@ ServerPage::ServerPage(QWidget * parent, Qt::WindowFlags flags)
 		  ui.hiddenpage_inHeader->setText(tr("Tor has been automatically configured by Retroshare. You shouldn't need to change anything here.")) ;
 
 		  ui.hiddenServiceTab->removeTab(TAB_HIDDEN_SERVICE_I2P);	// warning: the order of operation here is very important.
+
+		  setUpTorExecutableElements();
       }
   }
   else
@@ -374,6 +384,72 @@ void ServerPage::toggleTunnelConnection(bool b)
 }
 
 /** Loads the settings for this page */
+void ServerPage::setUpTorExecutableElements()
+{
+	QHBoxLayout *exeLayout = new QHBoxLayout;
+
+	exeLayout->addWidget(new QLabel(tr("Tor executable")));
+
+	mTorExecutable_LE = new QLineEdit;
+	mTorExecutable_LE->setText(Settings->getTorExecutablePath());
+	mTorExecutable_LE->setPlaceholderText(QDir::toNativeSeparators(QString::fromStdString(RsTor::torExecutablePath())));
+	mTorExecutable_LE->setToolTip(tr("<html><p>Tor program run by this node. Leave empty to use the Tor bundled with RetroShare, or else the one installed on your system.</p>"
+	                                 "<p>Set it when the bundled Tor is too old. Takes effect at the next start.</p></html>"));
+	exeLayout->addWidget(mTorExecutable_LE);
+
+	QPushButton *browse = new QPushButton(tr("Browse..."));
+	exeLayout->addWidget(browse);
+
+	mTorVersion_LB = new QLabel;
+	mTorVersion_LB->setWordWrap(true);
+
+	// Right after the proxy address grid.
+	ui.hiddenServiceTabManualVLayout->insertLayout(2, exeLayout);
+	ui.hiddenServiceTabManualVLayout->insertWidget(3, mTorVersion_LB);
+
+	connect(mTorExecutable_LE, &QLineEdit::editingFinished, this, [this]()
+	{
+		Settings->setTorExecutablePath(QDir::fromNativeSeparators(mTorExecutable_LE->text().trimmed()));
+	});
+
+	connect(browse, &QPushButton::clicked, this, [this]()
+	{
+		QString current = mTorExecutable_LE->text().trimmed();
+		if(current.isEmpty())
+			current = mTorExecutable_LE->placeholderText();
+
+		QString path = QFileDialog::getOpenFileName(this, tr("Select the Tor executable"),
+		                                            current.isEmpty() ? QString() : QFileInfo(current).absolutePath());
+		if(path.isEmpty())
+			return;
+
+		mTorExecutable_LE->setText(QDir::toNativeSeparators(path));
+		Settings->setTorExecutablePath(path);
+	});
+
+	updateTorVersionLabel();
+}
+
+void ServerPage::updateTorVersionLabel()
+{
+	if(!mTorVersion_LB)
+		return;
+
+	std::string warning = RsTor::torVersionWarning();
+	std::string version = RsTor::torVersion();
+
+	if(!warning.empty())
+	{
+		mTorVersion_LB->setStyleSheet("QLabel { color: red; }");
+		mTorVersion_LB->setText(QString::fromStdString(warning) + " " + tr("Choose another Tor executable above, then restart RetroShare."));
+	}
+	else
+	{
+		mTorVersion_LB->setStyleSheet(QString());
+		mTorVersion_LB->setText(version.empty() ? tr("Tor version: unknown") : tr("Tor version: %1").arg(QString::fromStdString(version)));
+	}
+}
+
 void ServerPage::load()
 {
 #ifdef SERVER_DEBUG
@@ -1275,6 +1351,8 @@ void ServerPage::loadHiddenNode()
 /** Loads the settings for this page */
 void ServerPage::updateStatusHiddenNode()
 {
+	updateTorVersionLabel();	// the Tor network may condemn our tor at any new consensus
+
 #ifdef SERVER_DEBUG
     std::cerr << "ServerPage::updateStatusHiddenNode() called";
     std::cerr << std::endl;

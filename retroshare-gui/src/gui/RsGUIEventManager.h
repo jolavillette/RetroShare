@@ -75,6 +75,11 @@ class RsGUIEventManager: public QObject
 #endif
 		void notifySettingsChanged();
 
+		/* Distant chat messages bypass the CHAT_SERVICE toaster path: the decision
+		 * needs to know whether the message opened a new conversation, which only
+		 * ChatDialog::chatMessageReceived() can tell reliably. */
+		void notifyDistantChatMessage(ChatDialog *dialog, const ChatMessage &msg, bool newConversation);
+
 	signals:
 		// It's beneficial to send info to the GUI using signals, because signals are thread-safe
 		// as they get queued by Qt.
