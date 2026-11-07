@@ -291,6 +291,7 @@ PostedListWidgetWithModel::PostedListWidgetWithModel(const RsGxsGroupId& postedI
     connect(ui->viewModeButton,SIGNAL(clicked()),this,SLOT(switchDisplayMode()));
 
     connect(mPostedPostsModel,SIGNAL(boardPostsLoaded()),this,SLOT(postPostLoad()));
+    connect(mPostedPostsModel,SIGNAL(displayedPostsChanged()),this,SLOT(displayedPostsChanged()));
 
 	/* Setup UI helper */
 
@@ -415,14 +416,28 @@ void PostedListWidgetWithModel::handlePostsTreeSizeChange(QSize size)
 
 void PostedListWidgetWithModel::updateShowLabel()
 {
-	if (mPostedPostsModel->rowCount() > 0)
+	// displayedNbPosts() is the requested window: rowCount() lags behind while
+	// the content of a new page is being fetched.
+
+	if (mPostedPostsModel->displayedNbPosts() > 0)
 		whileBlocking(ui->showLabel)->setText(QString::number(mPostedPostsModel->displayedStartPostIndex()+1)
-		                       +" - "+QString::number(mPostedPostsModel->displayedStartPostIndex()+mPostedPostsModel->rowCount()));
+		                       +" - "+QString::number(mPostedPostsModel->displayedStartPostIndex()+mPostedPostsModel->displayedNbPosts()));
 	else
 		whileBlocking(ui->showLabel)->setText(tr("Empty"));
 
 	ui->nextButton->setEnabled(mPostedPostsModel->displayedStartPostIndex() + POSTS_CHUNK_SIZE < mPostedPostsModel->filteredPostsCount());
 	ui->prevButton->setEnabled(mPostedPostsModel->displayedStartPostIndex() > 0);
+}
+
+void PostedListWidgetWithModel::displayedPostsChanged()
+{
+	updateShowLabel();
+
+	// navigate() filters on the post id, which now completes asynchronously:
+	// finish the navigation once the post is displayed.
+
+	if(!mNavigatePendingMsgId.isNull() && mPostedPostsModel->getIndexOfMessage(mNavigatePendingMsgId).isValid())
+		navigate(RsGxsMessageId(mNavigatePendingMsgId));
 }
 
 void PostedListWidgetWithModel::filterItems(QString text)

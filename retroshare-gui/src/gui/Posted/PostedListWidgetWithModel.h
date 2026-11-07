@@ -146,6 +146,7 @@ private slots:
 	void subscribeGroup(bool subscribe);
 	void settingsChanged();
 	void postPostLoad();
+	void displayedPostsChanged();
 	void copyMessageLink();
     void copyHttpLink();
     void nextPosts();
