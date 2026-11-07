@@ -52,17 +52,26 @@ class QTimer;
 //
 //    * Variables: mDisplayedStartIndex, mDisplayedNbPosts
 //
+//   Layer 4: the rows the view currently shows (mDisplayedPosts)
+//
+//    * mPosts only holds the post metadata (title, author, dates, scores). The
+//      content (image, link, notes) is fetched for the displayed window only and
+//      kept in mPostContents. A board can hold hundreds of MB of images, so
+//      reading the whole board on every opening took 15-20 s on a cold disk.
+//    * When layers 1-3 change, the content of the new window is fetched in the
+//      background and mDisplayedPosts switches to it once it is there, so the
+//      view never shows a post without its content.
+//
 // The array below indicates which variables are updated depending on the type of data/view change:
 //
 //             |  Global list (mPosts) | Filtered List    |  Displayed list (mDisplayedStartIndex, mDisplayedNbPosts)
 //  -----------+-----------------------+------------------+----------------------------------------------------------
 //  New group  |           X           |        X         |  X (updated because FilteredList may change)
-//  Sort order |           X           |                  |
+//  Sort order |           X           |        X         |  X
 //  Filter Str |                       |        X         |  X (updated because FilteredList may change)
-//  Chunk chng |                       |        X         |  X
+//  Chunk chng |                       |                  |  X
 //
-// In the model, indexes internal refs are pointer casts of the index in the mFilteredPosts tab. Another possible choice
-// was to use indexes in the tab of displayed indices, but this leads to a more complex impleemntation.
+// In the model, indexes internal refs are the row in mDisplayedPosts, plus one.
 
 typedef uint32_t PostedPostsModelIndex;
 
@@ -175,6 +184,9 @@ public:
     uint32_t totalPostsCount() const { return mPosts.size() ; }
     uint32_t filteredPostsCount() const { return mFilteredPosts.size() ; }
     uint32_t displayedStartPostIndex() const { return mDisplayedStartIndex ; }
+    // Size of the requested window. rowCount() may still show the previous one
+    // while the content of the new window is being fetched.
+    uint32_t displayedNbPosts() const { return mDisplayedNbPosts ; }
     void clear() ;
 
     // AbstractItemModel functions.
@@ -216,6 +228,7 @@ public:
 
 signals:
     void boardPostsLoaded();	// emitted after the posts have been loaded.
+    void displayedPostsChanged();	// emitted when the view switches to a new window (page, sort, filter).
 
 private:
     RsPostedGroup mPostedGroup;
@@ -248,12 +261,28 @@ private:
 	void handleEvent_main_thread(std::shared_ptr<const RsEvent> event);
 	void refreshPendingPosts();
 
-    std::vector<RsPostedPost> mPosts ;
+	void rebuildPostIndex();
+	void computeFilteredPosts();
+	std::vector<RsGxsMessageId> windowIds(uint32_t start, uint32_t nb) const;
+	void updateDisplayedWindow();
+	void commitDisplayedWindow(const std::vector<RsGxsMessageId>& ids);
+	void prefetchNextWindow();
+	const RsPostedPost *findPost(const RsGxsMessageId& id) const;
+	const RsPostedPost& displayedPost(uint32_t row) const;
+
+    std::vector<RsPostedPost> mPosts ;	// metadata only, no image/link/notes
+    std::map<RsGxsMessageId,uint32_t> mPostIndex;	// msg id -> index in mPosts
     std::vector<int> mFilteredPosts;
+    QStringList mFilterStrings;
     uint32_t mDisplayedStartIndex;
     uint32_t mDisplayedNbPosts;
     uint32_t mDefaultDisplayedNbPosts;
     SortingStrategy mSortingStrategy;
+
+    std::vector<RsGxsMessageId> mDisplayedPosts;	// rows shown by the view
+    std::map<RsGxsMessageId,RsPostedPost> mPostContents;	// full posts of the displayed (and next) window
+    uint32_t mWindowRequestId;	// bumped on every window change, to drop outdated fetches
+    bool mLoadPending;	// emit boardPostsLoaded() at the next window commit
 
 	// Posts to re-read after single-post events, refreshed in one go
 	// by refreshPendingPosts() when mRefreshTimer fires.

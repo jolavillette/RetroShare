@@ -24,6 +24,9 @@
 #include <QIcon>
 #include <QTimer>
 
+#include <memory>
+#include <set>
+
 #include "retroshare/rsgxsflags.h"
 #include "retroshare/rsexpr.h"
 
@@ -44,9 +47,10 @@ const uint32_t RsPostedPostsModel::DEFAULT_DISPLAYED_NB_POSTS = 10;
 std::ostream& operator<<(std::ostream& o, const QModelIndex& i);// defined elsewhere
 
 RsPostedPostsModel::RsPostedPostsModel(int default_chunk_size, QObject *parent)
-    : QAbstractItemModel(parent), mTreeMode(TREE_MODE_PLAIN)
+    : QAbstractItemModel(parent), mTreeMode(TREE_MODE_PLAIN), mWindowRequestId(0), mLoadPending(false)
 {
     mDefaultDisplayedNbPosts = default_chunk_size;
+    mSortingStrategy = SORT_NEW_SCORE;
 
     // Single-post events come in bursts (one per post after a "mark all as
     // read" on a large board, or after a sync): refresh their posts together,
@@ -59,7 +63,6 @@ RsPostedPostsModel::RsPostedPostsModel(int default_chunk_size, QObject *parent)
     initEmptyHierarchy();
 
 	mEventHandlerId = 0;
-    mSortingStrategy = SORT_NEW_SCORE;
 
 	// Needs to be asynced because this function is called by another thread!
 
@@ -100,16 +103,23 @@ void RsPostedPostsModel::handleEvent_main_thread(std::shared_ptr<const RsEvent> 
 
 				const std::set<RsGxsMessageId> ids(e->mPostedMsgIds.begin(),e->mPostedMsgIds.end());
 
+				auto set_status = [e](RsMsgMetaData& meta)
+				{
+					if(e->mPostedMsgsRead)
+						meta.mMsgStatus &= ~(GXS_SERV::GXS_MSG_STATUS_GUI_UNREAD | GXS_SERV::GXS_MSG_STATUS_GUI_NEW);
+					else
+						meta.mMsgStatus |= GXS_SERV::GXS_MSG_STATUS_GUI_UNREAD;
+				};
+
 				for(uint32_t i=0;i<mPosts.size();++i)
 					if(ids.count(mPosts[i].mMeta.mMsgId))
-					{
-						if(e->mPostedMsgsRead)
-							mPosts[i].mMeta.mMsgStatus &= ~(GXS_SERV::GXS_MSG_STATUS_GUI_UNREAD | GXS_SERV::GXS_MSG_STATUS_GUI_NEW);
-						else
-							mPosts[i].mMeta.mMsgStatus |= GXS_SERV::GXS_MSG_STATUS_GUI_UNREAD;
-					}
+						set_status(mPosts[i].mMeta);
 
-				emit dataChanged(createIndex(0,0,(void*)NULL), createIndex(mDisplayedNbPosts-1,0,(void*)NULL));
+				for(auto& it:mPostContents)
+					if(ids.count(it.first))
+						set_status(it.second.mMeta);
+
+				update();
 				return;
 			}
 
@@ -151,48 +161,118 @@ void RsPostedPostsModel::refreshPendingPosts()
 		return;
 	}
 
-	// Hand the id set over through a pointer: the lambda capture would
-	// otherwise deep copy it.
-	auto* ids = new std::set<RsGxsMessageId>();
-	ids->swap(mPendingRefreshIds);
+	// Only the posts of the displayed (and next) window hold their content,
+	// so only those need a full read. The others are metadata only: re-read
+	// a few by id, but a large burst (e.g. "mark all as read") through the
+	// post summaries, instead of reading every image of the board.
 
-	RsThread::async([this, grpId=mPendingRefreshGroupId, ids]()
+	static const size_t MAX_FULL_READS_FOR_METAS = 50;
+
+	auto* contentIds = new std::set<RsGxsMessageId>();
+	auto* metaIds = new std::set<RsGxsMessageId>();
+
+	for(const auto& id:mPendingRefreshIds)
+		if(mPostContents.count(id))
+			contentIds->insert(id);
+		else if(mPostIndex.count(id))
+			metaIds->insert(id);
+
+	mPendingRefreshIds.clear();
+
+	if(metaIds->size() <= MAX_FULL_READS_FOR_METAS)
+	{
+		contentIds->insert(metaIds->begin(), metaIds->end());
+		metaIds->clear();
+	}
+
+	if(contentIds->empty() && metaIds->empty())
+	{
+		delete contentIds;
+		delete metaIds;
+		return;
+	}
+
+	// The id sets are handed over through pointers: the lambda capture would
+	// otherwise deep copy them.
+	RsThread::async([this, grpId=mPendingRefreshGroupId, contentIds, metaIds]()
 	{
 		// 1 - get message data from p3Posted
 
 		auto posts = std::make_shared<std::vector<RsPostedPost> >();
-		std::vector<RsGxsComment> comments;
-		std::vector<RsGxsVote>    votes;
 
-		bool ok = rsPosted->getBoardContent(grpId, *ids, *posts, comments, votes);
+		if(!contentIds->empty())
+		{
+			std::vector<RsGxsComment> comments;
+			std::vector<RsGxsVote>    votes;
 
-		if(!ok)
-			RS_ERR("failed to retrieve ", ids->size(), " updated posts of board ", grpId);
+			if(!rsPosted->getBoardContent(grpId, *contentIds, *posts, comments, votes))
+				RS_ERR("failed to retrieve ", contentIds->size(), " updated posts of board ", grpId);
+		}
 
-		delete ids;
+		auto metaPosts = std::make_shared<std::vector<RsPostedPost> >();
 
-		if(!ok || posts->empty())
+		if(!metaIds->empty())
+		{
+			std::vector<RsMsgMetaData> metas;
+
+			if(rsPosted->getBoardPostSummaries(grpId, metas))
+			{
+				rstime_t now = time(nullptr);
+
+				for(auto& meta:metas)
+					if(metaIds->count(meta.mMsgId))
+					{
+						RsPostedPost post;
+						post.mMeta = std::move(meta);
+						post.calculateScores(now);
+						metaPosts->push_back(std::move(post));
+					}
+			}
+			else
+				RS_ERR("failed to retrieve the post summaries of board ", grpId);
+		}
+
+		delete contentIds;
+		delete metaIds;
+
+		if(posts->empty() && metaPosts->empty())
 			return;
 
 		// 2 - update the model in the UI thread.
 
-		RsQThreadUtils::postToObject( [posts,grpId,this]()
+		RsQThreadUtils::postToObject( [posts,metaPosts,grpId,this]()
 		{
 			if(grpId != mPostedGroup.mMeta.mGroupId)
 				return;
-
-			std::map<RsGxsMessageId,uint32_t> index;
-
-			for(uint32_t j=0;j<mPosts.size();++j)
-				index[mPosts[j].mMeta.mMsgId] = j;
 
 			bool changed = false;
 
 			for(auto& post:*posts)
 			{
-				auto it = index.find(post.mMeta.mMsgId);
+				auto it = mPostIndex.find(post.mMeta.mMsgId);
 
-				if(it == index.end())
+				if(it == mPostIndex.end())
+					continue;
+
+				// mPosts keeps the metadata only, the content goes to the cache.
+
+				if(mPostContents.count(post.mMeta.mMsgId))
+					mPostContents[post.mMeta.mMsgId] = post;
+
+				RsPostedPost& p(mPosts[it->second]);
+				p = post;
+				p.mImage.clear();
+				p.mLink.clear();
+				p.mNotes.clear();
+
+				changed = true;
+			}
+
+			for(auto& post:*metaPosts)
+			{
+				auto it = mPostIndex.find(post.mMeta.mMsgId);
+
+				if(it == mPostIndex.end())
 					continue;
 
 				mPosts[it->second] = post;
@@ -212,14 +292,179 @@ void RsPostedPostsModel::refreshPendingPosts()
 
 void RsPostedPostsModel::initEmptyHierarchy()
 {
-    preMods();
+    beginResetModel();
 
     mPosts.clear();
+    mPostIndex.clear();
     mFilteredPosts.clear();
+    mFilterStrings.clear();
+    mDisplayedPosts.clear();
+    mPostContents.clear();
     mDisplayedNbPosts = mDefaultDisplayedNbPosts;
     mDisplayedStartIndex = 0;
+    ++mWindowRequestId;	// drop any fetch still in flight
+    mLoadPending = false;
 
-    postMods();
+    endResetModel();
+}
+
+void RsPostedPostsModel::rebuildPostIndex()
+{
+    mPostIndex.clear();
+
+    for(uint32_t i=0;i<mPosts.size();++i)
+        mPostIndex[mPosts[i].mMeta.mMsgId] = i;
+}
+
+const RsPostedPost *RsPostedPostsModel::findPost(const RsGxsMessageId& id) const
+{
+    auto it = mPostIndex.find(id);
+
+    return (it == mPostIndex.end())? nullptr : &mPosts[it->second];
+}
+
+const RsPostedPost& RsPostedPostsModel::displayedPost(uint32_t row) const
+{
+    static const RsPostedPost empty_post;
+
+    if(row >= mDisplayedPosts.size())
+        return empty_post;
+
+    const RsGxsMessageId& id(mDisplayedPosts[row]);
+
+    // The content entry carries the metadata too, kept in sync by the event
+    // handlers. Without content (fetch failed), show what the metadata has.
+
+    auto it = mPostContents.find(id);
+
+    if(it != mPostContents.end())
+        return it->second;
+
+    const RsPostedPost *meta = findPost(id);
+
+    return meta? *meta : empty_post;
+}
+
+std::vector<RsGxsMessageId> RsPostedPostsModel::windowIds(uint32_t start, uint32_t nb) const
+{
+    std::vector<RsGxsMessageId> ids;
+
+    for(uint32_t i=start;i<start+nb && i<mFilteredPosts.size();++i)
+        ids.push_back(mPosts[mFilteredPosts[i]].mMeta.mMsgId);
+
+    return ids;
+}
+
+void RsPostedPostsModel::updateDisplayedWindow()
+{
+    uint32_t request_id = ++mWindowRequestId;
+
+    std::vector<RsGxsMessageId> ids = windowIds(mDisplayedStartIndex, mDisplayedNbPosts);
+    std::set<RsGxsMessageId> missing;
+
+    for(const auto& id:ids)
+        if(!mPostContents.count(id))
+            missing.insert(id);
+
+    if(missing.empty())
+    {
+        commitDisplayedWindow(ids);
+        prefetchNextWindow();
+        return;
+    }
+
+    // Fetch the content of the new window, then switch the view to it. Until
+    // then the view keeps showing the previous window, which stays consistent
+    // since rows are looked up by message id.
+
+    RsGxsGroupId grpId = mPostedGroup.mMeta.mGroupId;
+
+    RsThread::async([this, grpId, missing, ids, request_id]()
+    {
+        auto posts = std::make_shared<std::vector<RsPostedPost> >();
+        std::vector<RsGxsComment> comments;
+        std::vector<RsGxsVote>    votes;
+
+        if(!rsPosted->getBoardContent(grpId, missing, *posts, comments, votes))
+            RS_ERR("failed to retrieve the content of ", missing.size(), " posts of board ", grpId);
+
+        RsQThreadUtils::postToObject( [this, grpId, posts, ids, request_id]()
+        {
+            if(request_id != mWindowRequestId || grpId != mPostedGroup.mMeta.mGroupId)
+                return;	// the window changed again meanwhile
+
+            for(auto& p:*posts)
+                mPostContents[p.mMeta.mMsgId] = std::move(p);
+
+            commitDisplayedWindow(ids);
+            prefetchNextWindow();
+        }, this );
+    });
+}
+
+void RsPostedPostsModel::commitDisplayedWindow(const std::vector<RsGxsMessageId>& ids)
+{
+    beginResetModel();
+
+    mDisplayedPosts = ids;
+
+    // Only keep the content of the displayed window and of the next one, so
+    // that browsing a large board does not end up holding all its images.
+
+    std::set<RsGxsMessageId> keep(ids.begin(), ids.end());
+
+    for(const auto& id:windowIds(mDisplayedStartIndex + mDisplayedNbPosts, mDefaultDisplayedNbPosts))
+        keep.insert(id);
+
+    for(auto it=mPostContents.begin();it!=mPostContents.end();)
+        if(keep.count(it->first))
+            ++it;
+        else
+            it = mPostContents.erase(it);
+
+    endResetModel();
+
+    if(mLoadPending)
+    {
+        mLoadPending = false;
+        emit boardPostsLoaded();
+    }
+    else
+        emit displayedPostsChanged();
+}
+
+void RsPostedPostsModel::prefetchNextWindow()
+{
+    std::set<RsGxsMessageId> missing;
+
+    for(const auto& id:windowIds(mDisplayedStartIndex + mDisplayedNbPosts, mDefaultDisplayedNbPosts))
+        if(!mPostContents.count(id))
+            missing.insert(id);
+
+    if(missing.empty())
+        return;
+
+    uint32_t request_id = mWindowRequestId;
+    RsGxsGroupId grpId = mPostedGroup.mMeta.mGroupId;
+
+    RsThread::async([this, grpId, missing, request_id]()
+    {
+        auto posts = std::make_shared<std::vector<RsPostedPost> >();
+        std::vector<RsGxsComment> comments;
+        std::vector<RsGxsVote>    votes;
+
+        if(!rsPosted->getBoardContent(grpId, missing, *posts, comments, votes))
+            return;
+
+        RsQThreadUtils::postToObject( [this, grpId, posts, request_id]()
+        {
+            if(request_id != mWindowRequestId || grpId != mPostedGroup.mMeta.mGroupId)
+                return;
+
+            for(auto& p:*posts)
+                mPostContents[p.mMeta.mMsgId] = std::move(p);
+        }, this );
+    });
 }
 
 void RsPostedPostsModel::preMods()
@@ -233,8 +478,8 @@ void RsPostedPostsModel::postMods()
 }
 void RsPostedPostsModel::update()
 {
-    if(mDisplayedNbPosts > 0)
-        emit dataChanged(createIndex(0,0,(void*)NULL), createIndex(mDisplayedNbPosts-1,0,(void*)NULL));
+    if(!mDisplayedPosts.empty())
+        emit dataChanged(index(0,0), index((int)mDisplayedPosts.size()-1,0));
 }
 void RsPostedPostsModel::triggerRedraw()
 {
@@ -244,11 +489,24 @@ void RsPostedPostsModel::triggerRedraw()
 
 void RsPostedPostsModel::setFilter(const QStringList& strings, uint32_t& count)
 {
-	preMods();
+	mFilterStrings = strings;
+	computeFilteredPosts();
 
-	beginResetModel();
+	count = mFilteredPosts.size();
+
+	mDisplayedStartIndex = 0;
+    mDisplayedNbPosts = std::min(count,mDefaultDisplayedNbPosts) ;
+
+	std::cerr << "After filtering: " << count << " posts remain." << std::endl;
+
+	updateDisplayedWindow();
+}
+
+void RsPostedPostsModel::computeFilteredPosts()
+{
+	const QStringList& strings(mFilterStrings);
+
 	mFilteredPosts.clear();
-	endResetModel();
 
 	if(strings.empty())
 	{
@@ -273,15 +531,6 @@ void RsPostedPostsModel::setFilter(const QStringList& strings, uint32_t& count)
 				mFilteredPosts.push_back(i);
 		}
 	}
-	count = mFilteredPosts.size();
-
-	mDisplayedStartIndex = 0;
-    mDisplayedNbPosts = std::min(count,mDefaultDisplayedNbPosts) ;
-
-	std::cerr << "After filtering: " << count << " posts remain." << std::endl;
-
-	// The filtered set is rebuilt above, postMods() signals the layout change.
-	postMods();
 }
 
 int RsPostedPostsModel::rowCount(const QModelIndex& parent) const
@@ -289,11 +538,8 @@ int RsPostedPostsModel::rowCount(const QModelIndex& parent) const
     if(parent.column() > 0)
         return 0;
 
-    if(mFilteredPosts.empty())  // rowCount is called by internal Qt so maybe before posts are populated.
-        return 0;
-
     if(!parent.isValid())
-        return mDisplayedNbPosts;
+        return mDisplayedPosts.size();
 
     RsErr() << __PRETTY_FUNCTION__ << " rowCount cannot figure out the porper number of rows." << std::endl;
     return 0;
@@ -312,10 +558,10 @@ bool RsPostedPostsModel::getPostData(const QModelIndex& i,RsPostedPost& fmpe) co
     quintptr ref = i.internalId();
 	uint32_t entry = 0;
 
-	if(!convertRefPointerToTabEntry(ref,entry))
+	if(!convertRefPointerToTabEntry(ref,entry) || entry >= mDisplayedPosts.size())
 		return false ;
 
-    fmpe = mPosts[mFilteredPosts[entry]];
+    fmpe = displayedPost(entry);
 
 	return true;
 
@@ -392,7 +638,7 @@ quintptr RsPostedPostsModel::getChildRef(quintptr ref,int index) const
 	if(ref == quintptr(0))
 	{
 		quintptr new_ref;
-		convertTabEntryToRefPointer(index+mDisplayedStartIndex,new_ref);
+		convertTabEntryToRefPointer(index,new_ref);
 		return new_ref;
 	}
 	else
@@ -403,7 +649,7 @@ quintptr RsPostedPostsModel::getParentRow(quintptr ref,int& row) const
 {
 	PostedPostsModelIndex ref_entry;
 
-	if(!convertRefPointerToTabEntry(ref,ref_entry) || ref_entry >= mFilteredPosts.size())
+	if(!convertRefPointerToTabEntry(ref,ref_entry) || ref_entry >= mDisplayedPosts.size())
 		return 0 ;
 
 	if(ref_entry == 0)
@@ -458,7 +704,7 @@ QVariant RsPostedPostsModel::data(const QModelIndex& index, int role) const
 		return QVariant() ;
 	}
 
-	if(!convertRefPointerToTabEntry(ref,entry) || entry >= mFilteredPosts.size())
+	if(!convertRefPointerToTabEntry(ref,entry) || entry >= mDisplayedPosts.size())
 	{
 #ifdef DEBUG_CHANNEL_MODEL
 		std::cerr << "Bad pointer: " << (void*)ref << std::endl;
@@ -466,7 +712,7 @@ QVariant RsPostedPostsModel::data(const QModelIndex& index, int role) const
 		return QVariant() ;
 	}
 
-	const RsPostedPost& fmpe(mPosts[mFilteredPosts[entry]]);
+	const RsPostedPost& fmpe(displayedPost(entry));
 
 	switch(role)
 	{
@@ -520,11 +766,8 @@ void RsPostedPostsModel::updateBoard(const RsGxsGroupId& board_group_id)
 
 void RsPostedPostsModel::clear()
 {
-    preMods();
-
     initEmptyHierarchy();
 
-	postMods();
 	emit boardPostsLoaded();
 }
 
@@ -559,12 +802,19 @@ Qt::ItemFlags RsPostedPostsModel::flags(const QModelIndex& index) const
 
 void RsPostedPostsModel::setSortingStrategy(RsPostedPostsModel::SortingStrategy s)
 {
-    preMods();
-
     mSortingStrategy = s;
     std::sort(mPosts.begin(),mPosts.end(), PostSorter(s));
+    rebuildPostIndex();
 
-	postMods();
+    // mFilteredPosts holds indices in mPosts, so it must follow the new order.
+    computeFilteredPosts();
+
+    if(mDisplayedStartIndex >= mFilteredPosts.size())
+        mDisplayedStartIndex = 0;
+
+    mDisplayedNbPosts = std::min(mDefaultDisplayedNbPosts, (uint32_t)mFilteredPosts.size() - mDisplayedStartIndex);
+
+    updateDisplayedWindow();
 }
 
 void RsPostedPostsModel::setPostsInterval(int start,int nb_posts)
@@ -574,59 +824,45 @@ void RsPostedPostsModel::setPostsInterval(int start,int nb_posts)
 	if(start < 0)
 		start = 0;
 
-	preMods();
-
-    int old_nb_rows = rowCount() ;
-    int new_nb_rows = (uint32_t)std::min(nb_posts,(int)mFilteredPosts.size() - start);
-
-    if(old_nb_rows > new_nb_rows)
-    {
-        beginRemoveRows(QModelIndex(),new_nb_rows,old_nb_rows-1);
-        endRemoveRows();
-    }
-
     mDisplayedStartIndex = start;
-    mDisplayedNbPosts = new_nb_rows;
+    mDisplayedNbPosts = (uint32_t)std::min(nb_posts,(int)mFilteredPosts.size() - start);
 
-    if(new_nb_rows > old_nb_rows)
-    {
-        beginInsertRows(QModelIndex(),old_nb_rows,new_nb_rows-1);
-        endInsertRows();
-    }
-
-	postMods();
+    updateDisplayedWindow();
 }
 
 void RsPostedPostsModel::deepUpdate()
 {
-    auto posts(mPosts);
-    setPosts(mPostedGroup,posts);
+    // Rows are rebuilt from the data already in memory: no reload.
+
+    beginResetModel();
+    endResetModel();
 }
 
 void RsPostedPostsModel::setPosts(const RsPostedGroup& group, std::vector<RsPostedPost>& posts)
 {
-	preMods();
+	if(group.mMeta.mGroupId != mPostedGroup.mMeta.mGroupId)
+	{
+		// Do not keep showing the posts of the previous board while the
+		// content of the new one is being fetched.
 
-	beginResetModel();
+		beginResetModel();
+		mDisplayedPosts.clear();
+		mPostContents.clear();
+		endResetModel();
+	}
 
-	mPosts.clear();
 	mPostedGroup = group;
-
-	endResetModel();
 
 	createPostsArray(posts);
 
 	std::sort(mPosts.begin(),mPosts.end(), PostSorter(mSortingStrategy));
+	rebuildPostIndex();
+
+	// boardPostsLoaded() is emitted once the first window has its content.
+	mLoadPending = true;
 
 	uint32_t tmpval;
 	setFilter(QStringList(),tmpval);
-
-    mDisplayedNbPosts = std::min((uint32_t)mFilteredPosts.size(),mDefaultDisplayedNbPosts);
-	mDisplayedStartIndex = 0;
-
-	postMods();
-
-	emit boardPostsLoaded();
 }
 
 void RsPostedPostsModel::update_posts(const RsGxsGroupId& group_id)
@@ -652,34 +888,42 @@ void RsPostedPostsModel::update_posts(const RsGxsGroupId& group_id)
 
         RsPostedGroup group = groups[0];
 
-        // We use the heap because the arrays need to be stored accross async
+        // Only read the post metadata: it is enough to sort (the scores come
+        // from the service string) and to filter by title. The content of the
+        // displayed posts is fetched afterwards (see updateDisplayedWindow()).
+        // getBoardPostSummaries() waits 5 s at most, which a cold database can
+        // exceed. The cancelled request still fills the meta cache, so retry.
 
-		std::vector<RsPostedPost> *posts    = new std::vector<RsPostedPost>();
-		std::vector<RsGxsComment> *comments = new std::vector<RsGxsComment>();
-		std::vector<RsGxsVote>    *votes    = new std::vector<RsGxsVote>();
+		std::vector<RsMsgMetaData> metas;
+		bool ok = false;
 
-		if(!rsPosted->getBoardAllContent(group_id, *posts,*comments,*votes))
+		for(int attempt=0; attempt<6 && !ok; ++attempt)
+			ok = rsPosted->getBoardPostSummaries(group_id, metas);
+
+		if(!ok)
 		{
-			std::cerr << __PRETTY_FUNCTION__ << " failed to retrieve channel messages for channel " << group_id << std::endl;
+			RS_ERR("failed to retrieve the post summaries of board ", group_id);
 			return;
+		}
+
+		auto posts = std::make_shared<std::vector<RsPostedPost> >();
+		posts->reserve(metas.size());
+
+		rstime_t now = time(nullptr);
+
+		for(auto& meta:metas)
+		{
+			RsPostedPost post;
+			post.mMeta = std::move(meta);
+			post.calculateScores(now);
+			posts->push_back(std::move(post));
 		}
 
         // 2 - update the model in the UI thread.
 
-        RsQThreadUtils::postToObject( [group,posts,comments,votes,this]()
+        RsQThreadUtils::postToObject( [group,posts,this]()
 		{
-			/* Here it goes any code you want to be executed on the Qt Gui
-			 * thread, for example to update the data model with new information
-			 * after a blocking call to RetroShare API complete, note that
-			 * Qt::QueuedConnection is important!
-			 */
-
             setPosts(group,*posts) ;
-
-            delete posts;
-            delete comments;
-            delete votes;
-
 		}, this );
 
     });
@@ -851,13 +1095,18 @@ void RsPostedPostsModel::setMsgReadStatus(const QModelIndex& i,bool read_status)
 	quintptr ref = i.internalId();
 	uint32_t entry = 0;
 
-	if(!convertRefPointerToTabEntry(ref,entry) || entry >= mFilteredPosts.size())
+	if(!convertRefPointerToTabEntry(ref,entry) || entry >= mDisplayedPosts.size())
 		return ;
 
-    RsGxsGroupId grpId = mPosts[entry].mMeta.mGroupId;
-    RsGxsMessageId msgId = mPosts[entry].mMeta.mMsgId;
+    const RsPostedPost *post = findPost(mDisplayedPosts[entry]);
 
-    bool current_read_status = !(IS_MSG_UNREAD(mPosts[entry].mMeta.mMsgStatus) || IS_MSG_NEW(mPosts[entry].mMeta.mMsgStatus));
+    if(!post)
+        return;
+
+    RsGxsGroupId grpId = post->mMeta.mGroupId;
+    RsGxsMessageId msgId = post->mMeta.mMsgId;
+
+    bool current_read_status = !(IS_MSG_UNREAD(post->mMeta.mMsgStatus) || IS_MSG_NEW(post->mMeta.mMsgStatus));
 
     if(current_read_status != read_status)
         RsThread::async([msgId,grpId,read_status]()
@@ -870,35 +1119,16 @@ void RsPostedPostsModel::setMsgReadStatus(const QModelIndex& i,bool read_status)
 
 QModelIndex RsPostedPostsModel::getIndexOfMessage(const RsGxsMessageId& mid) const
 {
-	// Brutal search. This is not so nice, so dont call that in a loop! If too costly, we'll use a map.
+	// Linear search in the displayed rows only, which is a single page.
 
-	RsGxsMessageId postId = mid;
-
-	for(uint32_t i=mDisplayedStartIndex;i<mDisplayedStartIndex+mDisplayedNbPosts;++i)
-	{
-		// First look into msg versions, in case the msg is a version of an existing message
-
-#ifdef TODO
-		for(auto& msg_id:mPosts[mFilteredPosts[i]].mOlderVersions)
-			if(msg_id == postId)
-			{
-				quintptr ref ;
-				convertTabEntryToRefPointer(i,ref);	// we dont use i+1 here because i is not a row, but an index in the mPosts tab
-
-				return createIndex(i,0, ref);
-			}
-#endif
-
-		if(   mFilteredPosts.size() > (size_t)(i)
-		   && mPosts[mFilteredPosts[i]].mMeta.mMsgId == postId )
+	for(uint32_t i=0;i<mDisplayedPosts.size();++i)
+		if(mDisplayedPosts[i] == mid)
 		{
 			quintptr ref ;
-			convertTabEntryToRefPointer(i,ref);	// we dont use i+1 here because i is not a row, but an index in the mPosts tab
+			convertTabEntryToRefPointer(i,ref);
 
 			return createIndex(i,0, ref);
 		}
-	}
 
 	return QModelIndex();
 }
-
