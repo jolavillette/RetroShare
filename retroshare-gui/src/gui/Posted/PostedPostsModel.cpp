@@ -915,6 +915,9 @@ void RsPostedPostsModel::update_posts(const RsGxsGroupId& group_id)
 		if(!ok)
 		{
 			RS_ERR("failed to retrieve the post summaries of board ", group_id);
+
+			// Still end the load, so that the widget stops showing "Loading...".
+			RsQThreadUtils::postToObject( [this]() { emit boardPostsLoaded(); }, this );
 			return;
 		}
 

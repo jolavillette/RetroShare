@@ -302,7 +302,7 @@ PostedListWidgetWithModel::PostedListWidgetWithModel(const RsGxsGroupId& postedI
 	connect(RsGUIEventManager::getInstance(), SIGNAL(settingsChanged()),this, SLOT(settingsChanged()));
 
 	/* add filter actions */
-    ui->postsTree->setPlaceholderText(tr("No posts available in this board"));
+    ui->postsTree->setPlaceholderText(tr("Loading..."));	// the board is loaded right away, see postPostLoad()
     //ui->postsTree->setMinimumWidth(COLUMN_SIZE_FONT_FACTOR_W*QFontMetricsF(font()).height()+1);
 
     connect(ui->postsTree,SIGNAL(sizeChanged(QSize)),this,SLOT(handlePostsTreeSizeChange(QSize)));
@@ -607,6 +607,10 @@ void PostedListWidgetWithModel::updateGroupData()
 	if(groupId().isNull())
 		return;
 
+	// Only visible while the view has no rows. postPostLoad() puts the
+	// "no posts" text back once the board is loaded.
+	ui->postsTree->setPlaceholderText(tr("Loading..."));
+
 	RsThread::async([this]()
 	{
 		std::vector<RsPostedGroup> groups;
@@ -648,6 +652,9 @@ void PostedListWidgetWithModel::postPostLoad()
 	std::cerr << "Post channel load..." << std::endl;
 #endif
 	whileBlocking(ui->filter_LE)->setText(QString()); //Clear it before navigate, as it will update it.
+
+	// If there are no posts, this is what is going to be displayed.
+	ui->postsTree->setPlaceholderText(tr("No posts available in this board"));
 
 	if (!mNavigatePendingMsgId.isNull())
 		navigate(mNavigatePendingMsgId);
