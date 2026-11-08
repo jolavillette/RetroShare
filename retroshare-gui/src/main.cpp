@@ -28,7 +28,13 @@ CrashStackTrace gCrashStackTrace;
 
 #include <QObject>
 #include <QMessageBox>
+#include <QProgressDialog>
 #include <QSplashScreen>
+
+#include <atomic>
+#include <chrono>
+#include <mutex>
+#include <thread>
 #include <QMessageBox>
 #include <QBuffer>
 #include <QSharedMemory>
@@ -238,6 +244,90 @@ static bool setLanguage(const std::string& language)
     }
 }
 
+
+// Compaction of the GXS databases asked for in the settings (General page).
+// It has to run before RsControl::StartupRetroShare() opens the databases,
+// takes minutes for large ones, and cannot be split, so it runs on a thread
+// while a dialog shows which database is being compacted. Stopping takes
+// effect between two databases; an interrupted database stays as it was.
+static void compactGxsDatabasesWithProgress()
+{
+	const uint64_t total = RsInit::gxsDatabasesSize();
+
+	auto db_label = [](const std::string& name) -> QString
+	{
+		if(name == "gxsid_db")       return QObject::tr("identities");
+		if(name == "gxscircles_db")  return QObject::tr("circles");
+		if(name == "gxsforums_db")   return QObject::tr("forums");
+		if(name == "gxschannels_db") return QObject::tr("channels");
+		if(name == "posted_db")      return QObject::tr("boards");
+		if(name == "gxstrans_db")    return QObject::tr("distant mail");
+		return QString::fromStdString(name);
+	};
+
+	QProgressDialog dialog(QObject::tr("Compacting the databases..."), QObject::tr("Stop"), 0, 1000);
+	dialog.setWindowTitle(QObject::tr("RetroShare"));
+	dialog.setWindowModality(Qt::ApplicationModal);
+	dialog.setMinimumDuration(0);
+	dialog.setAutoClose(false);
+	dialog.setAutoReset(false);
+	dialog.setValue(0);
+	dialog.show();
+
+	std::mutex mtx;
+	std::string current;
+	uint64_t done = 0;
+	std::atomic<bool> stop(false);
+	std::atomic<bool> finished(false);
+	bool ok = false;
+
+	std::thread worker([&]()
+	{
+		ok = RsInit::compactGxsDatabases([&](const std::string& name, uint64_t done_bytes, uint64_t)
+		{
+			std::lock_guard<std::mutex> lock(mtx);
+			current = name;
+			done = done_bytes;
+			return !stop;
+		});
+		finished = true;
+	});
+
+	while(!finished)
+	{
+		QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+
+		if(dialog.wasCanceled() && !stop)
+			stop = true;
+
+		std::string name;
+		uint64_t done_bytes;
+		{
+			std::lock_guard<std::mutex> lock(mtx);
+			name = current;
+			done_bytes = done;
+		}
+
+		if(stop)
+			dialog.setLabelText(QObject::tr("Stopping after the current database..."));
+		else if(!name.empty())
+			dialog.setLabelText(QObject::tr("Compacting the %1 database (%2 of %3 MB done).\nThis can take several minutes.")
+			                    .arg(db_label(name)).arg(done_bytes / (1024 * 1024)).arg(total / (1024 * 1024)));
+
+		if(total > 0)
+			dialog.setValue((int)(done_bytes * 1000 / total));
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(50));
+	}
+
+	worker.join();
+	dialog.close();
+
+	if(!ok && !stop)
+		QMessageBox::warning(nullptr, QObject::tr("RetroShare"),
+		                     QObject::tr("Some databases could not be compacted, they were left as they were. "
+		                                 "The log tells which ones and why (often: not enough free disk space)."));
+}
 
 static void displayWarningAboutDSAKeys()
 {
@@ -633,6 +723,10 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
             }
         }
     }
+
+    // Before StartupRetroShare(), which opens the GXS databases.
+    if(RsInit::isGxsDatabaseCompactionRequested())
+        compactGxsDatabasesWithProgress();
 
     QSplashScreen splashScreen(FilesDefs::getPixmapFromQtResourcePath(":/images/logo/logo_splash.png")/* , Qt::WindowStaysOnTopHint*/);
 
