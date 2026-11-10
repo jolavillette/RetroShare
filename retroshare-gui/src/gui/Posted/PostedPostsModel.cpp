@@ -811,6 +811,18 @@ void RsPostedPostsModel::setMsgReadStatus(const QModelIndex& i,bool read_status)
         } );
 }
 
+bool RsPostedPostsModel::hasMessage(const RsGxsMessageId& mid) const
+{
+	// getIndexOfMessage() only looks at the displayed page, so it cannot tell whether a post
+	// beyond page 1 exists. navigate() filters on "ID:<msgId>", which matches mMeta.mMsgId only.
+
+	for(const auto& post:mPosts)
+		if(post.mMeta.mMsgId == mid)
+			return true;
+
+	return false;
+}
+
 QModelIndex RsPostedPostsModel::getIndexOfMessage(const RsGxsMessageId& mid) const
 {
 	// Brutal search. This is not so nice, so dont call that in a loop! If too costly, we'll use a map.

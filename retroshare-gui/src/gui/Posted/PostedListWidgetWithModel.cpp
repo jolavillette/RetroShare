@@ -638,7 +638,7 @@ void PostedListWidgetWithModel::postPostLoad()
 
 	if (!mNavigatePendingMsgId.isNull())
 	{
-		if (mPostedPostsModel->getIndexOfMessage(mNavigatePendingMsgId).isValid())
+		if (mPostedPostsModel->hasMessage(mNavigatePendingMsgId))
 		{
 			navigate(mNavigatePendingMsgId);
 		}

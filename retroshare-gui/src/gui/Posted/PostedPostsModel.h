@@ -130,6 +130,9 @@ public:
 	QModelIndex root() const{ return createIndex(0,0,(void*)NULL) ;}
 	QModelIndex getIndexOfMessage(const RsGxsMessageId& mid) const;
 
+	// True if the post is loaded in the model, whatever the current filter and displayed page.
+	bool hasMessage(const RsGxsMessageId& mid) const;
+
     // This method will asynchroneously update the data
 
 	void updateBoard(const RsGxsGroupId& posted_group_id);
