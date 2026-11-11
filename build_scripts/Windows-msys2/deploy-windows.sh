@@ -328,6 +328,20 @@ if [ "${RS_BUNDLE_TOR:-1}" = "1" ]; then
             done
         done
 
+        # Tor is BSD-3 licensed: ship its licence with the binary, next to the
+        # other licences of the package.
+        TOR_LICENSE_DIR="$MINGW_PREFIX/share/licenses/tor"
+        if [ -d "$TOR_LICENSE_DIR" ] && [ -n "$(ls -A "$TOR_LICENSE_DIR" 2>/dev/null)" ]; then
+            mkdir -p "$DEPLOY_DIR/license"
+            for lic in "$TOR_LICENSE_DIR"/*; do
+                if [ -f "$lic" ]; then
+                    cp "$lic" "$DEPLOY_DIR/license/tor-$(basename "$lic")"
+                fi
+            done
+        else
+            echo "  WARNING: no licence file in $TOR_LICENSE_DIR: Tor's licence is not shipped."
+        fi
+
         TOR_VERSION_STR=$("$DEPLOY_DIR/tor/tor.exe" --version 2>/dev/null | head -n 1 | tr -d '\r')
         echo "  Bundled: ${TOR_VERSION_STR:-tor.exe (version not reported)} with $TOR_COUNT DLL(s)"
         # Tag the portable package -tor like the installer (RSTYPE in
