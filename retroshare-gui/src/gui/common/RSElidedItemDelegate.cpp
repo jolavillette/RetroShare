@@ -25,6 +25,7 @@
 
 #include <QAbstractItemView>
 #include <QApplication>
+#include <QHash>
 #include <QPainter>
 #include <QTextDocument>
 #include <QTextLayout>
@@ -98,6 +99,28 @@ QSize RSElidedItemDelegate::sizeHint(const QStyleOptionViewItem &option, const Q
 	return contSize;
 }
 
+// WCAG relative luminance and contrast ratio (1:1 to 21:1).
+static qreal relativeLuminance(const QColor& c)
+{
+	auto lin = [](qreal v) { return v <= 0.03928 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+	return 0.2126 * lin(c.redF()) + 0.7152 * lin(c.greenF()) + 0.0722 * lin(c.blueF());
+}
+
+static qreal contrastRatio(const QColor& a, const QColor& b)
+{
+	const qreal la = relativeLuminance(a), lb = relativeLuminance(b);
+	return (qMax(la, lb) + 0.05) / (qMin(la, lb) + 0.05);
+}
+
+// fg painted over an opaque bg, using fg's alpha.
+static QColor blendOver(const QColor& fg, const QColor& bg)
+{
+	const qreal a = fg.alphaF();
+	return QColor::fromRgbF(fg.redF()   * a + bg.redF()   * (1 - a),
+	                        fg.greenF() * a + bg.greenF() * (1 - a),
+	                        fg.blueF()  * a + bg.blueF()  * (1 - a));
+}
+
 inline QColor getImagePixelColor(QImage img, int x, int y)
 {
 #if QT_VERSION >= QT_VERSION_CHECK(5,6,0)
@@ -162,7 +185,8 @@ void RSElidedItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &
 	// Get Brush from model if one exists
 	QBrush bgBrush;
 	bgBrush.setColor(QColor());// To get color().spec()==QColor::Invalid)
-	if (index.data(Qt::BackgroundRole).isValid()) {
+	const bool bgFromModel = index.data(Qt::BackgroundRole).isValid();
+	if (bgFromModel) {
 		bgBrush = index.data(Qt::BackgroundRole).value<QBrush>();
 #ifdef DEBUG_EID_PAINT
 		RsDbg(" RSEID: Found bg brush in model:", bgBrush.color().name().toStdString());
@@ -222,7 +246,11 @@ void RSElidedItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &
 
 			moOption.direction = Qt::LayoutDirectionAuto;
 			moOption.fontMetrics = QFontMetrics(QFont());
-			moOption.palette = QPalette();
+			// Keep the view's palette: it is what the real item is painted with. The
+			// application palette can differ, e.g. on macOS item views get their own
+			// (white selected text on the accent blue) while the application one has
+			// black HighlightedText, which turned the selected row's text dark on blue.
+			moOption.palette = option.palette;
 			moOption.styleObject = nullptr;
 		}
 		//QStyledItemDelegate::paint(&moPnt, moOption, QModelIndex(index));//This update option now.
@@ -246,27 +274,29 @@ void RSElidedItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &
 #endif
 		// Get Color in this rect.
 		{
-			QColor moColor;
 			QColor moBGColor=getImagePixelColor(moImg,1,1); // BackGround may be paint.
-			QColor moColorBorder;// To avoid Border pixel
+			// The text color is the most frequent one that is not the background: the
+			// probe text is made of full blocks, so their solid interior outnumbers the
+			// anti-aliased glyph edges. Picking the first differing pixel could land on
+			// such an edge and return a semi-transparent color, fading the item text.
+			QColor moColor;
+			QHash<QRgb, int> moCount;
+			int moBest = 0;
+			const QRgb moBGRgba = moBGColor.rgba();
 			int moWidth = moImg.size().width(), moHeight = moImg.size().height();
-			for (int x = 0; (x<moWidth) && (moColor.spec() == QColor::Invalid); x++)
-				for (int y = 0; (y<moHeight) && (moColor.spec() == QColor::Invalid); y++)
-					if (getImagePixelColor(moImg,x,y) != moBGColor)
+			for (int x = 0; x < moWidth; x++)
+				for (int y = 0; y < moHeight; y++)
+				{
+					const QRgb c = getImagePixelColor(moImg,x,y).rgba();
+					if (c == moBGRgba)
+						continue;
+					const int n = ++moCount[c];
+					if (n > moBest)
 					{
-						if (getImagePixelColor(moImg,x,y) == moColorBorder)
-							moColor = getImagePixelColor(moImg,x,y);
-						else
-						{
-							if (moColorBorder.spec() == QColor::Invalid)
-							{
-								// First pixel border move inside
-								x+=5;
-								y+=5;
-							}
-							moColorBorder = getImagePixelColor(moImg,x,y);
-						}
+						moBest = n;
+						moColor = QColor::fromRgba(c);
 					}
+				}
 
 			// If not found color is same as BackGround.
 			if (moColor.spec() == QColor::Invalid)
@@ -286,6 +316,41 @@ void RSElidedItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &
 				RsDbg(" RSEID: text color setted to ", moColor.name(QColor::HexArgb).toStdString());
 #endif
 			}
+		}
+	}
+
+	// Last guard against an unreadable item. The probe above is a heuristic and can
+	// get it wrong: on macOS (Qt 6.12, Fusion, Retina display, built-in default sheet)
+	// it returned a shade of the selection band itself as the selected text color, so
+	// the selected row's text vanished in the People and Preferences lists. Work out
+	// the background the text really lands on and, when the chosen text contrasts
+	// less than 3:1 with it, fall back to the palette's own text color for that state
+	// (HighlightedText when selected, Text otherwise), then to black or white,
+	// whichever reads better.
+	{
+		const bool selected = ownOption.state & QStyle::State_Selected;
+		const QPalette::ColorGroup cg = !(ownOption.state & QStyle::State_Enabled) ? QPalette::Disabled
+		                              : (ownOption.state & QStyle::State_Active) ? QPalette::Normal
+		                                                                         : QPalette::Inactive;
+		const QColor base = option.palette.color(cg, QPalette::Base);
+		const QColor brushColor = bgBrush.color().isValid() ? bgBrush.color() : QColor(Qt::transparent);
+		QColor seenBg;
+		if (brushColor.alpha() == 255)
+			seenBg = brushColor;
+		else if (selected && !bgFromModel)
+			// Not opaque: PE_PanelItemViewItem below paints the native selection band.
+			seenBg = blendOver(option.palette.color(cg, QPalette::Highlight), base);
+		else
+			seenBg = blendOver(brushColor, base);
+
+		if (contrastRatio(blendOver(textColor, seenBg), seenBg) < 3.0)
+		{
+			const QColor paletteText = option.palette.color(cg, selected ? QPalette::HighlightedText : QPalette::Text);
+			if (contrastRatio(blendOver(paletteText, seenBg), seenBg) >= 3.0)
+				textColor = paletteText;
+			else
+				textColor = contrastRatio(Qt::black, seenBg) >= contrastRatio(Qt::white, seenBg)
+				            ? QColor(Qt::black) : QColor(Qt::white);
 		}
 	}
 
