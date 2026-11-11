@@ -287,7 +287,14 @@ void RsPostedPostsModel::refreshPendingPosts()
 				if(it == mPostIndex.end())
 					continue;
 
-				mPosts[it->second] = post;
+				// The post may have entered the content cache since this batch
+				// was built: refresh its metadata there too, keep its content.
+				auto cit = mPostContents.find(post.mMeta.mMsgId);
+
+				if(cit != mPostContents.end())
+					setPostMetadata(cit->second, post);
+
+				mPosts[it->second] = std::move(post);
 				changed = true;
 			}
 
@@ -406,7 +413,7 @@ void RsPostedPostsModel::updateDisplayedWindow()
                 return;	// the window changed again meanwhile
 
             for(auto& p:*posts)
-                mPostContents[p.mMeta.mMsgId] = std::move(p);
+                storePostContent(p);
 
             commitDisplayedWindow(ids);
             prefetchNextWindow();
@@ -474,9 +481,35 @@ void RsPostedPostsModel::prefetchNextWindow()
                 return;
 
             for(auto& p:*posts)
-                mPostContents[p.mMeta.mMsgId] = std::move(p);
+                storePostContent(p);
         }, this );
     });
+}
+
+void RsPostedPostsModel::storePostContent(RsPostedPost& post)
+{
+    // The content was read before this point, while mPosts may have been
+    // refreshed since (votes, read status): keep the newer metadata and
+    // scores from mPosts and only take the content from the read.
+
+    const RsPostedPost *meta = findPost(post.mMeta.mMsgId);
+
+    if(meta)
+        setPostMetadata(post, *meta);
+
+    mPostContents[post.mMeta.mMsgId] = std::move(post);
+}
+
+void RsPostedPostsModel::setPostMetadata(RsPostedPost& cached, const RsPostedPost& meta)
+{
+    // Everything but the content (image, link, notes), which the metadata
+    // entries of mPosts do not carry.
+
+    RsPostedPost full(meta);
+    full.mImage = std::move(cached.mImage);
+    full.mLink  = std::move(cached.mLink);
+    full.mNotes = std::move(cached.mNotes);
+    cached = std::move(full);
 }
 
 void RsPostedPostsModel::preMods()
@@ -869,6 +902,13 @@ void RsPostedPostsModel::setPosts(const RsPostedGroup& group, std::vector<RsPost
 
 	std::sort(mPosts.begin(),mPosts.end(), PostSorter(mSortingStrategy));
 	rebuildPostIndex();
+
+	// Reload of the same board: the cached content entries still carry the
+	// metadata of the previous load, give them the new one. Entries of posts
+	// that are gone are pruned by the next commitDisplayedWindow().
+	for(auto& it:mPostContents)
+		if(const RsPostedPost *meta = findPost(it.first))
+			setPostMetadata(it.second, *meta);
 
 	// boardPostsLoaded() is emitted once the first window has its content.
 	mLoadPending = true;

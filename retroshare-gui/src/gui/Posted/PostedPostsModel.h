@@ -267,6 +267,8 @@ private:
 	void updateDisplayedWindow();
 	void commitDisplayedWindow(const std::vector<RsGxsMessageId>& ids);
 	void prefetchNextWindow();
+	void storePostContent(RsPostedPost& post);
+	static void setPostMetadata(RsPostedPost& cached, const RsPostedPost& meta);
 	const RsPostedPost *findPost(const RsGxsMessageId& id) const;
 	const RsPostedPost& displayedPost(uint32_t row) const;
 
