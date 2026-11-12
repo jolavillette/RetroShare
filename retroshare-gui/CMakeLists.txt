@@ -193,6 +193,40 @@ elseif(APPLE)
     set_source_files_properties(src/rsMacIcon.icns PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
 endif()
 
+# Translations: compile the .ts files listed in RS_TRANSLATIONS into .qm at build
+# time and embed those, so the binary carries the current translations. The .qm
+# committed in src/lang/ are refreshed by hand and lag behind the .ts files (most
+# of them date from 2019); they remain the fallback when Qt LinguistTools is missing.
+find_package(Qt${QT_VERSION_MAJOR} QUIET COMPONENTS LinguistTools)
+if(TARGET Qt${QT_VERSION_MAJOR}::lrelease)
+	set(RS_LANG_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/lang")
+	file(MAKE_DIRECTORY "${RS_LANG_BINARY_DIR}")
+	set(RS_QM_FILES "")
+	set(RS_LANG_QRC "<RCC>\n  <qresource prefix=\"/lang\">\n")
+	foreach(RS_TS_FILE IN LISTS RS_TRANSLATIONS)
+		get_filename_component(RS_TS_NAME "${RS_TS_FILE}" NAME_WE)
+		set(RS_QM_FILE "${RS_LANG_BINARY_DIR}/${RS_TS_NAME}.qm")
+		add_custom_command(
+			OUTPUT "${RS_QM_FILE}"
+			COMMAND Qt${QT_VERSION_MAJOR}::lrelease -silent
+				"${CMAKE_CURRENT_SOURCE_DIR}/${RS_TS_FILE}" -qm "${RS_QM_FILE}"
+			DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${RS_TS_FILE}"
+			VERBATIM)
+		list(APPEND RS_QM_FILES "${RS_QM_FILE}")
+		string(APPEND RS_LANG_QRC "    <file>${RS_TS_NAME}.qm</file>\n")
+	endforeach()
+	string(APPEND RS_LANG_QRC "  </qresource>\n</RCC>\n")
+	# Only rewritten when its content changes, so rcc does not rerun for nothing.
+	file(CONFIGURE OUTPUT "${RS_LANG_BINARY_DIR}/lang.qrc" CONTENT "${RS_LANG_QRC}")
+	add_custom_target(retroshare-gui-translations DEPENDS ${RS_QM_FILES})
+	list(REMOVE_ITEM RS_GUI_QTRESOURCES src/lang/lang.qrc)
+	list(APPEND RS_GUI_QTRESOURCES "${RS_LANG_BINARY_DIR}/lang.qrc")
+	list(LENGTH RS_QM_FILES RS_QM_COUNT)
+	message(STATUS "retroshare-gui: ${RS_QM_COUNT} translations compiled from the .ts files with lrelease")
+else()
+	message(STATUS "retroshare-gui: Qt LinguistTools not found, embedding the committed .qm translations")
+endif()
+
 set(GUI_TYPE "")
 if(WIN32)
 	# Hide the console window on Windows for production builds (Release), 
@@ -205,6 +239,10 @@ elseif(APPLE)
 endif()
 
 add_executable(${PROJECT_NAME} ${GUI_TYPE} ${RS_GUI_SOURCES} ${RS_IMPLEMENTATION_HEADERS} ${RS_UI_HEADERS} ${RS_GUI_QTRESOURCES})
+if(TARGET retroshare-gui-translations)
+	# rcc must find the .qm listed in the generated lang.qrc.
+	add_dependencies(${PROJECT_NAME} retroshare-gui-translations)
+endif()
 # The GUI executable is named "retroshare-gui" on all platforms (it was
 # historically just "retroshare"; renamed for clarity vs retroshare-service).
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_NAME "retroshare-gui")
