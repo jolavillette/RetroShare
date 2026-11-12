@@ -1397,8 +1397,11 @@ void RsFriendListModel::updateInternalData()
 
 				if(it3 == pgp_indices.end())	// Not found: this group references a PGP profile that is neither an accepted
 				{				            	// friend nor the parent of any friend location, i.e. a stale/foreign group membership.
-					RsWarn() << "Group \"" << hgroup.group_info.name << "\" references profile " << *it2
-					         << " which is not a friend. Skipping it (stale group membership?)." ;
+					// This runs at every refresh of the list: say it once per group and profile.
+					static std::set<std::pair<RsNodeGroupId,RsPgpId> > warned;
+					if(warned.insert(std::make_pair(hgroup.group_info.id, *it2)).second)
+						RsWarn() << "Group \"" << hgroup.group_info.name << "\" references profile " << *it2
+						         << " which is not a friend. Skipping it (stale group membership?)." ;
                     continue;
 				}
 
