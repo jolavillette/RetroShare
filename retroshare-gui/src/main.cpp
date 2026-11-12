@@ -309,7 +309,11 @@ static bool askForTorExecutable(QMessageBox::Icon icon, const QString& title, co
 {
 	QMessageBox box(icon, title, text);
 	QPushButton *choose = box.addButton(QObject::tr("Choose a Tor executable..."), QMessageBox::ActionRole);
-	box.addButton(icon == QMessageBox::Critical ? QMessageBox::Close : QMessageBox::Ok);
+	// Without an explicit escape button, a box whose other button is Ok (accept
+	// role) has none at all: Esc does nothing and the window's close button is
+	// ignored, so the only ways out were Ok or choosing a file.
+	QAbstractButton *dismiss = box.addButton(icon == QMessageBox::Critical ? QMessageBox::Close : QMessageBox::Ok);
+	box.setEscapeButton(dismiss);
 	box.exec();
 
 	if(box.clickedButton() != choose)
