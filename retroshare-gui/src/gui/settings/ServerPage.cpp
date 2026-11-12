@@ -383,7 +383,7 @@ void ServerPage::toggleTunnelConnection(bool b)
         //rsPeers->allowTunnelConnection(b) ;
 }
 
-/** Loads the settings for this page */
+/** Auto-Tor nodes: choice of the tor executable, and its version state */
 void ServerPage::setUpTorExecutableElements()
 {
 	QHBoxLayout *exeLayout = new QHBoxLayout;
@@ -450,6 +450,7 @@ void ServerPage::updateTorVersionLabel()
 	}
 }
 
+/** Loads the settings for this page */
 void ServerPage::load()
 {
 #ifdef SERVER_DEBUG
