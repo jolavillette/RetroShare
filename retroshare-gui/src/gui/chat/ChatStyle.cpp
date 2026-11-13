@@ -586,9 +586,21 @@ static bool getStyleInfo(QString stylePath, QString stylePathRelative, ChatStyle
         return false;
     }
 
-    // application path
-    QDir dir(QApplication::applicationDirPath());
-    if (dir.cd(stylePath) == false) {
+    // Look where setStylePath() finds the style (config dir, then data dir),
+    // then in the application dir, which holds the styles on Windows.
+    QStringList baseDirs = getBaseDirList();
+    baseDirs.append(QApplication::applicationDirPath());
+
+    QDir dir;
+    bool found = false;
+    foreach (QString baseDir, baseDirs) {
+        dir.setPath(baseDir);
+        if (dir.cd(stylePath)) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
         // style not found
     	std::cerr << "no path!" << std::endl;
         return false;
