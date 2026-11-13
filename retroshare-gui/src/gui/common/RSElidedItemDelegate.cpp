@@ -182,6 +182,7 @@ void RSElidedItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &
 		RsDbg(" RSEID: Found text color in model:", textColor.name().toStdString());
 #endif
 	}
+	const bool textColorFromModel = textColor.isValid();
 	// Get Brush from model if one exists
 	QBrush bgBrush;
 	bgBrush.setColor(QColor());// To get color().spec()==QColor::Invalid)
@@ -327,6 +328,10 @@ void RSElidedItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &
 	// less than 3:1 with it, fall back to the palette's own text color for that state
 	// (HighlightedText when selected, Text otherwise), then to black or white,
 	// whichever reads better.
+	// A color from the model is only guarded on a selected row, where the selection
+	// band can swallow it. On other rows it is kept: style sheets use low-contrast
+	// colors on purpose (read forum posts in darkgray, pinned ones in darkOrange,
+	// friend status colors), and replacing them would erase what they mean.
 	{
 		const bool selected = ownOption.state & QStyle::State_Selected;
 		const QPalette::ColorGroup cg = !(ownOption.state & QStyle::State_Enabled) ? QPalette::Disabled
@@ -343,7 +348,7 @@ void RSElidedItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &
 		else
 			seenBg = blendOver(brushColor, base);
 
-		if (contrastRatio(blendOver(textColor, seenBg), seenBg) < 3.0)
+		if ((selected || !textColorFromModel) && contrastRatio(blendOver(textColor, seenBg), seenBg) < 3.0)
 		{
 			const QColor paletteText = option.palette.color(cg, selected ? QPalette::HighlightedText : QPalette::Text);
 			if (contrastRatio(blendOver(paletteText, seenBg), seenBg) >= 3.0)
