@@ -1162,13 +1162,20 @@ void GxsChannelPostsWidgetWithModel::postChannelPostLoad()
 
     if (!mNavigatePendingMsgId.isNull())
     {
-        if (mChannelPostsModel->getIndexOfMessage(mNavigatePendingMsgId).isValid())
+        // navigate() also resolves a comment id (it selects the comment's post on the Comments
+        // tab), so let it try, and report the id as missing only if it kept it pending.
+        // navigate() clears mNotifiedMissingMsgId on entry: read it before, set it back after.
+
+        const RsGxsMessageId pending = mNavigatePendingMsgId;
+        const RsGxsMessageId notified = mNotifiedMissingMsgId;
+
+        navigate(pending);
+
+        if (mNavigatePendingMsgId == pending)
+            mNotifiedMissingMsgId = pending;
+
+        if (mNavigatePendingMsgId == pending && notified != pending)
         {
-            navigate(mNavigatePendingMsgId);
-        }
-        else if (mNotifiedMissingMsgId != mNavigatePendingMsgId)
-        {
-            mNotifiedMissingMsgId = mNavigatePendingMsgId;
             if (IS_GROUP_SUBSCRIBED(mGroup.mMeta.mSubscribeFlags))
             {
                 QMessageBox::information(this, tr("RetroShare"),
