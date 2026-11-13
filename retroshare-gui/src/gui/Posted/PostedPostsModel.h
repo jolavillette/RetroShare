@@ -260,6 +260,7 @@ private:
 	std::set<RsGxsMessageId> mPendingRefreshIds;
 	RsGxsGroupId mPendingRefreshGroupId;
 	QTimer *mRefreshTimer;
+	bool mRefreshInFlight;	// a refreshPendingPosts() batch is being read
 
 	RsEventsHandlerId_t mEventHandlerId ;
 };

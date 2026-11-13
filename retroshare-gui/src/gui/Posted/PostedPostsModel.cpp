@@ -44,7 +44,7 @@ const uint32_t RsPostedPostsModel::DEFAULT_DISPLAYED_NB_POSTS = 10;
 std::ostream& operator<<(std::ostream& o, const QModelIndex& i);// defined elsewhere
 
 RsPostedPostsModel::RsPostedPostsModel(int default_chunk_size, QObject *parent)
-    : QAbstractItemModel(parent), mTreeMode(TREE_MODE_PLAIN)
+    : QAbstractItemModel(parent), mTreeMode(TREE_MODE_PLAIN), mRefreshInFlight(false)
 {
     mDefaultDisplayedNbPosts = default_chunk_size;
 
@@ -151,6 +151,14 @@ void RsPostedPostsModel::refreshPendingPosts()
 		return;
 	}
 
+	// One batch at a time: two batches holding the same post could finish
+	// out of order and leave the older read on screen. The ids keep piling up
+	// meanwhile, and the batch in flight restarts the timer when it is done.
+	if(mRefreshInFlight)
+		return;
+
+	mRefreshInFlight = true;
+
 	// Hand the id set over through a pointer: the lambda capture would
 	// otherwise deep copy it.
 	auto* ids = new std::set<RsGxsMessageId>();
@@ -167,17 +175,24 @@ void RsPostedPostsModel::refreshPendingPosts()
 		bool ok = rsPosted->getBoardContent(grpId, *ids, *posts, comments, votes);
 
 		if(!ok)
+		{
 			RS_ERR("failed to retrieve ", ids->size(), " updated posts of board ", grpId);
+			posts->clear();
+		}
 
 		delete ids;
 
-		if(!ok || posts->empty())
-			return;
-
-		// 2 - update the model in the UI thread.
+		// 2 - update the model in the UI thread. Always go there, even with
+		// nothing read, to end the batch.
 
 		RsQThreadUtils::postToObject( [posts,grpId,this]()
 		{
+			mRefreshInFlight = false;
+
+			// Events that came in while this batch was read.
+			if(!mPendingRefreshIds.empty() && !mRefreshTimer->isActive())
+				mRefreshTimer->start();
+
 			if(grpId != mPostedGroup.mMeta.mGroupId)
 				return;
 
