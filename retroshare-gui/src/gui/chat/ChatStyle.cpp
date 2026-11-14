@@ -375,7 +375,9 @@ QString ChatStyle::formatMessage(enumFormatMessage type
 
 	QString strName = RsHtml::plainText(name).prepend(QString("<a name=\"name\">")).append(QString("</a>"));
 	QString strDate = DateTime::formatDate(timestamp.date()).prepend(QString("<a name=\"date\">")).append(QString("</a>"));
-	QString strTime = DateTime::formatTime(timestamp.time()).prepend(QString("<a name=\"time\">")).append(QString("</a>"));
+	// Displayed in the user's 12/24 h convention. The anchor key that tracks the unread
+	// state is built separately, in a fixed format (see ChatWidget::addChatMsg()).
+	QString strTime = DateTime::formatTimeWithSeconds(timestamp.time()).prepend(QString("<a name=\"time\">")).append(QString("</a>"));
 
 	int bi = name.lastIndexOf(QRegularExpression(" \\(.*\\)")); //trim location from the end
 	QString strShortName = RsHtml::plainText(name.left(bi)).prepend(QString("<a name=\"name\">")).append(QString("</a>"));
@@ -586,9 +588,21 @@ static bool getStyleInfo(QString stylePath, QString stylePathRelative, ChatStyle
         return false;
     }
 
-    // application path
-    QDir dir(QApplication::applicationDirPath());
-    if (dir.cd(stylePath) == false) {
+    // Look where setStylePath() finds the style (config dir, then data dir),
+    // then in the application dir, which holds the styles on Windows.
+    QStringList baseDirs = getBaseDirList();
+    baseDirs.append(QApplication::applicationDirPath());
+
+    QDir dir;
+    bool found = false;
+    foreach (QString baseDir, baseDirs) {
+        dir.setPath(baseDir);
+        if (dir.cd(stylePath)) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
         // style not found
     	std::cerr << "no path!" << std::endl;
         return false;

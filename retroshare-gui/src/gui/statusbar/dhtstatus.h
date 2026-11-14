@@ -35,6 +35,8 @@ public:
     void setCompactMode(bool compact) {_compactMode = compact; }
 
 private:
+    void setSizeEstimate(const QString &prefix);
+
     QLabel *dhtstatusLabel, *statusDHT, *dhtnetworkLabel, *dhtnetworksizeLabel, *spaceLabel;
     bool _compactMode;
 };

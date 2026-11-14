@@ -19,6 +19,9 @@
  *******************************************************************************/
 
 #include <QDateTime>
+#include <QRegularExpression>
+#include <QTextDocumentFragment>
+#include <QFontMetrics>
 #include <QMenu>
 #include <QSignalMapper>
 #include <QPainter>
@@ -248,6 +251,11 @@ QWidget *PostedPostDelegate::createEditor(QWidget *parent, const QStyleOptionVie
 	w->updateGeometry();
 	w->adjustSize();
 
+    // Ensure all parts of the editor bubble right-clicks to the view.
+    w->setContextMenuPolicy(Qt::NoContextMenu);
+    foreach(QWidget *child, w->findChildren<QWidget*>())
+        child->setContextMenuPolicy(Qt::NoContextMenu);
+
 	return w;
 }
 
@@ -267,6 +275,8 @@ PostedListWidgetWithModel::PostedListWidgetWithModel(const RsGxsGroupId& postedI
 {
 	/* Invoke the Qt Designer generated object setup routine */
 	ui->setupUi(this);
+
+	mNotifiedMissingMsgId = RsGxsMessageId();
 
     ui->postsTree->setModel(mPostedPostsModel = new RsPostedPostsModel(POSTS_CHUNK_SIZE));
     ui->postsTree->setItemDelegate(mPostedPostsDelegate = new PostedPostDelegate(this));
@@ -291,6 +301,7 @@ PostedListWidgetWithModel::PostedListWidgetWithModel(const RsGxsGroupId& postedI
     connect(ui->viewModeButton,SIGNAL(clicked()),this,SLOT(switchDisplayMode()));
 
     connect(mPostedPostsModel,SIGNAL(boardPostsLoaded()),this,SLOT(postPostLoad()));
+    connect(mPostedPostsModel,SIGNAL(displayedPostsChanged()),this,SLOT(displayedPostsChanged()));
 
 	/* Setup UI helper */
 
@@ -301,7 +312,7 @@ PostedListWidgetWithModel::PostedListWidgetWithModel(const RsGxsGroupId& postedI
 	connect(RsGUIEventManager::getInstance(), SIGNAL(settingsChanged()),this, SLOT(settingsChanged()));
 
 	/* add filter actions */
-    ui->postsTree->setPlaceholderText(tr("No posts available in this board"));
+    ui->postsTree->setPlaceholderText(tr("Loading..."));	// the board is loaded right away, see postPostLoad()
     //ui->postsTree->setMinimumWidth(COLUMN_SIZE_FONT_FACTOR_W*QFontMetricsF(font()).height()+1);
 
     connect(ui->postsTree,SIGNAL(sizeChanged(QSize)),this,SLOT(handlePostsTreeSizeChange(QSize)));
@@ -341,39 +352,78 @@ PostedListWidgetWithModel::PostedListWidgetWithModel(const RsGxsGroupId& postedI
 
 void PostedListWidgetWithModel::postContextMenu(const QPoint& point)
 {
-    QMenu menu(this);
+	QMenu menu(this);
 
-    // 1 - check that we are clicking on a post
+	// 1 - check that we are clicking on a post
 
-    QModelIndex index = ui->postsTree->indexAt(point);
+	QModelIndex index = ui->postsTree->indexAt(point);
 
-    if(!index.isValid())
-        return;
+	if(!index.isValid())
+		return;
 
-    // 2 - generate the menu for that post.
+	// 2 - generate the menu for that post.
 
-    RsPostedPost post = index.data(Qt::UserRole).value<RsPostedPost>() ;
+	RsPostedPost post = index.data(Qt::UserRole).value<RsPostedPost>() ;
 
-    menu.addAction(FilesDefs::getIconFromQtResourcePath(IMAGE_COPYLINK), tr("Copy RetroShare Link"), this, SLOT(copyMessageLink()))->setData(index);
+	// Add "Copy selected text" for expanded posts
+	QWidget *editor = ui->postsTree->indexWidget(index);
+	QLabel *notesLabel = editor ? editor->findChild<QLabel*>("notes") : NULL;
 
+	if (notesLabel && !notesLabel->selectedText().isEmpty())
+	{
+		QString sel = notesLabel->selectedText();
+		menu.addAction(FilesDefs::getIconFromQtResourcePath(":/images/copy.png"), tr("Copy selected text"), [sel]() {
+			QApplication::clipboard()->setText(sel);
+		});
+	}
+
+	menu.addAction(FilesDefs::getIconFromQtResourcePath(IMAGE_COPYLINK), tr("Copy RetroShare Link"), this, SLOT(copyMessageLink()))->setData(index);
+
+    // Each http link entry shows the link it copies, elided when long.
+    const QFontMetrics fm(menu.font());
+    QStringList links;
+
+    // The post's own link is always offered, expanded or not.
     QByteArray urlarray(post.mLink.c_str());
     QUrl url = QUrl::fromEncoded(urlarray.trimmed());
 
-    std::cerr << "Using link: \"" << post.mLink << "\"" << std::endl;
-
     if(url.scheme()=="http" || url.scheme()=="https")
-        menu.addAction(FilesDefs::getIconFromQtResourcePath(IMAGE_COPYHTTP), tr("Copy http Link"), this, SLOT(copyHttpLink()))->setData(index);
+    {
+        const QString link = QString::fromStdString(post.mLink).trimmed();
+        links << link;
+        menu.addAction(FilesDefs::getIconFromQtResourcePath(IMAGE_COPYHTTP), tr("Copy link: %1").arg(fm.elidedText(link, Qt::ElideMiddle, 400)), this, SLOT(copyHttpLink()))->setData(index);
+    }
 
-    menu.addAction(FilesDefs::getIconFromQtResourcePath(IMAGE_AUTHOR), tr("Show author in People tab"), this, SLOT(showAuthorInPeople()))->setData(index);
+    if (notesLabel && notesLabel->isVisible())
+    {
+        // Also offer the http links found in the notes of an expanded post.
+        static const QRegularExpression rx("<a\\s+href=\"(https?://[^\"]+)\"", QRegularExpression::CaseInsensitiveOption);
+        const QString notesHtml = QString::fromUtf8(post.mNotes.c_str());
+        QRegularExpressionMatchIterator it = rx.globalMatch(notesHtml);
+        while (it.hasNext()) {
+            // href values are HTML-escaped (&amp;...): unescape before copying.
+            QTextDocumentFragment frag = QTextDocumentFragment::fromHtml(it.next().captured(1));
+            const QString link = frag.toPlainText();
+            if(links.contains(link))
+                continue;
+            links << link;
+            QAction *copyLinkAction = menu.addAction(FilesDefs::getIconFromQtResourcePath(IMAGE_COPYHTTP), tr("Copy link: %1").arg(fm.elidedText(link, Qt::ElideMiddle, 400)));
+            connect(copyLinkAction, &QAction::triggered, [link]() {
+                QApplication::clipboard()->setText(link);
+            });
+        }
+    }
+
+	menu.addAction(FilesDefs::getIconFromQtResourcePath(IMAGE_AUTHOR), tr("Show author in People tab"), this, SLOT(showAuthorInPeople()))->setData(index);
 
 #ifdef TODO
-    // This feature is not implemented yet in libretroshare.
+	// This feature is not implemented yet in libretroshare.
 
-    if(IS_GROUP_PUBLISHER(mGroup.mMeta.mSubscribeFlags))
-        menu.addAction(FilesDefs::getIconFromQtResourcePath(":/images/edit_16.png"), tr("Edit"), this, SLOT(editPost()));
+	if(IS_GROUP_PUBLISHER(mGroup.mMeta.mSubscribeFlags))
+		menu.addAction(FilesDefs::getIconFromQtResourcePath(":/images/edit_16.png"), tr("Edit"), this, SLOT(editPost()));
 #endif
 
-    menu.exec(QCursor::pos());
+	menu.exec(QCursor::pos());
 }
 
 void PostedListWidgetWithModel::switchDisplayMode()
@@ -415,14 +465,28 @@ void PostedListWidgetWithModel::handlePostsTreeSizeChange(QSize size)
 
 void PostedListWidgetWithModel::updateShowLabel()
 {
-	if (mPostedPostsModel->rowCount() > 0)
+	// displayedNbPosts() is the requested window: rowCount() lags behind while
+	// the content of a new page is being fetched.
+
+	if (mPostedPostsModel->displayedNbPosts() > 0)
 		whileBlocking(ui->showLabel)->setText(QString::number(mPostedPostsModel->displayedStartPostIndex()+1)
-		                       +" - "+QString::number(mPostedPostsModel->displayedStartPostIndex()+mPostedPostsModel->rowCount()));
+		                       +" - "+QString::number(mPostedPostsModel->displayedStartPostIndex()+mPostedPostsModel->displayedNbPosts()));
 	else
 		whileBlocking(ui->showLabel)->setText(tr("Empty"));
 
 	ui->nextButton->setEnabled(mPostedPostsModel->displayedStartPostIndex() + POSTS_CHUNK_SIZE < mPostedPostsModel->filteredPostsCount());
 	ui->prevButton->setEnabled(mPostedPostsModel->displayedStartPostIndex() > 0);
+}
+
+void PostedListWidgetWithModel::displayedPostsChanged()
+{
+	updateShowLabel();
+
+	// navigate() filters on the post id, which now completes asynchronously:
+	// finish the navigation once the post is displayed.
+
+	if(!mNavigatePendingMsgId.isNull() && mPostedPostsModel->getIndexOfMessage(mNavigatePendingMsgId).isValid())
+		navigate(RsGxsMessageId(mNavigatePendingMsgId));
 }
 
 void PostedListWidgetWithModel::filterItems(QString text)
@@ -570,12 +634,12 @@ void PostedListWidgetWithModel::handleEvent_main_thread(std::shared_ptr<const Rs
 					t->refresh();
 			}
 		}
-			[[clang::fallthrough]];
-		case RsPostedEventCode::NEW_MESSAGE:             [[fallthrough]];
-		case RsPostedEventCode::NEW_POSTED_GROUP:        [[fallthrough]];
-		case RsPostedEventCode::UPDATED_POSTED_GROUP:    [[fallthrough]];
-		case RsPostedEventCode::UPDATED_MESSAGE:         [[fallthrough]];
-		case RsPostedEventCode::BOARD_DELETED:           [[fallthrough]];
+		Q_FALLTHROUGH();
+		case RsPostedEventCode::NEW_MESSAGE:             Q_FALLTHROUGH();
+		case RsPostedEventCode::NEW_POSTED_GROUP:        Q_FALLTHROUGH();
+		case RsPostedEventCode::UPDATED_POSTED_GROUP:    Q_FALLTHROUGH();
+		case RsPostedEventCode::UPDATED_MESSAGE:         Q_FALLTHROUGH();
+		case RsPostedEventCode::BOARD_DELETED:           Q_FALLTHROUGH();
 		case RsPostedEventCode::SYNC_PARAMETERS_UPDATED:
 		{
 			if(e->mPostedGroupId == groupId())
@@ -591,6 +655,10 @@ void PostedListWidgetWithModel::updateGroupData()
 {
 	if(groupId().isNull())
 		return;
+
+	// Only visible while the view has no rows. postPostLoad() puts the
+	// "no posts" text back once the board is loaded.
+	ui->postsTree->setPlaceholderText(tr("Loading..."));
 
 	RsThread::async([this]()
 	{
@@ -634,8 +702,30 @@ void PostedListWidgetWithModel::postPostLoad()
 #endif
 	whileBlocking(ui->filter_LE)->setText(QString()); //Clear it before navigate, as it will update it.
 
+	// If there are no posts, this is what is going to be displayed.
+	ui->postsTree->setPlaceholderText(tr("No posts available in this board"));
+
 	if (!mNavigatePendingMsgId.isNull())
-		navigate(mNavigatePendingMsgId);
+	{
+		if (mPostedPostsModel->hasMessage(mNavigatePendingMsgId))
+		{
+			navigate(mNavigatePendingMsgId);
+		}
+		else if (mNotifiedMissingMsgId != mNavigatePendingMsgId)
+		{
+			mNotifiedMissingMsgId = mNavigatePendingMsgId;
+			if (IS_GROUP_SUBSCRIBED(mGroup.mMeta.mSubscribeFlags))
+			{
+				QMessageBox::information(this, tr("RetroShare"),
+				                         tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
+			}
+			else
+			{
+				QMessageBox::information(this, tr("RetroShare"),
+				                         tr("The post is missing. Since you are not subscribed to this board, please subscribe first and wait for synchronization."));
+			}
+		}
+	}
 #ifdef TO_REMOVE
 	else if( (mLastSelectedPosts.count(groupId()) > 0)
 	         && !mLastSelectedPosts[groupId()].isNull())
@@ -960,6 +1050,7 @@ void PostedListWidgetWithModel::blank()
 
 bool PostedListWidgetWithModel::navigate(const RsGxsMessageId& msgId)
 {
+	mNotifiedMissingMsgId.clear();
 	ui->filter_LE->setText("ID:" + QString::fromStdString(msgId.toStdString()));
 
 	QModelIndex index = mPostedPostsModel->getIndexOfMessage(msgId);
@@ -969,6 +1060,7 @@ bool PostedListWidgetWithModel::navigate(const RsGxsMessageId& msgId)
 		std::cerr << "(EE) Cannot navigate to msg " << msgId << " in board " << mGroup.mMeta.mGroupId << ": index unknown. Setting mNavigatePendingMsgId." << std::endl;
 
 		mNavigatePendingMsgId = msgId;    // not found. That means the forum may not be loaded yet. So we keep that post in mind, for after loading.
+
 		return true;                      // we have to return true here, otherwise the caller will intepret the async loading as an error.
 	}
 
@@ -977,6 +1069,7 @@ bool PostedListWidgetWithModel::navigate(const RsGxsMessageId& msgId)
 	ui->tabWidget->setCurrentIndex(POSTED_TABS_POSTS);
 
 	mNavigatePendingMsgId.clear();
+	mNotifiedMissingMsgId.clear();
 
 	return true;
 }

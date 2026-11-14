@@ -446,6 +446,7 @@ GxsChannelPostsWidgetWithModel::GxsChannelPostsWidgetWithModel(const RsGxsGroupI
     GxsMessageFrameWidget(rsGxsChannels, parent),
     ui(new Ui::GxsChannelPostsWidgetWithModel)
 {
+    mNotifiedMissingMsgId = RsGxsMessageId();
     mEventHandlerId = 0;
     // Needs to be asynced because this function is called by another thread!
     rsEvents->registerEventsHandler( [this](std::shared_ptr<const RsEvent> event)
@@ -1160,7 +1161,33 @@ void GxsChannelPostsWidgetWithModel::postChannelPostLoad()
     emit groupChanged(this);
 
     if (!mNavigatePendingMsgId.isNull())
-        navigate(mNavigatePendingMsgId);
+    {
+        // navigate() also resolves a comment id (it selects the comment's post on the Comments
+        // tab), so let it try, and report the id as missing only if it kept it pending.
+        // navigate() clears mNotifiedMissingMsgId on entry: read it before, set it back after.
+
+        const RsGxsMessageId pending = mNavigatePendingMsgId;
+        const RsGxsMessageId notified = mNotifiedMissingMsgId;
+
+        navigate(pending);
+
+        if (mNavigatePendingMsgId == pending)
+            mNotifiedMissingMsgId = pending;
+
+        if (mNavigatePendingMsgId == pending && notified != pending)
+        {
+            if (IS_GROUP_SUBSCRIBED(mGroup.mMeta.mSubscribeFlags))
+            {
+                QMessageBox::information(this, tr("RetroShare"),
+                                         tr("The post is missing. Please try again later. You might want to increase the synchronization period."));
+            }
+            else
+            {
+                QMessageBox::information(this, tr("RetroShare"),
+                                         tr("The post is missing. Since you are not subscribed to this channel, please subscribe first and wait for synchronization."));
+            }
+        }
+    }
 
     else if( (mLastSelectedPosts.count(groupId()) > 0)
              && !mLastSelectedPosts[groupId()].isNull())
@@ -1600,6 +1627,7 @@ void GxsChannelPostsWidgetWithModel::blank()
 
 bool GxsChannelPostsWidgetWithModel::navigate(const RsGxsMessageId& msgId)
 {
+    mNotifiedMissingMsgId.clear();
     QModelIndex index = mChannelPostsModel->getIndexOfMessage(msgId);
 
     if(!index.isValid())
@@ -1632,6 +1660,7 @@ bool GxsChannelPostsWidgetWithModel::navigate(const RsGxsMessageId& msgId)
         std::cerr << "(EE) Cannot navigate to msg " << msgId << " in channel " << mGroup.mMeta.mGroupId << ": index unknown. Setting mNavigatePendingMsgId." << std::endl;
 
         mNavigatePendingMsgId = msgId;    // not found. That means the forum may not be loaded yet. So we keep that post in mind, for after loading.
+
         return true;                      // we have to return true here, otherwise the caller will intepret the async loading as an error.
     }
 
@@ -1643,6 +1672,7 @@ bool GxsChannelPostsWidgetWithModel::navigate(const RsGxsMessageId& msgId)
     ui->details_TW->setCurrentIndex(CHANNEL_TABS_DETAILS);
 
     mNavigatePendingMsgId.clear();
+    mNotifiedMissingMsgId.clear();
 
     return true;
 }

@@ -21,6 +21,7 @@
 
 #include <QHelpEvent>
 #include <QPointer>
+#include <QScrollBar>
 #include <QTextDocumentFragment>
 #include <QToolTip>
 #include <QUrl>
@@ -221,6 +222,12 @@ void RSButtonOnText::appendToText(QTextEdit *textEdit)
 	_textEdit = textEdit;
 	_textEditViewPort = textEdit->viewport();
 
+	// The button is inserted through a cursor, which does not follow the end of
+	// the text the way QTextEdit::append() does: keep the view at the bottom if
+	// it was there, or the new button ends up below the visible area.
+	QScrollBar *scrollbar = textEdit->verticalScrollBar();
+	const bool atEnd = (scrollbar->value() == scrollbar->maximum());
+
 	updateImage();
 
 	_textCursor = new QTextCursor(textEdit->textCursor());
@@ -235,6 +242,9 @@ void RSButtonOnText::appendToText(QTextEdit *textEdit)
 	_textCursor->setPosition(textCursorSavePos);
 
 	_textEditViewPort->installEventFilter(this);
+
+	if (atEnd)
+		scrollbar->setValue(scrollbar->maximum());
 }
 
 void RSButtonOnText::clear()
@@ -273,8 +283,19 @@ void RSButtonOnText::updateImage()
 		painter.drawControl(QStyle::CE_PushButton, option);
 		painter.end();
 
+		QScrollBar *scrollbar = _textEdit->verticalScrollBar();
+		const bool atEnd = (scrollbar->value() == scrollbar->maximum());
+
 		_textEdit->setUpdatesEnabled(false);
 		_textEdit->document()->addResource(QTextDocument::ImageResource,QUrl(_uuid),QVariant(pixmap));
+		// Replacing the resource does not relayout the text: the image kept the
+		// size it had when inserted, before the caller set its style sheet, and
+		// a taller button was cut. Mark it dirty so the line takes its new size.
+		if (_lenght > 0)
+			_textEdit->document()->markContentsDirty(_textCursor->anchor(), _lenght);
 		_textEdit->setUpdatesEnabled(true);
+
+		if (atEnd)
+			scrollbar->setValue(scrollbar->maximum());
 	}
 }

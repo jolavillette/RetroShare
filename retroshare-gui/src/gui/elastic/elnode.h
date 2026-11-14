@@ -51,8 +51,10 @@ class Node : public QObject, public QGraphicsItem
 
 public:
     Node(const std::string& node_string,GraphWidget::NodeType type,GraphWidget::AuthType auth,GraphWidget *graphWidget,const RsPeerId& ssl_id,const RsPgpId& gpg_id);
+    ~Node();
 
     void addEdge(Edge *edge);
+    void removeEdge(Edge *edge);
     const QList<Edge *>& edges() const;
 
 	int type() const { return Type; }
@@ -95,8 +97,6 @@ private:
 	 bool mDeterminedBB ;
 	 int mBBWidth ;
 	 int mNodeDrawSize;
-
-	 static Node *_selected_node ;
 
 	 RsPeerId _ssl_id ;
 	 RsPgpId _gpg_id ;

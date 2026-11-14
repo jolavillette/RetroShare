@@ -195,6 +195,16 @@ QString SoundManager::eventFilename(const QString &event)
 	Settings->endGroup();
 	Settings->endGroup();
 
+	/* A default sound saved with an absolute path, by an older version or from a
+	 * data directory that has moved since (an AppImage is mounted at a new place
+	 * at every start): take the same file from the current data directory. */
+	if (!filename.isEmpty() && QDir::isAbsolutePath(filename) && !QFileInfo::exists(filename)) {
+		QString defaultFile = defaultFilename(event, true);
+		if (!defaultFile.isEmpty() && QFileInfo(defaultFile).fileName() == QFileInfo(filename).fileName()) {
+			return defaultFile;
+		}
+	}
+
 	return filename;
 }
 
@@ -217,6 +227,18 @@ QString SoundManager::convertFilename(const QString &filename)
 			// Save only subfolders as relative path
 			return relativeFilename;
 		}
+	} else {
+		// Save a file of the data directory relative to it, as the data directory
+		// can move (an AppImage is mounted at a new place at every start). On
+		// Windows the data directory is ".", the working directory: keep the
+		// absolute path there.
+		QString dataDirectory = QString::fromUtf8(RsAccounts::systemDataDirectory().c_str());
+		if (QDir::isAbsolutePath(dataDirectory)) {
+			QString relativeFilename = QDir(dataDirectory).relativeFilePath(filename);
+			if (QDir::isRelativePath(relativeFilename) && !relativeFilename.startsWith("..")) {
+				return relativeFilename;
+			}
+		}
 	}
 
 	return filename;
@@ -227,6 +249,12 @@ QString SoundManager::realFilename(const QString &filename)
 	if (RsInit::isPortable ()) {
 		// Path relative to application path
 		QDir baseDir = QDir(qApp->applicationDirPath());
+		return baseDir.absoluteFilePath(filename);
+	}
+
+	if (QDir::isRelativePath(filename)) {
+		// Path relative to the data directory, see convertFilename()
+		QDir baseDir = QDir(QString::fromUtf8(RsAccounts::systemDataDirectory().c_str()));
 		return baseDir.absoluteFilePath(filename);
 	}
 

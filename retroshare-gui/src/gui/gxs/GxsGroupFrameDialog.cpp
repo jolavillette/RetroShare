@@ -20,9 +20,18 @@
 
 #include <QMenu>
 #include <QMessageBox>
+#include <QTimer>
 #include <QToolButton>
 
+#if defined(__GLIBC__)
+#include <malloc.h>
+#include <atomic>
+#include <thread>
+#endif
+
 #include "GxsGroupFrameDialog.h"
+#include "retroshare/rsgxscircles.h"
+#include "retroshare/rsidentity.h"
 #include "ui_GxsGroupFrameDialog.h"
 #include "GxsMessageFrameWidget.h"
 
@@ -89,6 +98,22 @@ GxsGroupFrameDialog::GxsGroupFrameDialog(RsGxsIfaceHelper *ifaceImpl,const QStri
 	mSubscribedGroups = NULL;
 	mPopularGroups = NULL;
 	mOtherGroups = NULL;
+
+	mMallocTrimTimer = new QTimer(this);
+	mMallocTrimTimer->setSingleShot(true);
+	mMallocTrimTimer->setInterval(4000);
+	connect(mMallocTrimTimer, &QTimer::timeout, []()
+	{
+#if defined(__GLIBC__)
+		// glibc keeps the freed heap of a closed group (hundreds of MB for a
+		// large board) mapped forever; trimming walks every arena, so keep it
+		// off the GUI thread.
+		static std::atomic<bool> running(false);
+		if (running.exchange(true))
+			return;
+		std::thread([]() { malloc_trim(0); running = false; }).detach();
+#endif
+	});
 
 	/* Setup Queue */
 	mInterface = ifaceImpl;
@@ -280,6 +305,7 @@ void GxsGroupFrameDialog::setSingleTab(bool singleTab)
             delete w;
         }
 		ui->messageTabWidget->hideCloseButton(0);
+		scheduleMallocTrim();
 	}
 }
 
@@ -846,6 +872,7 @@ void GxsGroupFrameDialog::changedCurrentGroup(const QString& groupId)
         if(w)
 			w->setGroupId(RsGxsGroupId());
 
+		scheduleMallocTrim();
 		return;
 	}
 
@@ -869,7 +896,10 @@ void GxsGroupFrameDialog::changedCurrentGroup(const QString& groupId)
 			ui->messageTabWidget->setCurrentWidget(msgWidget);
 		}
         else
+        {
 			currentWidget()->setGroupId(mGroupId);
+			scheduleMallocTrim();
+        }
 	}
 }
 
@@ -902,6 +932,13 @@ void GxsGroupFrameDialog::messageTabCloseRequested(int index)
 
 	GxsMessageFrameWidget *msgWidget = dynamic_cast<GxsMessageFrameWidget*>(ui->messageTabWidget->widget(index));
 	delete msgWidget ;
+	scheduleMallocTrim();
+}
+
+// Restarting the timer coalesces a burst of closes into a single trim.
+void GxsGroupFrameDialog::scheduleMallocTrim()
+{
+	mMallocTrimTimer->start();
 }
 
 GxsMessageFrameWidget *GxsGroupFrameDialog::currentWidget() const
@@ -962,6 +999,37 @@ void GxsGroupFrameDialog::groupInfoToGroupItemInfo(const RsGxsGenericGroupData *
 	groupItemInfo.adminKey = IS_GROUP_ADMIN(groupInfo->mMeta.mSubscribeFlags) ;
 	groupItemInfo.max_visible_posts = groupInfo->mMeta.mVisibleMsgCount ;
     groupItemInfo.creation_time = groupInfo->mMeta.mPublishTs ;
+
+    // A group restricted to an external circle only delivers its posts to the circle's members. Being
+    // subscribed without being a member looks like a normal, silent group; tell the user why.
+    if(IS_GROUP_SUBSCRIBED(groupInfo->mMeta.mSubscribeFlags) && groupInfo->mMeta.mCircleType == static_cast<uint32_t>(RsGxsCircleType::EXTERNAL))
+    {
+        RsGxsCircleDetails circle;
+
+        if(!rsGxsCircles->getCircleDetails(groupInfo->mMeta.mCircleId, circle))
+            groupItemInfo.circle_warning = tr("Restricted to a circle this node has not received yet (%1). No post can be read until the circle arrives.")
+                                               .arg(QString::fromStdString(groupInfo->mMeta.mCircleId.toStdString()));
+        else if(!circle.mAmIAllowed)
+        {
+            std::list<RsGxsId> own_ids;
+            rsIdentity->getOwnIds(own_ids);
+
+            bool invited = false;
+            for(const auto& id : own_ids)
+                if(circle.isIdInInviteeList(id))
+                {
+                    invited = true;
+                    break;
+                }
+
+            QString circle_name = QString::fromUtf8(circle.mCircleName.c_str());
+
+            if(invited)
+                groupItemInfo.circle_warning = tr("You are invited to circle \"%1\" but have not accepted yet, so posts are not sent to you. Accept the invitation in People > Circles, or unsubscribe.").arg(circle_name);
+            else
+                groupItemInfo.circle_warning = tr("None of your identities is a member of circle \"%1\", so posts are not sent to you. Ask to join the circle, or unsubscribe.").arg(circle_name);
+        }
+    }
 
 #if TOGXS
 	if (groupInfo.mGroupFlags & RS_DISTRIB_AUTHEN_REQ) {
@@ -1036,11 +1104,59 @@ void GxsGroupFrameDialog::insertGroupsData(const std::list<RsGxsGenericGroupData
 
 	mInFill = false;
 
+	restoreCachedGroupCounts();
+
 	/* Re-fill group */
 	if (!ui->groupTreeWidget->activateId(QString::fromStdString(mGroupId.toStdString()), true))
 		mGroupId.clear();
 
 	updateMessageSummaryList(RsGxsGroupId());
+}
+
+void GxsGroupFrameDialog::restoreCachedGroupCounts()
+{
+	// Two different things write the post count column: fillGroupItems() above
+	// puts there the number of posts the *network* advertises for the group
+	// (mVisibleMsgCount), and setCounts() puts there the number of posts we
+	// actually hold locally. Last writer wins, so a tree refill silently
+	// replaces the local figure by the neighbours' one -- 800 instead of 8259
+	// observed on a forum whose neighbours keep a much shorter history.
+	//
+	// It used to be papered over: every network statistics event ran a full
+	// local recomputation, which wrote the local figure back a moment later.
+	// That recomputation was ruinous and is gone, so re-apply what is already
+	// known instead. This costs nothing, the numbers come from the cache.
+
+	if(mCachedGroupStats.empty())
+		return;
+
+	QTreeWidgetItem *categories[2] = { mYourGroups, mSubscribedGroups };
+
+	for(int c = 0; c < 2; ++c)
+	{
+		if(!categories[c])
+			continue;
+
+		const int childCount = categories[c]->childCount();
+
+		for(int child = 0; child < childCount; ++child)
+		{
+			QTreeWidgetItem *item = categories[c]->child(child);
+			const QString childId = ui->groupTreeWidget->itemId(item);
+
+			if(childId.isEmpty())
+				continue;
+
+			auto it = mCachedGroupStats.find(RsGxsGroupId(childId.toStdString()));
+
+			if(it == mCachedGroupStats.end())
+				continue;
+
+			const GxsGroupStatistic& stats(it->second);
+
+			ui->groupTreeWidget->setCounts(item, mCountChildMsgs ? (stats.mNumThreadMsgsUnread + stats.mNumChildMsgsUnread) : stats.mNumThreadMsgsUnread, stats.mNumMsgs);
+		}
+	}
 }
 
 void GxsGroupFrameDialog::updateMessageSummaryList(RsGxsGroupId groupId)

@@ -55,6 +55,15 @@ CryptoPage::CryptoPage(QWidget * parent, Qt::WindowFlags flags)
 	connect(ui._includeAllIPs_CB, SIGNAL(toggled(bool)), this, SLOT(load()));
 	connect(ui._copyLink_PB, SIGNAL(clicked()), this, SLOT(copyRSLink()));
 	connect(ui.showStats_PB, SIGNAL(clicked()), this, SLOT(showStats()));
+	connect(ui.copyInfo_PB, SIGNAL(clicked()), this, SLOT(copyNodeInfo()));
+
+	// Let the user select and copy every value with the mouse or the keyboard.
+	for(QLabel *value : { ui.name, ui.country, ui.peerid, ui.pgpid, ui.pgpfingerprint,
+	                      ui.version, ui.onlinesince, ui.friendsEdit, ui.labelpath })
+	{
+		value->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+		value->setCursor(Qt::IBeamCursor);
+	}
 
 	// hide profile manager as it causes bugs when generating a new profile.
 	//ui.profile_Button->hide() ;
@@ -233,6 +242,36 @@ bool CryptoPage::fileSaveAs()
         return fileSave();
     }
     return false;
+}
+
+void CryptoPage::copyNodeInfo()
+{
+	// Pair each caption with its value. The version caption and value hold one
+	// line per component (RetroShare, libretroshare), so pair them line by line.
+	QStringList lines;
+	auto add = [&lines](const QLabel *caption, const QLabel *value)
+	{
+		const QStringList captions = caption->text().split('\n');
+		const QStringList values = value->text().split('\n');
+		for(int i = 0; i < values.size(); ++i)
+		{
+			const QString c = (i < captions.size() ? captions[i] : captions.last()).trimmed();
+			lines << c + " " + values[i].trimmed();
+		}
+	};
+
+	add(ui.label_4, ui.name);
+	add(ui.label_8, ui.country);
+	add(ui.label_6, ui.peerid);
+	add(ui.label_7, ui.pgpid);
+	add(ui.label_2, ui.pgpfingerprint);
+	add(ui.label_9, ui.friendsEdit);
+	add(ui.label_3, ui.version);
+	add(ui.label_16, ui.onlinesince);
+	add(ui.label_5, ui.labelpath);
+
+	QApplication::clipboard()->setText(lines.join('\n') + '\n');
+	QMessageBox::information(this, tr("RetroShare"), tr("Your node information is copied to the clipboard."));
 }
 
 void CryptoPage::showStats()

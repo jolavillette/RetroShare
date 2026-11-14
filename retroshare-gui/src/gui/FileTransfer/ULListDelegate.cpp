@@ -165,10 +165,10 @@ void ULListDelegate::paint(QPainter * painter, const QStyleOptionViewItem & opti
 			pixmap = qvariant_cast<QIcon>(value).pixmap(option.decorationSize, option.state & QStyle::State_Enabled ? QIcon::Normal : QIcon::Disabled, option.state & QStyle::State_Open ? QIcon::On : QIcon::Off);
 			pixmapRect = (pixmap.isNull() ? QRect(0, 0, 0, 0): QRect(QPoint(0, 0), option.decorationSize));
 			if (pixmapRect.isValid()){
-				QPoint p = QStyle::alignedRect(option.direction, Qt::AlignLeft | Qt::AlignVCenter, pixmap.size(), option.rect).topLeft();
+				QPoint p = QStyle::alignedRect(option.direction, Qt::AlignLeft | Qt::AlignVCenter, pixmap.size() / pixmap.devicePixelRatio(), option.rect).topLeft();
 				painter->drawPixmap(p, pixmap);
 			}
-			painter->drawText(option.rect.translated(pixmap.size().width(), 0), Qt::AlignLeft | Qt::AlignVCenter, index.data().toString());
+			painter->drawText(option.rect.translated((pixmap.size() / pixmap.devicePixelRatio()).width(), 0), Qt::AlignLeft | Qt::AlignVCenter, index.data().toString());
 			break;
 		default:
 			painter->drawText(option.rect, Qt::AlignCenter, index.data().toString());

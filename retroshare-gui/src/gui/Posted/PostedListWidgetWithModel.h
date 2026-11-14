@@ -146,6 +146,7 @@ private slots:
 	void subscribeGroup(bool subscribe);
 	void settingsChanged();
 	void postPostLoad();
+	void displayedPostsChanged();
 	void copyMessageLink();
     void copyHttpLink();
     void nextPosts();
@@ -177,6 +178,7 @@ private:
 	std::map<RsGxsGroupId,RsGxsMessageId> mLastSelectedPosts;
 #endif
 	RsGxsMessageId mNavigatePendingMsgId;
+	RsGxsMessageId mNotifiedMissingMsgId;
 
 	/* UI - from Designer */
 	Ui::PostedListWidgetWithModel *ui;
