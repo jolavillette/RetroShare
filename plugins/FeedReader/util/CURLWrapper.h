@@ -21,6 +21,7 @@
 #ifndef CURLWRAPPER
 #define CURLWRAPPER
 
+#include <functional>
 #include <string>
 #include <vector>
 #include <curl/curl.h>
@@ -28,8 +29,15 @@
 class CURLWrapper
 {
 public:
-	CURLWrapper(const std::string &proxy);
+	/* abortCheck is polled while a transfer runs (libcurl calls the progress
+	 * callback about once a second even when no byte arrives); returning true
+	 * aborts the transfer with CURLE_ABORTED_BY_CALLBACK. */
+	CURLWrapper(const std::string &proxy, std::function<bool()> abortCheck = std::function<bool()>());
 	~CURLWrapper();
+
+	/* libcurl keeps a pointer to this object for the progress callback */
+	CURLWrapper(const CURLWrapper &) = delete;
+	CURLWrapper &operator=(const CURLWrapper &) = delete;
 
 	CURLcode downloadText(const std::string &link, std::string &data);
 	CURLcode downloadBinary(const std::string &link, std::vector<unsigned char> &data);
@@ -43,7 +51,10 @@ protected:
 	std::string stringInfo(CURLINFO info);
 
 private:
+	static int xferInfoCallback(void *clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow);
+
 	CURL *mCurl;
+	std::function<bool()> mAbortCheck;
 };
 
 #endif 

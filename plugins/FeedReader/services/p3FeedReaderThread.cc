@@ -71,6 +71,13 @@ void p3FeedReaderThread::threadTick()
 					std::string errorString;
 
 					RsFeedReaderErrorState result = download(feed, content, icon, errorString);
+					if (shouldStop()) {
+						/* the download was aborted (or finished) while the plugin
+						 * stops: leave the feed untouched, so that it is neither
+						 * stamped with an error nor marked as updated, and is
+						 * fetched again at the next start */
+						break;
+					}
 					if (result == RS_FEED_ERRORSTATE_OK) {
 						/* trim */
 						XMLWrapper::trimString(content);
@@ -94,10 +101,10 @@ void p3FeedReaderThread::threadTick()
 					if (result == RS_FEED_ERRORSTATE_OK) {
 						/* first, filter the messages */
 						mFeedReader->onProcessSuccess_filterMsg(feed.feedId, msgs);
-						if (isRunning()) {
+						if (!shouldStop()) {
 							/* second, process the descriptions and attachment */
 							for (it = msgs.begin(); it != msgs.end(); ) {
-								if (!isRunning()) {
+								if (shouldStop()) {
 									break;
 								}
 
@@ -130,7 +137,7 @@ void p3FeedReaderThread::threadTick()
 							}
 
 							if (!feed.preview) {
-								if (isRunning()) {
+								if (!shouldStop()) {
 									if (result == RS_FEED_ERRORSTATE_OK) {
 										/* third, add messages */
 										mFeedReader->onProcessSuccess_addMsgs(feed.feedId, msgs);
@@ -308,7 +315,7 @@ RsFeedReaderErrorState p3FeedReaderThread::download(const RsFeedReaderFeed &feed
 	RsFeedReaderErrorState result;
 
 	std::string proxy = getProxyForFeed(feed);
-	CURLWrapper CURL(proxy);
+	CURLWrapper CURL(proxy, [this]() { return shouldStop(); });
 	CURLcode code = CURL.downloadText(feed.url, content);
 
 	if (code == CURLE_OK) {
@@ -916,7 +923,7 @@ RsFeedReaderErrorState p3FeedReaderThread::process(const RsFeedReaderFeed &feed,
 					/* process items */
 					xmlNodePtr node;
 					for (node = NULL; (node = getNextItem(feedFormat, channel, node)) != NULL; ) {
-						if (!isRunning()) {
+						if (shouldStop()) {
 							break;
 						}
 
@@ -1092,7 +1099,7 @@ RsFeedReaderErrorState p3FeedReaderThread::processMsg(const RsFeedReaderFeed &fe
 	/* attachment */
 	if (!msg->attachmentLink.empty()) {
 		if (isContentType(msg->attachmentMimeType, "image/")) {
-			CURLWrapper CURL(proxy);
+			CURLWrapper CURL(proxy, [this]() { return shouldStop(); });
 			CURLcode code = CURL.downloadBinary(msg->attachmentLink, msg->attachmentBinary);
 			if (code == CURLE_OK && CURL.responseCode() == 200) {
 				std::string contentType = CURL.contentType();
@@ -1129,7 +1136,7 @@ RsFeedReaderErrorState p3FeedReaderThread::processMsg(const RsFeedReaderFeed &fe
 		std::cerr << "p3FeedReaderThread::processMsg - feed " << feed.feedId << " (" << feed.name << ") download page " << msg->link << std::endl;
 #endif
 		std::string content;
-		CURLWrapper CURL(proxy);
+		CURLWrapper CURL(proxy, [this]() { return shouldStop(); });
 		CURLcode code = CURL.downloadText(msg->link, content);
 
 		if (code == CURLE_OK) {
@@ -1178,7 +1185,7 @@ RsFeedReaderErrorState p3FeedReaderThread::processMsg(const RsFeedReaderFeed &fe
 		return result;
 	}
 
-	if (isRunning()) {
+	if (!shouldStop()) {
 		/* process description */
 		bool processPostedFirstImage = (feed.flag & RS_FEED_FLAG_POSTED_FIRST_IMAGE) ? true : false;
 		if (!msg->attachmentBinary.empty()) {
@@ -1199,7 +1206,7 @@ RsFeedReaderErrorState p3FeedReaderThread::processMsg(const RsFeedReaderFeed &fe
 				nodes.push_back(root);
 
 				while (!nodes.empty()) {
-					if (!isRunning()) {
+					if (shouldStop()) {
 						break;
 					}
 					xmlNodePtr node = nodes.front();
@@ -1277,7 +1284,7 @@ RsFeedReaderErrorState p3FeedReaderThread::processMsg(const RsFeedReaderFeed &fe
 				}
 				nodesToDelete.clear();
 
-				if (isRunning() && result == RS_FEED_ERRORSTATE_OK) {
+				if (!shouldStop() && result == RS_FEED_ERRORSTATE_OK) {
 					unsigned int xpathCount;
 					unsigned int xpathIndex;
 					XPathWrapper *xpath = html.createXPath();
@@ -1286,7 +1293,7 @@ RsFeedReaderErrorState p3FeedReaderThread::processMsg(const RsFeedReaderFeed &fe
 						if (xpath->compile("//img")) {
 							xpathCount = xpath->count();
 							for (xpathIndex = 0; xpathIndex < xpathCount; ++xpathIndex) {
-								if (!isRunning()) {
+								if (shouldStop()) {
 									break;
 								}
 								xmlNodePtr node = xpath->node(xpathIndex);
@@ -1303,7 +1310,7 @@ RsFeedReaderErrorState p3FeedReaderThread::processMsg(const RsFeedReaderFeed &fe
 											std::cerr << "p3FeedReaderThread::processMsg - feed " << feed.feedId << " (" << feed.name << ") download image " << src << std::endl;
 #endif
 											std::vector<unsigned char> data;
-											CURLWrapper CURL(proxy);
+											CURLWrapper CURL(proxy, [this]() { return shouldStop(); });
 											CURLcode code = CURL.downloadBinary(calculateLink(url, src), data);
 											if (code == CURLE_OK && CURL.responseCode() == 200) {
 												std::string contentType = CURL.contentType();
@@ -1361,7 +1368,7 @@ RsFeedReaderErrorState p3FeedReaderThread::processMsg(const RsFeedReaderFeed &fe
 				nodesToDelete.clear();
 
 				if (result == RS_FEED_ERRORSTATE_OK) {
-					if (isRunning()) {
+					if (!shouldStop()) {
 						if (html.saveHTML(msg->description)) {
 							if (postedFirstImageNode) {
 								/* Remove first image and create description without the image */
