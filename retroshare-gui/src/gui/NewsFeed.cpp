@@ -515,7 +515,22 @@ void NewsFeed::handleSecurityEvent(std::shared_ptr<const RsEvent> event)
 		addFeedItemIfUnique(new PeerItem(this, NEWSFEED_PEERLIST, e.mSslId, PEER_TYPE_HELLO, false), true );
 		return;
 	}
-	
+
+    // 3 - a friend that authenticated fine but was refused by our own IP
+    // filter: show the IP item with the result of the check, as the library
+    // reported it, and the address it checked.
+
+    if(e.mErrorCode == RsAuthSslError::IP_IS_BLACKLISTED || e.mErrorCode == RsAuthSslError::IP_NOT_WHITELISTED)
+    {
+        if(!!(flags & RsFeedTypeFlags::RS_FEED_TYPE_SECURITY_IP))
+        {
+            uint32_t result = (e.mErrorCode == RsAuthSslError::IP_IS_BLACKLISTED) ? RSBANLIST_CHECK_RESULT_BLACKLISTED
+                                                                                    : RSBANLIST_CHECK_RESULT_NOT_WHITELISTED;
+            addFeedItemIfUnique(new SecurityIpItem(this, e.mSslId, e.mLocator.host(), result,
+                                                   RsFeedTypeFlags::RS_FEED_ITEM_SEC_IP_BLACKLISTED, false), true);
+        }
+        return;
+    }
 
     RsFeedTypeFlags FeedItemType(RsFeedTypeFlags::RS_FEED_TYPE_NONE);
 
@@ -529,8 +544,6 @@ void NewsFeed::handleSecurityEvent(std::shared_ptr<const RsEvent> event)
         FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_WRONG_SIGNATURE; break;
 	case RsAuthSslError::NOT_A_FRIEND:
         FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_CONNECT_ATTEMPT; break;
-	case RsAuthSslError::IP_IS_BLACKLISTED:
-        FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_IP_BLACKLISTED; break;
 	case RsAuthSslError::MISSING_CERTIFICATE:
         FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_MISSING_CERTIFICATE; break;
 	default:
@@ -542,7 +555,11 @@ void NewsFeed::handleSecurityEvent(std::shared_ptr<const RsEvent> event)
 
 	addFeedItemIfUnique(new SecurityItem(this, NEWSFEED_SECLIST, e.mPgpId, e.mSslId, det.location, e.mLocator.toString(), FeedItemType, false), true );
 
-    if (Settings->getMessageFlags() & RshareSettings::RS_MESSAGE_CONNECT_ATTEMPT)
+    // The message says "wants to be friends with you": only true of a node
+    // outside the friend list, not of a certificate that failed to validate.
+    if ( (Settings->getMessageFlags() & RshareSettings::RS_MESSAGE_CONNECT_ATTEMPT)
+         && ( FeedItemType == RsFeedTypeFlags::RS_FEED_ITEM_SEC_CONNECT_ATTEMPT
+              || FeedItemType == RsFeedTypeFlags::RS_FEED_ITEM_SEC_MISSING_CERTIFICATE ) )
 		MessageComposer::addConnectAttemptMsg(e.mPgpId, e.mSslId, QString::fromStdString(det.name + "(" + det.location + ")"));
 }
 
