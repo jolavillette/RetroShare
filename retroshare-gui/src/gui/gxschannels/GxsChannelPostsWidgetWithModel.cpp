@@ -433,7 +433,15 @@ QSize ChannelPostFilesDelegate::sizeHint(const QStyleOptionViewItem& option, con
     case RsGxsChannelPostFilesModel::COLUMN_FILES_SIZE: return QSize(1.1*QFontMetrics_horizontalAdvance(fm, misc::friendlyUnit(qulonglong(file.mSize))),fm.height());
     case RsGxsChannelPostFilesModel::COLUMN_FILES_DATE: return QSize(1.1 * QFontMetrics_horizontalAdvance(fm, DateTime::formatDateTime(file.mPublishTime)), fm.height());
     default:
-    case RsGxsChannelPostFilesModel::COLUMN_FILES_FILE: return QSize(option.rect.width(),GxsChannelFilesStatusWidget(file).height());
+    case RsGxsChannelPostFilesModel::COLUMN_FILES_FILE:
+    {
+        // The status widget is never shown here, so its height is the one of its .ui geometry and does not
+        // depend on the file. Build it once: the files model re-lays out every row every 5 s, and building
+        // one widget (setupUi, SVG icons, style sheet) per row each time stalled the GUI thread.
+        static const int status_widget_height = GxsChannelFilesStatusWidget(file).height();
+
+        return QSize(option.rect.width(),status_widget_height);
+    }
     }
 }
 
