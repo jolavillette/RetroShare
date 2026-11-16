@@ -37,7 +37,7 @@ set(RS_GUI_VERSION_SET OFF)
 set(RS_GUI_VERSION "")
 if(GIT_EXECUTABLE)
 	execute_process(
-		COMMAND "${GIT_EXECUTABLE}" describe --tags --always --dirty
+		COMMAND "${GIT_EXECUTABLE}" describe --tags --always
 		WORKING_DIRECTORY "${RS_STAMP_SOURCE_DIR}"
 		OUTPUT_VARIABLE RS_GUI_VERSION
 		OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -45,6 +45,22 @@ if(GIT_EXECUTABLE)
 		RESULT_VARIABLE V_GIT_RESULT )
 	if(NOT V_GIT_RESULT EQUAL 0)
 		set(RS_GUI_VERSION "")
+	endif()
+
+	# `git describe --dirty` also counts the submodules that are not at the
+	# commit recorded in the super-project, which says nothing about the GUI
+	# sources and is the normal state of a development tree. libretroshare
+	# reports its own version. So look at the files of the super-project only.
+	if(NOT RS_GUI_VERSION STREQUAL "")
+		execute_process(
+			COMMAND "${GIT_EXECUTABLE}" diff --quiet --ignore-submodules HEAD
+			WORKING_DIRECTORY "${RS_STAMP_SOURCE_DIR}"
+			OUTPUT_QUIET
+			ERROR_QUIET
+			RESULT_VARIABLE V_GIT_RESULT )
+		if(V_GIT_RESULT EQUAL 1)
+			string(APPEND RS_GUI_VERSION "-dirty")
+		endif()
 	endif()
 endif()
 

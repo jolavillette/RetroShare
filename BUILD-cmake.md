@@ -108,9 +108,10 @@ prints a warning until then).
 
 Notes:
 - **`-dirty`** is appended whenever the working tree has *tracked* modifications
-  at build time. Modified **submodule pointers count as tracked changes**, so
-  a tree that is otherwise clean apart from submodule drift still stamps `-dirty`
-  on the GUI/engine version. Untracked files never trigger it.
+  at build time. Untracked files never trigger it. For the GUI version only
+  the files of the super-project count: a submodule that is not at the commit
+  the super-project records does not make it `-dirty`, so the first command
+  above can print `-dirty` where the build does not.
 - libretroshare uses `--long`, which **always** prints the `-<N>-g<hash>` suffix —
   even on a tagged commit you get `v0.6.7-0-g…`, never a bare `0.6.7`.
 - Merging feature branches into an integration branch (e.g. `combo`) only grows
