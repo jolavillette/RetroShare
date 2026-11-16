@@ -660,7 +660,8 @@ QVariant FlatStyle_RDM::data(const QModelIndex &index, int role) const
                     case REMOTEDIRMODEL_COLUMN_NAME: return cfd.name;
                     case REMOTEDIRMODEL_COLUMN_SIZE: return cfd.sizeStr;
                     case REMOTEDIRMODEL_COLUMN_AGE:  return cfd.ageStr;
-                    case REMOTEDIRMODEL_COLUMN_UPLOADED: return cfd.uploadStr;
+                    // The uploaded amount is not taken from the cache: it changes while the cache is kept, and a
+                    // file that was being hashed when the cache was filled would show nothing until the next refill.
                 }
             }
             else // SortRole
@@ -1946,7 +1947,6 @@ void FlatStyle_RDM::updateRefs()
                     }
 
                     uint64_t x = rsFiles->getCumulativeUpload(details.hash);
-                    cfd.uploadStr = x ? misc::friendlyUnit(x) : QString();
                     cfd.uploads = x;
                     cfd.hasUploads = (x > 0);
                     cfd.size = details.size;

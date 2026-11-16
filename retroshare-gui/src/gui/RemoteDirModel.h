@@ -300,7 +300,6 @@ class FlatStyle_RDM: public RetroshareDirModel
             QString name;
             QString sizeStr;
             QString ageStr;
-            QString uploadStr;
             uint64_t size;
             uint32_t mtime;
             uint64_t uploads;
