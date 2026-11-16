@@ -1,0 +1,35 @@
+/*******************************************************************************
+ * retroshare-gui/cmake/: rsguiversion_build.h.in                              *
+ *                                                                             *
+ * RetroShare GUI                                                              *
+ *                                                                             *
+ * Copyright (C) 2026  Retroshare Team <contact@retroshare.cc>                 *
+ *                                                                             *
+ * This program is free software: you can redistribute it and/or modify        *
+ * it under the terms of the GNU Affero General Public License as              *
+ * published by the Free Software Foundation, either version 3 of the          *
+ * License, or (at your option) any later version.                             *
+ *                                                                             *
+ * This program is distributed in the hope that it will be useful,             *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of              *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                *
+ * GNU Affero General Public License for more details.                         *
+ *                                                                             *
+ * You should have received a copy of the GNU Affero General Public License    *
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.       *
+ *                                                                             *
+ *******************************************************************************/
+
+/* Generated at build time by cmake/RsGuiVersionStamp.cmake, do not edit.
+ * The version changes at every commit: include this file only through
+ * rsguiversion.h, and from the Windows resource file. It must stay readable by
+ * the resource compiler: preprocessor directives only. */
+#ifndef RS_GUI_VERSION_BUILD_H
+#define RS_GUI_VERSION_BUILD_H
+
+#cmakedefine RS_GUI_VERSION_SET
+#ifdef RS_GUI_VERSION_SET
+#	define RS_GUI_VERSION "@RS_GUI_VERSION@"
+#endif
+
+#endif
