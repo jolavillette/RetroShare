@@ -30,8 +30,18 @@ concurrency:
 
 jobs:
   build:
-    name: Ubuntu 24.04 / Qt6 / CMake
-    runs-on: ubuntu-24.04
+    name: Ubuntu ${{ matrix.ubuntu }} / Qt6 / CMake
+    runs-on: ubuntu-${{ matrix.ubuntu }}
+
+    # Ubuntu 26.04 ships GCC 15 and Botan 3 only (libbotan-2-dev is gone).
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - ubuntu: '24.04'
+          botan: libbotan-2-dev
+        - ubuntu: '26.04'
+          botan: libbotan-3-dev
 
     steps:
     - uses: actions/checkout@v5
@@ -58,7 +68,7 @@ jobs:
         build-essential g++ cmake ninja-build pkg-config git
         qt6-base-dev qt6-base-dev-tools qt6-multimedia-dev libqt6svg6-dev
         qt6-5compat-dev libqt6core5compat6-dev qt6-tools-dev qt6-tools-dev-tools
-        libssl-dev zlib1g-dev libbz2-dev libbotan-2-dev libjson-c-dev
+        libssl-dev zlib1g-dev libbz2-dev ${{ matrix.botan }} libjson-c-dev
         libasio-dev libsqlcipher-dev
         libspeex-dev libspeexdsp-dev libminiupnpc-dev
         libavcodec-dev libavutil-dev
