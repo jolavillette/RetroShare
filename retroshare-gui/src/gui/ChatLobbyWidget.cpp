@@ -685,12 +685,12 @@ void ChatLobbyWidget::updateDisplay()
 
         bool autoSubscribe = rsChats->getLobbyAutoSubscribe(lobby.lobby_id);
 
-		if (autoSubscribe && subscribed && _lobby_infos.find(lobby.lobby_id) == _lobby_infos.end())
-		{
-            ChatDialog *cd = ChatDialog::getChat(ChatId(lobby.lobby_id), RsChatFlags::RS_CHAT_OPEN);
+		// Creating a ChatLobbyDialog is expensive, and shortly after startup all the auto-subscribed
+		// rooms become visible at once: creating their dialogs right here froze the interface for
+		// more than a second. So only queue the room, see createNextPendingLobbyDialog().
 
-			addChatPage(dynamic_cast<ChatLobbyDialog*>(cd));
-		}
+		if (autoSubscribe && subscribed && _lobby_infos.find(lobby.lobby_id) == _lobby_infos.end())
+			scheduleLobbyDialog(lobby.lobby_id);
 
 		updateItem(ui.lobbyTreeWidget, item, lobby.lobby_id, lobby.lobby_name,lobby.lobby_topic, lobby.total_number_of_peers, subscribed, autoSubscribe,lobby_flags);
 	}
@@ -753,7 +753,11 @@ void ChatLobbyWidget::updateDisplay()
 
         // look for chat rooms that are subscribed but not displayed as such
 
-        if(it == _lobby_infos.end() && rsChats->joinVisibleChatLobby(lobby.lobby_id,lobby.gxs_id))
+        // (rooms waiting in mPendingLobbyDialogs are about to get their dialog: leave them alone)
+
+        if(it == _lobby_infos.end()
+                && std::find(mPendingLobbyDialogs.begin(), mPendingLobbyDialogs.end(), lobby.lobby_id) == mPendingLobbyDialogs.end()
+                && rsChats->joinVisibleChatLobby(lobby.lobby_id,lobby.gxs_id))
         {
             std::cerr << "Adding back ChatLobbyDialog for subscribed lobby " << std::hex << lobby.lobby_id << std::dec << std::endl;
 			ChatDialog::chatFriend(ChatId(lobby.lobby_id),true) ;
@@ -763,6 +767,49 @@ void ChatLobbyWidget::updateDisplay()
 	publicSubLobbyItem->setText(COLUMN_NAME, tr("Public Subscribed")+ QString(" (") + QString::number(publicSubLobbyItem->childCount())+QString(")"));
 	privateSubLobbyItem->setHidden(privateSubLobbyItem->childCount()==0);
 	publicLobbyItem->setText(COLUMN_NAME, tr("Public")+ " (" + QString::number(publicLobbyItem->childCount())+QString(")"));
+}
+
+void ChatLobbyWidget::scheduleLobbyDialog(ChatLobbyId id)
+{
+	if(std::find(mPendingLobbyDialogs.begin(), mPendingLobbyDialogs.end(), id) != mPendingLobbyDialogs.end())
+		return;
+
+	bool start = mPendingLobbyDialogs.empty();
+	mPendingLobbyDialogs.push_back(id);
+
+	if(start)
+		QTimer::singleShot(0, this, SLOT(createNextPendingLobbyDialog()));
+}
+
+/*!
+ * \brief Create the dialog of one queued room, then come back for the next one.
+ *
+ * One dialog per pass of the event loop, so that the interface keeps handling user input
+ * while the dialogs of the auto-subscribed rooms are created.
+ */
+void ChatLobbyWidget::createNextPendingLobbyDialog()
+{
+	if(mPendingLobbyDialogs.empty())
+		return;
+
+	ChatLobbyId id = mPendingLobbyDialogs.front();
+	mPendingLobbyDialogs.pop_front();
+
+	// The room may have got its dialog, or have been left, while it was waiting.
+
+	std::list<ChatLobbyId> lobbies;
+	rsChats->getChatLobbyList(lobbies);
+
+	if(_lobby_infos.find(id) == _lobby_infos.end() && std::find(lobbies.begin(), lobbies.end(), id) != lobbies.end())
+	{
+		ChatLobbyDialog *cld = dynamic_cast<ChatLobbyDialog*>(ChatDialog::getChat(ChatId(id), RsChatFlags::RS_CHAT_OPEN));
+
+		if(cld)
+			addChatPage(cld);
+	}
+
+	if(!mPendingLobbyDialogs.empty())
+		QTimer::singleShot(0, this, SLOT(createNextPendingLobbyDialog()));
 }
 
 void ChatLobbyWidget::createChatLobby()

@@ -113,9 +113,11 @@ private slots:
 
 	void updateNotify(ChatLobbyId id, unsigned int count) ;
 	void idChooserCurrentIndexChanged(int index);
+	void createNextPendingLobbyDialog();
 
 private:
 	void autoSubscribeLobby(QTreeWidgetItem *item);
+	void scheduleLobbyDialog(ChatLobbyId id);
     void subscribeChatLobby(ChatLobbyId id) ;
     void subscribeChatLobbyAtItem(QTreeWidgetItem *item) ;
 
@@ -153,5 +155,8 @@ private:
 	Ui::ChatLobbyWidget ui;
 
     RsEventsHandlerId_t mEventHandlerId;
+
+	// subscribed rooms waiting for their dialog, created one per pass of the event loop
+	std::list<ChatLobbyId> mPendingLobbyDialogs ;
 };
 
