@@ -33,6 +33,7 @@ namespace Ui {
 class FriendSelectionWidget;
 }
 
+class QTimer;
 class QTreeWidgetItem;
 class RSTreeWidgetItemCompareRole;
 
@@ -184,6 +185,7 @@ private:
 
     RsEventsHandlerId_t mEventHandlerId_identities;
     RsEventsHandlerId_t mEventHandlerId_peers;
+    QTimer *mIdentityEventTimer;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(FriendSelectionWidget::ShowTypes)

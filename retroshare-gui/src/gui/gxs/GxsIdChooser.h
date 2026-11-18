@@ -31,6 +31,7 @@
 //
 
 class RsGxsUpdateBroadcastBase;
+class QTimer;
 
 #define IDCHOOSER_ID_REQUIRED   0x0001
 #define IDCHOOSER_ANON_DEFAULT  0x0002
@@ -93,6 +94,7 @@ private:
 //    RsGxsUpdateBroadcastBase *mBase;
 
     RsEventsHandlerId_t mEventHandlerId;
+    QTimer *mIdentityEventTimer;
 };
 
 #endif

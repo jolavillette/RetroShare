@@ -30,6 +30,7 @@
 #include <retroshare/rspeers.h>
 
 #include <QSortFilterProxyModel>
+#include <QTimer>
 #include <QStandardItemModel>
 
 #include <algorithm>
@@ -80,6 +81,14 @@ GxsIdChooser::GxsIdChooser(QWidget *parent) :
 	connect(this, SIGNAL(currentIndexChanged(int)), this, SLOT(myCurrentIndexChanged(int)));
 	connect(this, SIGNAL(activated(int)), this, SLOT(indexActivated(int)));
 
+    // Identity events come in herds (a sync, or a pass of the identity cleaner, posts hundreds of them):
+    // they are grouped into one reload per second.
+
+    mIdentityEventTimer = new QTimer(this);
+    mIdentityEventTimer->setSingleShot(true);
+    mIdentityEventTimer->setInterval(1000);
+    connect(mIdentityEventTimer, &QTimer::timeout, this, [this]() { updateDisplay(true); update(); });
+
     // also capture identity creation/deletion events so as to update the UI accordingly
 
     mEventHandlerId = 0;
@@ -95,8 +104,8 @@ void GxsIdChooser::handleEvent_main_thread(std::shared_ptr<const RsEvent> event)
     if(!fe)
         return;
 
-    updateDisplay(true);
-    update(); // Qt flush
+    if(!mIdentityEventTimer->isActive())
+        mIdentityEventTimer->start();
 }
 
 void GxsIdChooser::setFlags(uint32_t flags)
