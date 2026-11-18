@@ -20,6 +20,7 @@
 
 #include <QMenu>
 #include <QMessageBox>
+#include <QTimer>
 #include <QToolButton>
 
 #include "GxsGroupFrameDialog.h"
@@ -80,6 +81,7 @@ GxsGroupFrameDialog::GxsGroupFrameDialog(RsGxsIfaceHelper *ifaceImpl,const QStri
 
 	mShouldUpdateMessageSummaryList = true;
 	mShouldUpdateGroupStatistics = false;
+	mServiceStatsSavePending = false;
     mLastGroupStatisticsUpdateTs=0;
 	mInitialized = false;
 	mDistSyncAllowed = allow_dist_sync;
@@ -132,6 +134,9 @@ GxsGroupFrameDialog::~GxsGroupFrameDialog()
 {
 	// save settings
 	processSettings(false);
+
+	if(mServiceStatsSavePending)
+		saveServiceStatistics();
 
 	delete(ui);
 }
@@ -1180,16 +1185,19 @@ void GxsGroupFrameDialog::getServiceStatistics(GxsServiceStatistic& stats) const
         }
 
         // Also save the service statistics in conf file, so that we can display it right away at start.
+        // The values are written one minute later at most, and once for all the calls made in between:
+        // while the groups load, this function is called about twice a second with new counts, and every
+        // write makes Qt save the whole settings file on the GUI thread.
 
-        Settings->beginGroup(mSettingsName);
-        Settings->setValue("NumMsgs",            stats.mNumMsgs            );
-        Settings->setValue("NumGrps",            stats.mNumGrps            );
-        Settings->setValue("SizeOfMessages",     stats.mSizeOfMsgs         );
-        Settings->setValue("NumThreadMsgsNew",   stats.mNumThreadMsgsNew   );
-        Settings->setValue("NumThreadMsgsUnread",stats.mNumThreadMsgsUnread);
-        Settings->setValue("NumChildMsgsNew",    stats.mNumChildMsgsNew    );
-        Settings->setValue("NumChildMsgsUnread", stats.mNumChildMsgsUnread );
-        Settings->endGroup();
+        mServiceStatsToSave = stats;
+
+        if(!mServiceStatsSavePending)
+        {
+            mServiceStatsSavePending = true;
+
+            GxsGroupFrameDialog *self = const_cast<GxsGroupFrameDialog*>(this);
+            QTimer::singleShot(60000, self, [self]() { self->saveServiceStatistics(); });
+        }
     }
     else	// Get statistics from settings if no cache is already present: allows to display at start.
     {
@@ -1205,6 +1213,23 @@ void GxsGroupFrameDialog::getServiceStatistics(GxsServiceStatistic& stats) const
 
         Settings->endGroup();
     }
+}
+
+void GxsGroupFrameDialog::saveServiceStatistics()
+{
+    mServiceStatsSavePending = false;
+
+    const GxsServiceStatistic& stats(mServiceStatsToSave);
+
+    Settings->beginGroup(mSettingsName);
+    Settings->setValue("NumMsgs",            stats.mNumMsgs            );
+    Settings->setValue("NumGrps",            stats.mNumGrps            );
+    Settings->setValue("SizeOfMessages",     stats.mSizeOfMsgs         );
+    Settings->setValue("NumThreadMsgsNew",   stats.mNumThreadMsgsNew   );
+    Settings->setValue("NumThreadMsgsUnread",stats.mNumThreadMsgsUnread);
+    Settings->setValue("NumChildMsgsNew",    stats.mNumChildMsgsNew    );
+    Settings->setValue("NumChildMsgsUnread", stats.mNumChildMsgsUnread );
+    Settings->endGroup();
 }
 
 TurtleRequestId GxsGroupFrameDialog::distantSearch(const QString& search_string)   // this should be overloaded in the child class

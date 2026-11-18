@@ -201,6 +201,13 @@ protected:
     RsGxsIfaceHelper *mInterface;
     bool mDistSyncAllowed;
     std::map<RsGxsGroupId,GxsGroupStatistic> mCachedGroupStats;
+
+    // Service statistics waiting to be written to the settings: getServiceStatistics() is called at every
+    // refresh, and each write to the settings ends in a save of the whole file on the GUI thread.
+    void saveServiceStatistics();
+
+    mutable GxsServiceStatistic mServiceStatsToSave;
+    mutable bool mServiceStatsSavePending;
     bool mShouldUpdateGroupStatistics;
     std::set<RsGxsGroupId> mGroupStatisticsToUpdate;
     bool mCountChildMsgs;
