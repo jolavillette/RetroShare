@@ -1523,7 +1523,9 @@ void p3FeedReader::cleanFeeds()
 		mLastClean = currentTime;
 
 		if (removedMsgIds.size()) {
-			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_NOW);
+			// The results of the automatic feed updates are saved within a minute, not at once: every save
+			// rewrites the whole configuration file, and each feed update asked for several of them.
+			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_OFTEN);
 
 			if (mNotify) {
 				std::list<std::pair<uint32_t, std::string> >::iterator it;
@@ -1838,7 +1840,7 @@ void p3FeedReader::onDownloadSuccess(uint32_t feedId, const std::string &content
 			fi->icon = icon;
 
 			if (!preview) {
-				IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_NOW);
+				IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_OFTEN);
 			}
 		}
 
@@ -1889,7 +1891,7 @@ void p3FeedReader::onDownloadError(uint32_t feedId, RsFeedReaderErrorState resul
 #endif
 
 		if (!fi->preview) {
-			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_NOW);
+			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_OFTEN);
 		}
 	}
 
@@ -2001,7 +2003,7 @@ void p3FeedReader::onProcessSuccess_filterMsg(uint32_t feedId, std::list<RsFeedR
 		fi->errorString.clear();
 
 		if (!fi->preview) {
-			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_NOW);
+			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_OFTEN);
 		}
 	}
 }
@@ -2324,7 +2326,7 @@ void p3FeedReader::onProcessSuccess_addMsgs(uint32_t feedId, std::list<RsFeedRea
 			fi->errorState = errorState;
 			fi->lastUpdate = time(NULL);
 
-			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_NOW);
+			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_OFTEN);
 		}
 	}
 
@@ -2366,7 +2368,7 @@ void p3FeedReader::onProcessError(uint32_t feedId, RsFeedReaderErrorState result
 #endif
 
 		if (!fi->preview) {
-			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_NOW);
+			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_OFTEN);
 		}
 	}
 
