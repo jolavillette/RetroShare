@@ -117,9 +117,14 @@ GxsTransportStatistics::GxsTransportStatistics(QWidget *parent)
 	// operation, so we refresh on demand rather than on a timer.
 	connect(refreshButton, &QPushButton::clicked, this, [this]() { updateDisplay(); });
 
+	// The rows of a group are only built when the group is opened, see groupExpanded().
+	connect(groupTreeWidget, SIGNAL(itemExpanded(QTreeWidgetItem*)), this, SLOT(groupExpanded(QTreeWidgetItem*)));
+
 	// load settings
 	processSettings(true);
-	updateDisplay();
+
+	// No updateDisplay() here: the page is created along with the Statistics window, whatever
+	// page the user came for. showEvent() loads the data when this page is actually displayed.
 }
 
 GxsTransportStatistics::~GxsTransportStatistics()
@@ -204,7 +209,10 @@ void GxsTransportStatistics::settingsChanged()
 	int currentFormat = Settings->getDateFormat();
 	if (currentFormat != mLastDateFormat) {
 		mLastDateFormat = currentFormat;
-		updateDisplay();
+
+		// A hidden page is reloaded by showEvent() anyway.
+		if (isVisible())
+			updateDisplay();
 	}
 }
 
@@ -309,21 +317,9 @@ void GxsTransportStatistics::updateContent()
     for(std::map<RsGxsGroupId,RsGxsTransGroupStatistics>::const_iterator it(mGroupStats.begin());it!=mGroupStats.end();++it)
     {
         const RsGxsTransGroupStatistics& stat(it->second) ;
-		QTreeWidgetItem *item ;
-
-		{
-			QString unique_id = QString::fromStdString(stat.mGrpId.toStdString());
-
-			QList<QTreeWidgetItem*> iteml = groupTreeWidget->findItems(unique_id,Qt::MatchExactly,COL_GROUP_UNIQUE_ID) ;
-
-			if(iteml.empty())
-				item = new QTreeWidgetItem;
-			else
-				item = *iteml.begin();
-		}
+		QTreeWidgetItem *item = new QTreeWidgetItem;
 
         groupTreeWidget->addTopLevelItem(item);
-		item->setExpanded(openned_groups.find(it->first) != openned_groups.end());
 
 		QString msg_time_string = (stat.last_publish_TS>0)?QString("(Last msg: %1)").arg(DateTime::formatDateTime((uint)stat.last_publish_TS)):"" ;
 
@@ -339,45 +335,65 @@ void GxsTransportStatistics::updateContent()
         item->setTextAlignment(COL_GROUP_SIZE_MSGS, Qt::AlignRight);
         item->setTextAlignment(COL_GROUP_SUBSCRIBED, Qt::AlignCenter);
 
-        for(std::map<RsGxsMessageId,RsMsgMetaData>::const_iterator msgIt(stat.messages_metas.begin());msgIt!=stat.messages_metas.end();++msgIt)
-        {
-            const RsMsgMetaData& meta(msgIt->second);
+		// A message row costs an identity lookup, an avatar and a label widget, and a group
+		// can hold thousands of messages. Building them all here froze the interface, so
+		// only the groups that are open get their rows now. The others just show that they
+		// can be opened, and get their rows in groupExpanded().
 
-            QTreeWidgetItem *sitem ;
-			{
-				QString unique_id = QString::fromStdString(meta.mMsgId.toStdString());
+		if(!stat.messages_metas.empty())
+			item->setChildIndicatorPolicy(QTreeWidgetItem::ShowIndicator);
 
-				QList<QTreeWidgetItem*> iteml = groupTreeWidget->findItems(unique_id,Qt::MatchExactly,COL_GROUP_UNIQUE_ID) ;
-
-				if(iteml.empty())
-					sitem = new QTreeWidgetItem(item) ;
-				else
-					sitem = *iteml.begin();
-			}
-
-            GxsIdLabel *label = new GxsIdLabel();
-            label->setId(meta.mAuthorId) ;
-            groupTreeWidget->setItemWidget(sitem,COL_GROUP_GRP_ID,label) ;
-			
-			RsIdentityDetails idDetails ;
-			rsIdentity->getIdDetails(meta.mAuthorId,idDetails);
-			
-			QPixmap pixmap ;
-			QDateTime qdatetime = DateTime::DateTimeFromTime_t(meta.mPublishTs);
-
-			if(idDetails.mAvatar.mSize == 0 || !GxsIdDetails::loadPixmapFromData(idDetails.mAvatar.mData, idDetails.mAvatar.mSize, pixmap,GxsIdDetails::SMALL))
-				pixmap = GxsIdDetails::makeDefaultIcon(meta.mAuthorId,GxsIdDetails::SMALL);
-				  
-			sitem->setIcon(COL_GROUP_GRP_ID, QIcon(pixmap));
-
-			sitem->setData(COL_GROUP_UNIQUE_ID, Qt::DisplayRole,QString::fromStdString(meta.mMsgId.toStdString()));
-			sitem->setData(COL_GROUP_AUTHOR_ID, Qt::DisplayRole,  QString::fromStdString(meta.mAuthorId.toStdString())) ;
-			sitem->setText(COL_GROUP_PUBLISHTS, DateTime::formatDateTime(meta.mPublishTs));
-			sitem->setData(COL_GROUP_PUBLISHTS, Qt::UserRole, qdatetime);
-
-			sitem->setTextAlignment(COL_GROUP_PUBLISHTS, Qt::AlignRight);
-        }
+		if(openned_groups.find(it->first) != openned_groups.end())
+		{
+			fillGroupMessages(item, stat);
+			item->setExpanded(true);
+		}
     }
+}
+
+void GxsTransportStatistics::groupExpanded(QTreeWidgetItem *item)
+{
+	if(item == NULL || item->parent() != NULL || item->childCount() > 0)
+		return;
+
+	RsGxsGroupId group_id(item->data(COL_GROUP_GRP_ID, Qt::DisplayRole).toString().toStdString());
+
+	std::map<RsGxsGroupId,RsGxsTransGroupStatistics>::const_iterator it = mGroupStats.find(group_id);
+
+	if(it != mGroupStats.end())
+		fillGroupMessages(item, it->second);
+}
+
+void GxsTransportStatistics::fillGroupMessages(QTreeWidgetItem *item, const RsGxsTransGroupStatistics& stat)
+{
+	for(std::map<RsGxsMessageId,RsMsgMetaData>::const_iterator msgIt(stat.messages_metas.begin());msgIt!=stat.messages_metas.end();++msgIt)
+	{
+		const RsMsgMetaData& meta(msgIt->second);
+
+		QTreeWidgetItem *sitem = new QTreeWidgetItem(item) ;
+
+		GxsIdLabel *label = new GxsIdLabel();
+		label->setId(meta.mAuthorId) ;
+		groupTreeWidget->setItemWidget(sitem,COL_GROUP_GRP_ID,label) ;
+
+		RsIdentityDetails idDetails ;
+		rsIdentity->getIdDetails(meta.mAuthorId,idDetails);
+
+		QPixmap pixmap ;
+		QDateTime qdatetime = DateTime::DateTimeFromTime_t(meta.mPublishTs);
+
+		if(idDetails.mAvatar.mSize == 0 || !GxsIdDetails::loadPixmapFromData(idDetails.mAvatar.mData, idDetails.mAvatar.mSize, pixmap,GxsIdDetails::SMALL))
+			pixmap = GxsIdDetails::makeDefaultIcon(meta.mAuthorId,GxsIdDetails::SMALL);
+
+		sitem->setIcon(COL_GROUP_GRP_ID, QIcon(pixmap));
+
+		sitem->setData(COL_GROUP_UNIQUE_ID, Qt::DisplayRole,QString::fromStdString(meta.mMsgId.toStdString()));
+		sitem->setData(COL_GROUP_AUTHOR_ID, Qt::DisplayRole,  QString::fromStdString(meta.mAuthorId.toStdString())) ;
+		sitem->setText(COL_GROUP_PUBLISHTS, DateTime::formatDateTime(meta.mPublishTs));
+		sitem->setData(COL_GROUP_PUBLISHTS, Qt::UserRole, qdatetime);
+
+		sitem->setTextAlignment(COL_GROUP_PUBLISHTS, Qt::AlignRight);
+	}
 }
 
 void GxsTransportStatistics::personDetails()
@@ -509,7 +525,7 @@ void GxsTransportStatistics::loadGroups()
             /* Update the local cache and refresh the tree widgets.
              * Since StatisticsWindow is no longer destroyed on close,
              * 'this' is guaranteed to be valid here. */
-            mGroupStats = *stats;
+            mGroupStats = std::move(*stats);
             updateContent();
             mStateHelper->setLoading(GXSTRANS_GROUP_META, false);
 
