@@ -77,6 +77,7 @@ protected:
     void convertTrafficClueToValues(const std::list<RSTrafficClue> &lst, std::map<std::string, float> &vals) const;
 	std::string makeSubItemName(uint16_t service_id,uint8_t sub_item_type) const;
     void recomputeCurrentCurves() ;
+    void addTrafficChunk(TrafficHistoryChunk& thc) ;
     std::string visibleFriendName(const RsPeerId &pid) const ;
 
 private:
@@ -101,6 +102,8 @@ private:
     std::set<uint16_t> mVisibleServices ;
 
     mutable std::map<uint16_t,RsServiceInfoWithNames> mServiceInfoMap ;
+
+    bool mTrafficRequestPending ;	// set between update() and the answer of the core, GUI thread only
 };
 
 class BWGraph: public RSGraphWidget

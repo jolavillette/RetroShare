@@ -23,8 +23,12 @@
 #include <time.h>
 #include <math.h>
 #include <tuple>
+#include <memory>
+#include <QPointer>
 #include "retroshare/rsservicecontrol.h"
 #include "retroshare/rspeers.h"
+#include "util/rsthreads.h"
+#include "util/qtthreadsutils.h"
 
 //#define BWGRAPH_DEBUG 1
 
@@ -56,9 +60,35 @@ void BWGraphSource::update()
     std::cerr << "Updating BW graphsource..." << std::endl;
 #endif
 
-    TrafficHistoryChunk thc ;
-    rsConfig->getTrafficInfo(thc.out_rstcl,thc.in_rstcl);
+    // The traffic information is asked from a worker thread: the core answers after taking the mutex of
+    // each peer link, and when one of them is held for seconds the GUI thread must not be the one waiting.
+    // While an answer is pending no new request is made, so that requests do not pile up.
 
+    if(mTrafficRequestPending)
+        return ;
+
+    mTrafficRequestPending = true ;
+
+    QPointer<BWGraphSource> self(this) ;	// only dereferenced on the GUI thread
+
+    RsThread::async([self]()
+    {
+        auto thc = std::make_shared<TrafficHistoryChunk>() ;
+        rsConfig->getTrafficInfo(thc->out_rstcl,thc->in_rstcl);
+
+        RsQThreadUtils::postToObject([self,thc]()
+        {
+            if(!self)
+                return ;
+
+            self->mTrafficRequestPending = false ;
+            self->addTrafficChunk(*thc) ;
+        }, qApp) ;
+    });
+}
+
+void BWGraphSource::addTrafficChunk(TrafficHistoryChunk& thc)
+{
     aggregateClues(thc.out_rstcl) ;
     aggregateClues(thc.in_rstcl) ;
 
@@ -390,6 +420,7 @@ BWGraphSource::BWGraphSource()
 
     _total_sent =0;
     _total_recv =0;
+    mTrafficRequestPending = false;
 
     _friend_graph_type = GRAPH_TYPE_SUM;
     _service_graph_type = GRAPH_TYPE_SUM;
