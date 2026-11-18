@@ -77,6 +77,9 @@ public:
 
 	uint unreadCount();
 
+	// true while the page creates the dialog of an auto-subscribed room on its own initiative
+	static bool creatingDialogInBackground() { return mCreatingDialogInBackground; }
+
 signals:
 	void unreadCountChanged(uint unreadCount);
 
@@ -158,5 +161,6 @@ private:
 
 	// subscribed rooms waiting for their dialog, created one per pass of the event loop
 	std::list<ChatLobbyId> mPendingLobbyDialogs ;
+	static bool mCreatingDialogInBackground ;
 };
 

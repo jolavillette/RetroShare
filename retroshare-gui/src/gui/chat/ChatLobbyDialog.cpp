@@ -966,6 +966,12 @@ bool ChatLobbyDialog::canClose()
 
 void ChatLobbyDialog::showDialog(RsChatFlags chatflags)
 {
+	// init() docks the new dialog with setWindowed(), which ends by asking for the focus. When the
+	// chat rooms page creates the dialogs of the auto-subscribed rooms in the background, that would
+	// raise the main window and jump to each new room in turn.
+	if (ChatLobbyWidget::creatingDialogInBackground())
+		return;
+
     if (!!(chatflags & RsChatFlags::RS_CHAT_FOCUS))
 	{
 		if (isWindowed() && mPCWindow) {

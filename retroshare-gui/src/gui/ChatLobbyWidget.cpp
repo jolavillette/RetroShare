@@ -42,8 +42,10 @@
 #include "retroshare/rsidentity.h"
 
 #include <QGridLayout>
+#include <QApplication>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPointer>
 #include <QTextBrowser>
 #include <QTimer>
 #include <QTreeWidget>
@@ -769,6 +771,8 @@ void ChatLobbyWidget::updateDisplay()
 	publicLobbyItem->setText(COLUMN_NAME, tr("Public")+ " (" + QString::number(publicLobbyItem->childCount())+QString(")"));
 }
 
+bool ChatLobbyWidget::mCreatingDialogInBackground = false;
+
 void ChatLobbyWidget::scheduleLobbyDialog(ChatLobbyId id)
 {
 	if(std::find(mPendingLobbyDialogs.begin(), mPendingLobbyDialogs.end(), id) != mPendingLobbyDialogs.end())
@@ -802,10 +806,26 @@ void ChatLobbyWidget::createNextPendingLobbyDialog()
 
 	if(_lobby_infos.find(id) == _lobby_infos.end() && std::find(lobbies.begin(), lobbies.end(), id) != lobbies.end())
 	{
+		// The user did not ask for this room: the new dialog must not take the focus, nor bring
+		// the chat rooms page to the front. See ChatLobbyDialog::showDialog().
+		QPointer<QWidget> focus_widget = QApplication::focusWidget();
+
+		mCreatingDialogInBackground = true;
 		ChatLobbyDialog *cld = dynamic_cast<ChatLobbyDialog*>(ChatDialog::getChat(ChatId(id), RsChatFlags::RS_CHAT_OPEN));
+		mCreatingDialogInBackground = false;
 
 		if(cld)
+		{
 			addChatPage(cld);
+
+			// init() has shown the dialog, although it is not the current page of the stack.
+			if(ui.stackedWidget->currentWidget() != cld)
+				cld->hide();
+		}
+
+		// A chat widget takes the keyboard focus when it is shown: give it back.
+		if(focus_widget && QApplication::focusWidget() != focus_widget)
+			focus_widget->setFocus();
 	}
 
 	if(!mPendingLobbyDialogs.empty())
