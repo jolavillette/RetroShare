@@ -384,6 +384,11 @@ void GroupTreeWidget::fillGroupItems(QTreeWidgetItem *categoryItem, const QList<
 
 	QString filterText = ui->filterLineEdit->text();
 
+	// Sorting is switched off while the items are updated, and done once at the end. With sorting on, every
+	// child() or takeChild() that follows a change of an item sorts the whole category again.
+	bool sortingEnabled = ui->treeWidget->isSortingEnabled();
+	ui->treeWidget->setSortingEnabled(false);
+
 	/* Iterate all items */
 	QList<GroupItemInfo>::const_iterator it;
 	for (it = itemList.begin(); it != itemList.end(); ++it) {
@@ -527,6 +532,8 @@ void GroupTreeWidget::fillGroupItems(QTreeWidgetItem *categoryItem, const QList<
 			++child;
 		}
 	}
+
+	ui->treeWidget->setSortingEnabled(sortingEnabled);
 }
 
 void GroupTreeWidget::setUnreadCount(QTreeWidgetItem *item, int unreadCount)
