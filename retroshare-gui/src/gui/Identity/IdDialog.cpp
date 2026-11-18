@@ -453,6 +453,7 @@ IdDialog::IdDialog(QWidget *parent)
 
     //connect(ui->treeWidget_membership, SIGNAL(itemSelectionChanged()), this, SLOT(circle_selected()));
     connect(ui->treeWidget_membership, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(CircleListCustomPopupMenu(QPoint)));
+    connect(ui->treeWidget_membership, SIGNAL(itemExpanded(QTreeWidgetItem*)), this, SLOT(circleItemExpanded(QTreeWidgetItem*)));
     connect(ui->autoBanIdentities_CB, SIGNAL(toggled(bool)), this, SLOT(toggleAutoBanIdentities(bool)));
 
     updateIdTimer.setSingleShot(true);
@@ -689,6 +690,40 @@ static void removeChildItem(QTreeWidgetItem *item, const RsGroupMetaData& circle
         delete item->takeChild(k);	// delete items in the reverse order (because of the push_front()), so that indices are preserved
 }
 
+static void setCircleMemberIcon(QTreeWidgetItem *subitem, const RsGxsId& id, const RsIdentityDetails& idd)
+{
+	QPixmap pixmap ;
+
+	if(idd.mAvatar.mSize == 0 || !GxsIdDetails::loadPixmapFromData(idd.mAvatar.mData, idd.mAvatar.mSize, pixmap,GxsIdDetails::MEDIUM))
+		pixmap = GxsIdDetails::makeDefaultIcon(id,GxsIdDetails::MEDIUM) ;
+
+	subitem->setIcon(CIRCLEGROUP_CIRCLE_COL_GROUPNAME, pixmap);
+}
+
+// The members of a circle get their icon when the circle is expanded: drawing the default icon of every member
+// of every circle in loadCircles() kept the GUI thread busy for most of a second.
+
+void IdDialog::circleItemExpanded(QTreeWidgetItem *item)
+{
+	// only a circle (second level of the tree) has identities as children
+	if(!item || !item->parent() || item->parent()->parent())
+		return;
+
+	for(int k=0; k < item->childCount(); ++k)
+	{
+		QTreeWidgetItem *subitem = item->child(k);
+
+		if(!subitem->icon(CIRCLEGROUP_CIRCLE_COL_GROUPNAME).isNull())
+			continue;
+
+		RsGxsId id(subitem->data(CIRCLEGROUP_CIRCLE_COL_GROUPID,Qt::UserRole).toString().toStdString());
+		RsIdentityDetails idd ;
+		rsIdentity->getIdDetails(id,idd) ;
+
+		setCircleMemberIcon(subitem,id,idd);
+	}
+}
+
 void IdDialog::loadCircles(const std::list<RsGroupMetaData>& groupInfo)
 {
 #ifdef ID_DEBUG
@@ -899,12 +934,9 @@ void IdDialog::loadCircles(const std::list<RsGroupMetaData>& groupInfo)
 				//bool has_id =
 				rsIdentity->getIdDetails(it->first,idd) ;
 
-				QPixmap pixmap ;
-
-				if(idd.mAvatar.mSize == 0 || !GxsIdDetails::loadPixmapFromData(idd.mAvatar.mData, idd.mAvatar.mSize, pixmap,GxsIdDetails::MEDIUM))
-					pixmap = GxsIdDetails::makeDefaultIcon(it->first,GxsIdDetails::MEDIUM) ;
-				
-				subitem->setIcon(CIRCLEGROUP_CIRCLE_COL_GROUPNAME, pixmap);
+				// a collapsed circle gets the icons of its members in circleItemExpanded()
+				if(item->isExpanded())
+					setCircleMemberIcon(subitem,it->first,idd);
 
 				QString nickname = QString::fromUtf8(idd.mNickname.c_str());
 				subitem->setText(CIRCLEGROUP_CIRCLE_COL_GROUPNAME, nickname.isEmpty() ? tr("[Unknown]") : nickname);
@@ -943,11 +975,8 @@ void IdDialog::loadCircles(const std::list<RsGroupMetaData>& groupInfo)
 				RsIdentityDetails idd ;
 				if (rsIdentity->getIdDetails(it->first, idd))
 				{
-					QPixmap pixmap ;
-					if(idd.mAvatar.mSize == 0 || !GxsIdDetails::loadPixmapFromData(idd.mAvatar.mData, idd.mAvatar.mSize, pixmap, GxsIdDetails::MEDIUM))
-						pixmap = GxsIdDetails::makeDefaultIcon(it->first, GxsIdDetails::MEDIUM) ;
-
-					subitem->setIcon(CIRCLEGROUP_CIRCLE_COL_GROUPNAME, pixmap);
+					if(item->isExpanded())
+						setCircleMemberIcon(subitem,it->first,idd);
 
 					QString nickname = QString::fromUtf8(idd.mNickname.c_str());
 					subitem->setText(CIRCLEGROUP_CIRCLE_COL_GROUPNAME, nickname.isEmpty() ? tr("[Unknown]") : nickname);
@@ -995,6 +1024,16 @@ void IdDialog::loadCircles(const std::list<RsGroupMetaData>& groupInfo)
     ui->treeWidget_membership->setSortingEnabled(true);
 
     restoreExpandedCircleItems(expanded_top_level_items,expanded_circle_items);
+
+    // the circles that are expanded show their members now (a no-op for those itemExpanded() already served)
+    for(int i=0; i < ui->treeWidget_membership->topLevelItemCount(); ++i)
+    {
+        QTreeWidgetItem *top_level_item = ui->treeWidget_membership->topLevelItem(i);
+
+        for(int row=0; row < top_level_item->childCount(); ++row)
+            if(top_level_item->child(row)->isExpanded())
+                circleItemExpanded(top_level_item->child(row));
+    }
 }
 
 //static void mark_matching_tree(QTreeWidget *w, const std::set<RsGxsId>& members, int col)
