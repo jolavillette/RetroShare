@@ -431,9 +431,16 @@ void GxsChannelDialog::groupInfoToGroupItemInfo(const RsGxsGenericGroupData *gro
 
     if(channelGroupData->mImage.mSize > 0)
     {
-        QPixmap image;
-        GxsIdDetails::loadPixmapFromData(channelGroupData->mImage.mData, channelGroupData->mImage.mSize, image,GxsIdDetails::ORIGINAL);
-        groupItemInfo.icon = image;
+        GroupImage& groupImage = mGroupImages[channelGroupData->mMeta.mGroupId];
+
+        if(groupImage.pixmap.isNull() || groupImage.publishTs != channelGroupData->mMeta.mPublishTs || groupImage.dataSize != channelGroupData->mImage.mSize)
+        {
+            groupImage.pixmap = QPixmap();
+            GxsIdDetails::loadPixmapFromData(channelGroupData->mImage.mData, channelGroupData->mImage.mSize, groupImage.pixmap,GxsIdDetails::ORIGINAL);
+            groupImage.publishTs = channelGroupData->mMeta.mPublishTs;
+            groupImage.dataSize = channelGroupData->mImage.mSize;
+        }
+        groupItemInfo.icon = groupImage.pixmap;
     }
     else
         groupItemInfo.icon = GxsIdDetails::makeDefaultGroupIcon(channelGroupData->mMeta.mGroupId, ":icons/channel.png", GxsIdDetails::ORIGINAL);
