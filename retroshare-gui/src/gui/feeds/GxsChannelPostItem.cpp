@@ -695,7 +695,13 @@ void GxsChannelPostItem::readToggled(bool /*checked*/)
 
 	RsGxsGrpMsgIdPair msgPair = std::make_pair(groupId(), messageId());
 
-    rsGxsChannels->setMessageReadStatus(msgPair, isUnread());
+	// Blocks until the channels service has committed the change: not on the GUI thread.
+	const bool read = isUnread();
+
+	RsThread::async([msgPair, read]()
+	{
+		rsGxsChannels->setMessageReadStatus(msgPair, read);
+	});
 
 	//setReadStatus(false, checked); // Updated by events
 }
