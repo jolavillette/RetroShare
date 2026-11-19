@@ -25,6 +25,7 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPixmap>
+#include <QPointer>
 #include <QStatusBar>
 #include <QString>
 #include <QUrl>
@@ -38,6 +39,7 @@
 #include "retroshare/rsevents.h"
 #include "util/argstream.h"
 #include "util/qtthreadsutils.h"
+#include "util/rsthreads.h"
 
 #if defined(Q_OS_DARWIN)
 #include "gui/common/MacDockIconHandler.h"
@@ -207,6 +209,8 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
     m_bStatusLoadDone = false;
     isIdle = false;
     onlineCount = 0;
+    mFriendCountRequestPending = false;
+    mFriendCountRequestAgain = false;
 
     notifyMenu = NULL;
 
@@ -927,8 +931,42 @@ void MainWindow::updateFriends()
 	if(RsAutoUpdatePage::eventsLocked())
 		return ;
 
-    unsigned int friendCount = 0;
-    rsPeers->getPeerCount (&friendCount, &onlineCount, false);
+    // getPeerCount() reads the PGP keyring, whose mutex can be held for a while by the AuthGPG thread:
+    // ask from another thread, and show the result when it comes back.
+
+    if (mFriendCountRequestPending) {
+        mFriendCountRequestAgain = true;
+        return;
+    }
+    mFriendCountRequestPending = true;
+
+    QPointer<MainWindow> self(this);
+
+    RsThread::async([self]()
+    {
+        unsigned int friendCount = 0;
+        unsigned int online = 0;
+        rsPeers->getPeerCount (&friendCount, &online, false);
+
+        RsQThreadUtils::postToObject([self, friendCount, online]()
+        {
+            if (!self)
+                return;
+
+            self->mFriendCountRequestPending = false;
+            self->showFriendCount(friendCount, online);
+
+            if (self->mFriendCountRequestAgain) {
+                self->mFriendCountRequestAgain = false;
+                self->updateFriends();
+            }
+        }, qApp);
+    });
+}
+
+void MainWindow::showFriendCount(unsigned int friendCount, unsigned int online)
+{
+    onlineCount = online;
 
     if (peerstatus)
         peerstatus->getPeerStatus(friendCount, onlineCount);
