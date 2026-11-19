@@ -355,7 +355,26 @@ echo ">>> Packaging final compressed archive..."
 
     if command -v 7z &> /dev/null; then
         echo "  Using 7z for ultra high compression..."
-        7z a -t7z -mx=9 "${ARCHIVE_BASE}.7z" "${ARCHIVE_BASE}"
+        # At -mx=9, 7z compresses several blocks at once, one per pair of CPU
+        # threads, each with its own dictionary and buffers: several GB on 8
+        # threads once the payload is large (a build that keeps its debug symbols
+        # is over 1 GB). When the allocation fails, 7z exits with code 8: halve
+        # the thread count and try again. Fewer threads cost time, not compression.
+        SEVENZ_THREADS=$(nproc 2>/dev/null || echo 2)
+        while :; do
+            SEVENZ_RC=0
+            7z a -t7z -mx=9 -mmt="${SEVENZ_THREADS}" "${ARCHIVE_BASE}.7z" "${ARCHIVE_BASE}" || SEVENZ_RC=$?
+            if [ "$SEVENZ_RC" -ne 8 ] || [ "$SEVENZ_THREADS" -le 1 ]; then
+                break
+            fi
+            SEVENZ_THREADS=$((SEVENZ_THREADS / 2))
+            echo "  7z ran out of memory. Trying again with ${SEVENZ_THREADS} thread(s)..."
+        done
+        if [ "$SEVENZ_RC" -ne 0 ]; then
+            echo "ERROR: 7z could not create the archive (exit code ${SEVENZ_RC})."
+            echo "       The deployment folder itself is complete: ${DEPLOY_DIR}"
+            exit "$SEVENZ_RC"
+        fi
         echo "================================================================================"
         echo "SUCCESS: Standalone package created at: ${BUILD_DIR}/${ARCHIVE_BASE}.7z"
         echo "================================================================================"
