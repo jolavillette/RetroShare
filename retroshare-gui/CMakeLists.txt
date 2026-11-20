@@ -623,6 +623,11 @@ endif(RS_SANITIZE)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE ${RS_LINK_LIBRARIES})
 
+if(WIN32)
+	# ShellExecuteExW and CoInitializeEx (gui/common/RsUrlHandler.cpp)
+	target_link_libraries(${PROJECT_NAME} PRIVATE shell32 ole32)
+endif()
+
 
 # Controlled by an option, like in libretroshare/CMakeLists.txt: silence the
 # deprecation warnings unless the developer explicitly asks to see them.
