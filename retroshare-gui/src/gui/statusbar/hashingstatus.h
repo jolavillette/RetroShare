@@ -40,6 +40,7 @@ public:
 
 private:
     void handleEvent_main_thread(std::shared_ptr<const RsEvent> event);
+    QString fitFileName(const QString& text_before, const QString& name) const;
 
     ElidedLabel *statusHashing;
     QLabel *hashloader;

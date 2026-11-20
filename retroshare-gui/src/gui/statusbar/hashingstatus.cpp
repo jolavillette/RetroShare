@@ -21,6 +21,7 @@
 #include <algorithm>
 
 #include <QFileInfo>
+#include <QFontMetrics>
 #include <QLayout>
 #include <QLabel>
 #include <QMovie>
@@ -50,6 +51,7 @@ HashingStatus::HashingStatus(QWidget *parent)
 
     movie->jumpToNextFrame(); // to calculate the real width
     statusHashing = new ElidedLabel(this);
+    statusHashing->setOnlyPlainText(true);	// file names and "< 1m" are not HTML: a '<' would swallow the rest of the text
     hbox->addWidget(statusHashing);
 
     _compactMode = false;
@@ -220,15 +222,11 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
 
         const QString progress = parts.join(separator);
 
-        // The label cuts what does not fit at its right end. The name comes first so that it is the last thing to
-        // go, and a long one is shortened in its middle so that it does not push the figures out.
-        QString name = QFileInfo(path).fileName();
-
-        if(name.length() > 40)
-            name = name.left(20) + QChar(0x2026) + name.right(19);
-
-        const QString msg = name + separator + progress;
-        const QString text = tr("Hashing file") + " " + msg;
+        // The name comes last, so that the figures do not move when the file changes. It is shortened to what is
+        // left of the label: the label cuts what does not fit at its right end, which would be the name.
+        const QString before = tr("Hashing file") + " " + progress + " : ";
+        const QString msg = progress + " : " + QFileInfo(path).fileName();
+        const QString text = before + fitFileName(before, QFileInfo(path).fileName());
 
         // The file being hashed when the pause is asked is hashed to its end, and keeps sending its progress.
         if(mPaused)
@@ -264,12 +262,8 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
 
         const QString path = QString::fromUtf8(fe->mFilePath.c_str());
         const QString separator = QString(" ") + QChar(0x00B7) + " ";
-        QString name = QFileInfo(path).fileName();
-
-        if(name.length() > 40)
-            name = name.left(20) + QChar(0x2026) + name.right(19);
-
         const QString count = tr("%1 files").arg(fe->mScannedFilesCount);
+        const QString before = tr("Scanning shared files") + separator + count + " : ";
 
         if(movie->state() != QMovie::Running)
         {
@@ -279,7 +273,7 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         }
 
         mScanShown = true;
-        statusHashing->setText(tr("Scanning shared files") + separator + count + separator + name);
+        statusHashing->setText(before + fitFileName(before, QFileInfo(path).fileName()));
         statusHashing->setVisible(!_compactMode) ;
         setToolTip(count + "\n" + path);
     }
@@ -312,6 +306,26 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
     break;
 
     };
+}
+
+QString HashingStatus::fitFileName(const QString& text_before, const QString& name) const
+{
+    // Width left for the name once text_before is written. The label only shows a text that is strictly
+    // narrower than itself, hence the small margin.
+
+    const QFontMetrics fm(statusHashing->font());
+#if QT_VERSION < QT_VERSION_CHECK(5,11,0)
+    const int before_width = fm.width(text_before);
+#else
+    const int before_width = fm.horizontalAdvance(text_before);
+#endif
+    const int label_width = statusHashing->contentsRect().width();
+
+    // Not laid out yet: no width to fit in.
+    if(label_width <= 0)
+        return (name.length() > 40) ? (name.left(20) + QChar(0x2026) + name.right(19)) : name;
+
+    return fm.elidedText(name, Qt::ElideMiddle, std::max(0, label_width - before_width - 4));
 }
 
 HashingStatus::~HashingStatus()
