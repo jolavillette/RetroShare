@@ -465,6 +465,11 @@ void RsApplication::loadStyleSheet(const QString &sheetName)
         }
     }
 
+    // Applying a style sheet re-polishes every widget of the application, which takes seconds. Nothing to do
+    // when the sheet is the one already in force (the preferences call this on a mere click on the list).
+    if (styleSheet == qApp->styleSheet())
+        return;
+
 #ifdef Q_OS_WIN
     QSettings settings("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",QSettings::NativeFormat);
     if(/*sheetName == ":default" && */settings.value("AppsUseLightTheme")==0){
