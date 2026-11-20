@@ -22,6 +22,7 @@
 #include <QDir>
 #include <QTimer>
 #include <QShortcut>
+#include <QSet>
 
 #include "rshare.h"
 #include "SearchDialog.h"
@@ -718,42 +719,56 @@ void SearchDialog::searchSummaryWidgetCustomPopupMenu( QPoint /*point*/ )
 void SearchDialog::searchRemove()
 {
 	/* get the current search id from the summary window */
-        QTreeWidgetItem *ci = ui.searchSummaryWidget->currentItem();
+	QTreeWidgetItem *ci = ui.searchSummaryWidget->currentItem();
 	if (!ci)
 		return;
 
-        /* get the searchId text */
-        QString searchId = ci->text(SS_SEARCH_ID_COL);
+	/* get the searchId text */
+	QString searchId = ci->text(SS_SEARCH_ID_COL);
 
-        std::cerr << "SearchDialog::searchRemove(): searchId: " << searchId.toStdString();
-        std::cerr << std::endl;
+	/* Take all the results out of the tree in one go, drop those of this search and put the
+	 * others back in one go. Taking the results out one by one makes the view update itself
+	 * (and every hidden row it keeps track of) once per result: seconds of cpu for a search
+	 * with thousands of results. */
+	ui.searchResultWidget->setUpdatesEnabled(false);
 
-        /* show only matching searchIds in main window */
-        int items = ui.searchResultWidget->topLevelItemCount();
-        for(int i = 0; i < items;)
-        {
-                /* get item */
-                QTreeWidgetItem *ti = ui.searchResultWidget->topLevelItem(i);
-                if (ti->text(SR_SEARCH_ID_COL) == searchId)
-                {
-			/* remove */
-                        delete (ui.searchResultWidget->takeTopLevelItem(i));
-			items--;
-                }
-                else
-                {
-			/* step to the next */
-			++i;
-                }
-        }
+	QTreeWidgetItem *root = ui.searchResultWidget->invisibleRootItem();
+	QSet<QTreeWidgetItem*> expanded;
+	int items = root->childCount();
+	for(int i = 0; i < items; ++i)
+		if (root->child(i)->isExpanded())
+			expanded.insert(root->child(i));
+
+	QList<QTreeWidgetItem*> all = root->takeChildren();
+	QList<QTreeWidgetItem*> kept;
+	QList<QTreeWidgetItem*> removed;
+	for(QTreeWidgetItem *ti : all)
+		if (ti->text(SR_SEARCH_ID_COL) == searchId)
+			removed.push_back(ti);
+		else
+			kept.push_back(ti);
+
+	if (!kept.empty())
+	{
+		ui.searchResultWidget->setSortingEnabled(false);
+		root->addChildren(kept);
+		ui.searchResultWidget->setSortingEnabled(true);
+
+		for(QTreeWidgetItem *ti : kept)
+			if (expanded.contains(ti))
+				ti->setExpanded(true);
+	}
+	qDeleteAll(removed);
+
+	/* Removing the current search selects another one, which hides or shows the results that
+	 * are left (selectSearchResults). */
 	int sii = ui.searchSummaryWidget->indexOfTopLevelItem(ci);
 	if (sii != -1)
-	{
-        	delete (ui.searchSummaryWidget->takeTopLevelItem(sii));
-	}
+		delete (ui.searchSummaryWidget->takeTopLevelItem(sii));
 
-        ui.searchResultWidget->update();
-        ui.searchSummaryWidget->update();
+	ui.searchResultWidget->setUpdatesEnabled(true);
+	ui.searchResultWidget->update();
+	ui.searchSummaryWidget->update();
 }
 
 /** remove all search results **/
