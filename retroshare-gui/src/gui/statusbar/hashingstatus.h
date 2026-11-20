@@ -45,6 +45,9 @@ private:
     QLabel *hashloader;
 	QString mLastText ;
 	bool mPaused ;
+	bool mFileInProgress ;	// a file is being hashed: its progress owns the text
+	bool mRunActive ;		// between HASHING_PROCESS_STARTED and HASHING_PROCESS_FINISHED
+	bool mScanShown ;		// the text is the one of the scan of the shared directories
     QMovie *movie;
     bool _compactMode;
     RsEventsHandlerId_t mEventHandlerId;

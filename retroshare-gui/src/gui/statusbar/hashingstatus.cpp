@@ -54,6 +54,9 @@ HashingStatus::HashingStatus(QWidget *parent)
 
     _compactMode = false;
     mPaused = false;
+    mFileInProgress = false;
+    mRunActive = false;
+    mScanShown = false;
 
     setLayout(hbox);
 
@@ -97,6 +100,9 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         hashloader->setMovie(movie) ;
         movie->start() ;
 
+        if(fe->mEventCode == RsSharedDirectoriesEventCode::HASHING_PROCESS_STARTED)
+            mRunActive = true;
+
         // A run starts with the first file queued by the scan of the shared directories, and nothing is hashed
         // until that scan is over. Not on a resume, which comes through here with its text already set.
         if(statusHashing->text().isEmpty())
@@ -130,6 +136,9 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
 #endif
         movie->stop() ;
         mPaused = false;
+        mFileInProgress = false;
+        mRunActive = false;
+        mScanShown = false;
         statusHashing->setText(QString());
         statusHashing->hide() ;
         setToolTip(QString());
@@ -151,7 +160,10 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
 
         // Last event of a run: every file is done, and the hashing thread waits a few seconds for more before it
         // stops. Showing the last file at 100 % with the animation would read as a file still being hashed.
-        if(fe->mHashCounter >= fe->mTotalFilesToHash)
+        mScanShown = false;
+        mFileInProgress = fe->mHashCounter < fe->mTotalFilesToHash;
+
+        if(!mFileInProgress)
         {
             parts << (fe->mTotalFilesToHash == 1 ? tr("1 file") : tr("%1 files").arg(fe->mTotalFilesToHash));
             parts << misc::friendlyUnit(total_size);
@@ -173,6 +185,7 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
                 hashloader->hide() ;
             }
             statusHashing->setText(text);
+            statusHashing->setVisible(!_compactMode) ;
             setToolTip(text);
             break;
         }
@@ -233,11 +246,58 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         }
 
         statusHashing->setText(text);
+        statusHashing->setVisible(!_compactMode) ;
         setToolTip(progress + "\n" + path + "\n" + QObject::tr("Click to pause the hashing process"));
 #ifdef DEBUG_HASHING_STATUS
         std::cerr << "HashStatusEventHandler: received event " << (void*)fe->mEventCode << ": " ;
         std::cerr << "HASHING FILE " << msg.toStdString() << std::endl;
 #endif
+    }
+    break;
+
+    case RsSharedDirectoriesEventCode::SCANNING_FILE:
+    {
+        // Sent once per second while the shared directories are gone through. The hashing waits for the end of
+        // that scan, except for a file that was already being hashed: its progress keeps the text.
+        if(mFileInProgress || mPaused)
+            break;
+
+        const QString path = QString::fromUtf8(fe->mFilePath.c_str());
+        const QString separator = QString(" ") + QChar(0x00B7) + " ";
+        QString name = QFileInfo(path).fileName();
+
+        if(name.length() > 40)
+            name = name.left(20) + QChar(0x2026) + name.right(19);
+
+        const QString count = tr("%1 files").arg(fe->mScannedFilesCount);
+
+        if(movie->state() != QMovie::Running)
+        {
+            hashloader->show() ;
+            hashloader->setMovie(movie) ;
+            movie->start() ;
+        }
+
+        mScanShown = true;
+        statusHashing->setText(tr("Scanning shared files") + separator + count + separator + name);
+        statusHashing->setVisible(!_compactMode) ;
+        setToolTip(count + "\n" + path);
+    }
+    break;
+
+    case RsSharedDirectoriesEventCode::OWN_DIR_LIST_UPDATED:
+    {
+        // End of the scan. When it queued files, the hashing starts now and its progress replaces the text.
+        // When it did not, nothing follows: the text of the scan must not stay.
+        if(mScanShown && !mRunActive)
+        {
+            mScanShown = false;
+            movie->stop() ;
+            statusHashing->setText(QString());
+            statusHashing->hide() ;
+            setToolTip(QString());
+            hashloader->hide() ;
+        }
     }
     break;
 
