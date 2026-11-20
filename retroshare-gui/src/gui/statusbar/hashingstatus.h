@@ -44,6 +44,7 @@ private:
     ElidedLabel *statusHashing;
     QLabel *hashloader;
 	QString mLastText ;
+	bool mPaused ;
     QMovie *movie;
     bool _compactMode;
     RsEventsHandlerId_t mEventHandlerId;

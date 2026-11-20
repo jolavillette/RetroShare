@@ -18,6 +18,9 @@
  *                                                                             *
  *******************************************************************************/
 
+#include <algorithm>
+
+#include <QFileInfo>
 #include <QLayout>
 #include <QLabel>
 #include <QMovie>
@@ -50,6 +53,7 @@ HashingStatus::HashingStatus(QWidget *parent)
     hbox->addWidget(statusHashing);
 
     _compactMode = false;
+    mPaused = false;
 
     setLayout(hbox);
 
@@ -76,6 +80,7 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         break;
 
     case RsSharedDirectoriesEventCode::HASHING_PROCESS_RESUMED:
+        mPaused = false;
         statusHashing->setText(mLastText);						// fallthrough
 #ifdef DEBUG_HASHING_STATUS
         std::cerr << "HashStatusEventHandler: received event " << (void*)fe->mEventCode << ": " ;
@@ -105,6 +110,7 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         movie->stop() ;
         hashloader->setPixmap(FilesDefs::getPixmapFromQtResourcePath(":/images/resume.png")) ;
 
+        mPaused = true;
         mLastText = statusHashing->text();
         statusHashing->setText(QObject::tr("[Hashing is paused]"));
         setToolTip(QObject::tr("Click to resume the hashing process"));
@@ -118,6 +124,7 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         std::cerr << "HASHING FINISHED" << std::endl;
 #endif
         movie->stop() ;
+        mPaused = false;
         statusHashing->setText(QString());
         statusHashing->hide() ;
         setToolTip(QString());
@@ -127,15 +134,56 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
 
     case RsSharedDirectoriesEventCode::HASHING_FILE:
     {
-        QString msg = QString::number((unsigned long int)fe->mHashCounter+1) + "/" + QString::number((unsigned long int)fe->mTotalFilesToHash);
+        // All sizes in bytes. The totals cover the whole hashing run, the files already done included.
 
-        msg += " (" + misc::friendlyUnit(fe->mTotalHashedSize) + " - "
-                + QString::number(int(fe->mTotalHashedSize/double(fe->mTotalSizeToHash)*100.0)) + "%"
-                + ((fe->mHashingSpeed>0)?("," + QString::number((double)fe->mHashingSpeed,'f',2) + " MB/s)"):(QString()))
-                + " : " + QString::fromUtf8(fe->mFilePath.c_str()) ;
+        const uint64_t total_size = fe->mTotalSizeToHash;
+        const uint64_t done_size = std::min(fe->mTotalHashedSize, total_size);
+        const uint64_t file_number = fe->mHashCounter+1;
 
-        statusHashing->setText(tr("Hashing file") + " " + msg);
-        setToolTip(msg + "\n"+QObject::tr("Click to pause the hashing process"));
+        const QString path = QString::fromUtf8(fe->mFilePath.c_str());
+        QStringList parts;
+
+        if(fe->mTotalIsProvisional)
+        {
+            // The shared directories are still being scanned, so the totals still grow: a ratio to them
+            // would go backwards. Only what is done is shown.
+
+            parts << QString::number(file_number);
+            parts << tr("%1 done").arg(misc::friendlyUnit(fe->mTotalHashedSize));
+        }
+        else
+        {
+            parts << QString::number(std::min(file_number, fe->mTotalFilesToHash)) + "/" + QString::number(fe->mTotalFilesToHash);
+            parts << misc::friendlyUnit(done_size) + " / " + misc::friendlyUnit(total_size);
+
+            if(total_size > 0)
+                parts << QString::number(int(done_size * 100.0 / total_size)) + " %";
+        }
+
+        if(fe->mHashingSpeedBytes > 0)
+        {
+            parts << misc::friendlyUnit(fe->mHashingSpeedBytes) + "/s";
+
+            if(!fe->mTotalIsProvisional && total_size > done_size)
+                parts << tr("%1 left").arg(misc::userFriendlyDuration((total_size - done_size) / fe->mHashingSpeedBytes));
+        }
+
+        if(fe->mTotalIsProvisional)
+            parts << tr("scanning shared directories...");
+
+        const QString progress = parts.join(QString(" ") + QChar(0x00B7) + " ");
+        const QString msg = progress + " : " + QFileInfo(path).fileName();
+        const QString text = tr("Hashing file") + " " + msg;
+
+        // The file being hashed when the pause is asked is hashed to its end, and keeps sending its progress.
+        if(mPaused)
+        {
+            mLastText = text;
+            break;
+        }
+
+        statusHashing->setText(text);
+        setToolTip(progress + "\n" + path + "\n" + QObject::tr("Click to pause the hashing process"));
 #ifdef DEBUG_HASHING_STATUS
         std::cerr << "HashStatusEventHandler: received event " << (void*)fe->mEventCode << ": " ;
         std::cerr << "HASHING FILE " << msg.toStdString() << std::endl;
