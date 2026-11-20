@@ -387,8 +387,9 @@ private:
     bool m_bStatusLoadDone;
     unsigned int onlineCount;
     bool mFriendCountRequestPending;	// a request for the friend counts is running in another thread
-    bool mFriendCountRequestAgain;	// updateFriends() was called meanwhile: ask again when it comes back
+    bool mFriendCountRequestAgain;	// a new request was made meanwhile: ask again when it comes back
 
+    void requestFriendCount();
     void showFriendCount(unsigned int friendCount, unsigned int online);
 
     void loadOwnStatus();

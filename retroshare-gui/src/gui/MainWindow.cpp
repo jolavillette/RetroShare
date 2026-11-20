@@ -931,6 +931,11 @@ void MainWindow::updateFriends()
 	if(RsAutoUpdatePage::eventsLocked())
 		return ;
 
+    requestFriendCount();
+}
+
+void MainWindow::requestFriendCount()
+{
     // getPeerCount() reads the PGP keyring, whose mutex can be held for a while by the AuthGPG thread:
     // ask from another thread, and show the result when it comes back.
 
@@ -958,7 +963,7 @@ void MainWindow::updateFriends()
 
             if (self->mFriendCountRequestAgain) {
                 self->mFriendCountRequestAgain = false;
-                self->updateFriends();
+                self->requestFriendCount();
             }
         }, qApp);
     });
