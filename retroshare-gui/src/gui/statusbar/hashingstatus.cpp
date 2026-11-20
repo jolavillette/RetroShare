@@ -141,7 +141,36 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         const uint64_t file_number = fe->mHashCounter+1;
 
         const QString path = QString::fromUtf8(fe->mFilePath.c_str());
+        const QString separator = QString(" ") + QChar(0x00B7) + " ";
         QStringList parts;
+
+        // Last event of a run: every file is done, and the hashing thread waits a few seconds for more before it
+        // stops. Showing the last file at 100 % with the animation would read as a file still being hashed.
+        if(fe->mHashCounter >= fe->mTotalFilesToHash)
+        {
+            parts << (fe->mTotalFilesToHash == 1 ? tr("1 file") : tr("%1 files").arg(fe->mTotalFilesToHash));
+            parts << misc::friendlyUnit(total_size);
+
+            if(fe->mTotalIsProvisional)
+                parts << tr("scanning shared directories...");
+
+            const QString text = tr("Hashing done") + separator + parts.join(separator);
+
+            if(mPaused)
+            {
+                mLastText = text;
+                break;
+            }
+
+            if(!fe->mTotalIsProvisional)
+            {
+                movie->stop() ;
+                hashloader->hide() ;
+            }
+            statusHashing->setText(text);
+            setToolTip(text);
+            break;
+        }
 
         if(fe->mTotalIsProvisional)
         {
@@ -171,7 +200,7 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         if(fe->mTotalIsProvisional)
             parts << tr("scanning shared directories...");
 
-        const QString progress = parts.join(QString(" ") + QChar(0x00B7) + " ");
+        const QString progress = parts.join(separator);
         const QString msg = progress + " : " + QFileInfo(path).fileName();
         const QString text = tr("Hashing file") + " " + msg;
 
@@ -180,6 +209,14 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         {
             mLastText = text;
             break;
+        }
+
+        // The animation was stopped if a previous batch of this run was shown as done.
+        if(movie->state() != QMovie::Running)
+        {
+            hashloader->show() ;
+            hashloader->setMovie(movie) ;
+            movie->start() ;
         }
 
         statusHashing->setText(text);
