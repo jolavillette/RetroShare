@@ -542,6 +542,17 @@ void ChatLobbyWidget::updateDisplay()
     RsPeerId vpid;
     std::list<ChatLobbyId>::const_iterator lobbyIt;
 
+	// The ids of all rooms to keep, and below the item of each room: the tree is
+	// looked up by id instead of being scanned for each room, which read the id of
+	// every item (a QVariant each time) for every room.
+
+	std::set<ChatLobbyId> knownLobbies(lobbies.begin(), lobbies.end());
+
+	for (uint32_t i = 0; i < visibleLobbies.size(); ++i)
+		knownLobbies.insert(visibleLobbies[i].lobby_id);
+
+	std::map<ChatLobbyId,QTreeWidgetItem*> lobbyItems;
+
 	// remove not existing public lobbies
 
 	for(int p=0;p<4;++p)
@@ -564,29 +575,18 @@ void ChatLobbyWidget::updateDisplay()
 			QTreeWidgetItem *itemLoop = lobby_item->child(childIndex);
 			if (itemLoop->type() == TYPE_LOBBY) 
 			{
-				// check for visible lobby
+				// check for visible lobby, or participating lobby with public level
 				//
-				uint32_t i;
-	
-				for (i = 0; i < visibleLobbies.size(); ++i) 
-					if (itemLoop->data(COLUMN_DATA, ROLE_ID).toULongLong() == visibleLobbies[i].lobby_id) 
-						break;
+				const ChatLobbyId itemLobbyId = itemLoop->data(COLUMN_DATA, ROLE_ID).toULongLong();
 
-				if (i >= visibleLobbies.size()) 
+				if (knownLobbies.find(itemLobbyId) == knownLobbies.end())
 				{
-					// Check for participating lobby with public level
-					//
-					for (lobbyIt = lobbies.begin(); lobbyIt != lobbies.end(); ++lobbyIt) 
-                        if(itemLoop->data(COLUMN_DATA, ROLE_ID).toULongLong() == *lobbyIt)
-							break;
-
-					if (lobbyIt == lobbies.end()) 
-					{
-						delete(lobby_item->takeChild(lobby_item->indexOfChild(itemLoop)));
-						childCnt = lobby_item->childCount();
-						continue;
-					}
+					delete(lobby_item->takeChild(childIndex));
+					childCnt = lobby_item->childCount();
+					continue;
 				}
+				if (lobbyItems.find(itemLobbyId) == lobbyItems.end())	// the first one, as the scans found it
+					lobbyItems[itemLobbyId] = itemLoop;
 			}
 			++childIndex;
 		}
@@ -639,24 +639,18 @@ void ChatLobbyWidget::updateDisplay()
 
 		// Search existing item
 		//
-		int childCnt = lobby_other_item->childCount();
-		for (int childIndex = 0; childIndex < childCnt; ++childIndex)
+		std::map<ChatLobbyId,QTreeWidgetItem*>::iterator itemIt = lobbyItems.find(lobby.lobby_id);
+
+		if (itemIt != lobbyItems.end())
 		{
-			QTreeWidgetItem *itemLoop = lobby_other_item->child(childIndex);
-			if (itemLoop->type() == TYPE_LOBBY && itemLoop->data(COLUMN_DATA, ROLE_ID).toULongLong() == lobby.lobby_id) {
-				delete(lobby_other_item->takeChild(lobby_other_item->indexOfChild(itemLoop)));
-				//childCnt = lobby_other_item->childCount();
-				break;
+			if (itemIt->second->parent() == lobby_other_item)
+			{
+				// the room changed between subscribed and not subscribed: its item is made again
+				delete(lobby_other_item->takeChild(lobby_other_item->indexOfChild(itemIt->second)));
+				lobbyItems.erase(itemIt);
 			}
-		}
-		childCnt = lobby_item->childCount();
-		for (int childIndex = 0; childIndex < childCnt; ++childIndex)
-		{
-			QTreeWidgetItem *itemLoop = lobby_item->child(childIndex);
-			if (itemLoop->type() == TYPE_LOBBY && itemLoop->data(COLUMN_DATA, ROLE_ID).toULongLong() == lobby.lobby_id) {
-				item = itemLoop;
-				break;
-			}
+			else if (itemIt->second->parent() == lobby_item)
+				item = itemIt->second;
 		}
 
 	ChatLobbyFlags lobby_flags = lobby.lobby_flags ;
@@ -667,6 +661,7 @@ void ChatLobbyWidget::updateDisplay()
 			item = new RSTreeWidgetItem(compareRole, TYPE_LOBBY);
             icon = (lobby.lobby_flags & RS_CHAT_LOBBY_FLAGS_PUBLIC) ? FilesDefs::getIconFromQtResourcePath(IMAGE_PUBLIC) : FilesDefs::getIconFromQtResourcePath(IMAGE_PRIVATE);
 			lobby_item->addChild(item);
+			lobbyItems[lobby.lobby_id] = item;
             
 		} 
 		else
@@ -717,14 +712,10 @@ void ChatLobbyWidget::updateDisplay()
 		QTreeWidgetItem *item = NULL;
 
 		// search existing item
-		int childCount = itemParent->childCount();
-		for (int childIndex = 0; childIndex < childCount; ++childIndex) {
-			QTreeWidgetItem *itemLoop = itemParent->child(childIndex);
-			if (itemLoop->type() == TYPE_LOBBY && itemLoop->data(COLUMN_DATA, ROLE_ID).toULongLong() == lobby.lobby_id) {
-				item = itemLoop;
-				break;
-			}
-		}
+		std::map<ChatLobbyId,QTreeWidgetItem*>::iterator itemIt = lobbyItems.find(lobby.lobby_id);
+
+		if (itemIt != lobbyItems.end() && itemIt->second->parent() == itemParent)
+			item = itemIt->second;
 
 		QIcon icon;
         
@@ -735,6 +726,7 @@ void ChatLobbyWidget::updateDisplay()
             item = new RSTreeWidgetItem(compareRole, TYPE_LOBBY);
             icon = (lobby.lobby_flags & RS_CHAT_LOBBY_FLAGS_PUBLIC) ? FilesDefs::getIconFromQtResourcePath(IMAGE_PUBLIC) : FilesDefs::getIconFromQtResourcePath(IMAGE_PRIVATE);
             itemParent->addChild(item);
+            lobbyItems[lobby.lobby_id] = item;
         } else {
             if (!item->data(COLUMN_DATA, ROLE_SUBSCRIBED).toBool()) {
                 // Replace icon
