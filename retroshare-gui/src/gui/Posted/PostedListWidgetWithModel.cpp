@@ -18,6 +18,7 @@
  *                                                                             *
  *******************************************************************************/
 
+#include <QApplication>
 #include <QDateTime>
 #include <QMenu>
 #include <QSignalMapper>
@@ -26,6 +27,7 @@
 #include <QMessageBox>
 
 #include "retroshare/rsgxscircles.h"
+#include "retroshare/rsreputations.h"
 
 #include "ui_PostedListWidgetWithModel.h"
 #include "gui/feeds/GxsChannelPostItem.h"
@@ -164,18 +166,49 @@ QSize PostedPostDelegate::sizeHint(const QStyleOptionViewItem&, const QModelInde
 
 	RsPostedPost post = index.data(Qt::UserRole).value<RsPostedPost>() ;
 
+    // The measure below builds a complete post widget and throws it away. The view asks for it at every layout
+    // and for every row it lays out, so the result is kept, with all the things the size depends on.
+
+    if(mCellSizesFont != QApplication::font() || mCellSizes.size() > 5000)
+    {
+        mCellSizes.clear();
+        mCellSizesFont = QApplication::font();
+    }
+
+    CellSizeEntry e;
+    e.mDisplayMode  = (int)mDisplayMode;
+    e.mDisplayFlags = displayFlags(post.mMeta.mMsgId);
+    e.mRedacted     = (rsReputations->overallReputationLevel(post.mMeta.mAuthorId) == RsReputationLevel::LOCALLY_NEGATIVE);
+    e.mIsNew        = IS_MSG_NEW(post.mMeta.mMsgStatus);
+    e.mComments     = post.mComments;
+    e.mImageSize    = post.mImage.mSize;
+    e.mTitle        = post.mMeta.mMsgName;
+    e.mNotes        = post.mNotes;
+
+    auto it = mCellSizes.find(post.mMeta.mMsgId);
+
+    if(it != mCellSizes.end()
+            && it->second.mDisplayMode  == e.mDisplayMode  && it->second.mDisplayFlags == e.mDisplayFlags
+            && it->second.mRedacted     == e.mRedacted     && it->second.mIsNew        == e.mIsNew
+            && it->second.mComments     == e.mComments     && it->second.mImageSize    == e.mImageSize
+            && it->second.mTitle        == e.mTitle        && it->second.mNotes        == e.mNotes)
+        return it->second.mSize;
+
     if(mDisplayMode == BoardPostDisplayWidget_compact::DISPLAY_MODE_COMPACT)
     {
-        BoardPostDisplayWidget_compact w(post,displayFlags(post.mMeta.mMsgId),nullptr);
+        BoardPostDisplayWidget_compact w(post,e.mDisplayFlags,nullptr);
         w.adjustSize();
-        return w.size();
+        e.mSize = w.size();
     }
     else
     {
-        BoardPostDisplayWidget_card w(post,displayFlags(post.mMeta.mMsgId),nullptr);
+        BoardPostDisplayWidget_card w(post,e.mDisplayFlags,nullptr);
         w.adjustSize();
-        return w.size();
+        e.mSize = w.size();
     }
+
+    mCellSizes[post.mMeta.mMsgId] = e;
+    return e.mSize;
 }
 void PostedPostDelegate::expandItem(RsGxsMessageId msgId,bool expanded)
 {
