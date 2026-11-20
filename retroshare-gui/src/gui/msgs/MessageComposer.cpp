@@ -62,10 +62,13 @@
 #include "gui/connect/ConfCertDialog.h"
 #include "gui/Identity/IdDetailsDialog.h"
 #include "gui/gxs/GxsIdDetails.h"
+#include <mutex>
+
 #include "util/misc.h"
 #include "util/DateTime.h"
 #include "util/HandleRichText.h"
 #include "util/qtthreadsutils.h"
+#include "util/rsthreads.h"
 #include "util/RsQtVersion.h"
 #include "textformat.h"
 #include "TagsMenu.h"
@@ -668,32 +671,43 @@ void MessageComposer::addConnectAttemptMsg(const RsPgpId &gpgId, const RsPeerId 
     if (gpgId.isNull())
         return;
 
-    // PGPId+SslId are always here.  But if the peer is not a friend the SSL id cannot be used.
-    // (todo) If the PGP id doesn't get us a PGP key from the keyring, we need to create a short invite
+    // The request message is prepared on a short-lived thread: building the certificate link, reading the summaries
+    // of the whole inbox to look for an existing request and storing the message took half a second on the GUI
+    // thread of a slow machine, at every connection attempt. One at a time, so that two attempts of the same
+    // profile cannot both find the inbox without a request.
 
-    RetroShareLink link = RetroShareLink::createUnknownSslCertificate(sslId, gpgId);
+    RsThread::async([gpgId, sslId]()
+    {
+        static std::mutex one_at_a_time;
+        std::lock_guard<std::mutex> lock(one_at_a_time);
 
-    if (!link.valid())
-        return;
+        // PGPId+SslId are always here.  But if the peer is not a friend the SSL id cannot be used.
+        // (todo) If the PGP id doesn't get us a PGP key from the keyring, we need to create a short invite
 
-    QString title = QString("%1 %2").arg(link.name(), tr("wants to be friends with you on RetroShare"));
+        RetroShareLink link = RetroShareLink::createUnknownSslCertificate(sslId, gpgId);
 
-    /* search for an exisiting message in the inbox */
-    std::list<MsgInfoSummary> msgList;
-    std::list<MsgInfoSummary>::const_iterator it;
-
-    rsMail->getMessageSummaries(Rs::Mail::BoxName::BOX_INBOX,msgList);
-
-    // do not re-add an existing request.
-    // note: the test with name() is very unsecure. We should use the ID instead.
-
-    for(it = msgList.begin(); it != msgList.end(); ++it)
-        if((it->msgflags & RS_MSG_USER_REQUEST) && it->title == title.toUtf8().constData())
+        if (!link.valid())
             return;
 
-    /* create a message */
-    QString msgText = tr("Hi %1,<br><br>%2 wants to be friends with you on RetroShare.<br><br>Respond now:<br>%3<br><br>Thanks,<br>The RetroShare Team").arg(QString::fromUtf8(rsPeers->getGPGName(rsPeers->getGPGOwnId()).c_str()), link.name(), link.toHtml());
-    rsMail->SystemMessage(title.toUtf8().constData(), msgText.toUtf8().constData(), RS_MSG_USER_REQUEST);
+        QString title = QString("%1 %2").arg(link.name(), MessageComposer::tr("wants to be friends with you on RetroShare"));
+
+        /* search for an exisiting message in the inbox */
+        std::list<MsgInfoSummary> msgList;
+        std::list<MsgInfoSummary>::const_iterator it;
+
+        rsMail->getMessageSummaries(Rs::Mail::BoxName::BOX_INBOX,msgList);
+
+        // do not re-add an existing request.
+        // note: the test with name() is very unsecure. We should use the ID instead.
+
+        for(it = msgList.begin(); it != msgList.end(); ++it)
+            if((it->msgflags & RS_MSG_USER_REQUEST) && it->title == title.toUtf8().constData())
+                return;
+
+        /* create a message */
+        QString msgText = MessageComposer::tr("Hi %1,<br><br>%2 wants to be friends with you on RetroShare.<br><br>Respond now:<br>%3<br><br>Thanks,<br>The RetroShare Team").arg(QString::fromUtf8(rsPeers->getGPGName(rsPeers->getGPGOwnId()).c_str()), link.name(), link.toHtml());
+        rsMail->SystemMessage(title.toUtf8().constData(), msgText.toUtf8().constData(), RS_MSG_USER_REQUEST);
+    });
 }
 
 void MessageComposer::closeEvent (QCloseEvent * event)
