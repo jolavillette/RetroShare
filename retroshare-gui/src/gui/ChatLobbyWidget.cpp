@@ -539,9 +539,14 @@ void ChatLobbyWidget::updateDisplay()
 
 	// The tree is not sorted while it is refreshed: every change of a sorted item puts it back
 	// in its place at once, with comparisons that convert numbers to text. It is sorted once at
-	// the end, on the same column and in the same order.
+	// the end, on the same column and in the same order, when this function returns.
 
-	ui.lobbyTreeWidget->setSortingEnabled(false);
+	struct SortingPause
+	{
+		explicit SortingPause(QTreeWidget *w) : mTree(w) { mTree->setSortingEnabled(false); }
+		~SortingPause() { mTree->setSortingEnabled(true); }
+		QTreeWidget *mTree;
+	} sortingPause(ui.lobbyTreeWidget);
 
 	// now, do a nice display of lobbies
 	
@@ -761,8 +766,6 @@ void ChatLobbyWidget::updateDisplay()
 	publicSubLobbyItem->setText(COLUMN_NAME, tr("Public Subscribed")+ QString(" (") + QString::number(publicSubLobbyItem->childCount())+QString(")"));
 	privateSubLobbyItem->setHidden(privateSubLobbyItem->childCount()==0);
 	publicLobbyItem->setText(COLUMN_NAME, tr("Public")+ " (" + QString::number(publicLobbyItem->childCount())+QString(")"));
-
-	ui.lobbyTreeWidget->setSortingEnabled(true);
 }
 
 void ChatLobbyWidget::createChatLobby()
