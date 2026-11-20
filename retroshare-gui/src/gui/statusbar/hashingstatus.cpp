@@ -97,6 +97,11 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         hashloader->setMovie(movie) ;
         movie->start() ;
 
+        // A run starts with the first file queued by the scan of the shared directories, and nothing is hashed
+        // until that scan is over. Not on a resume, which comes through here with its text already set.
+        if(statusHashing->text().isEmpty())
+            statusHashing->setText(tr("Scanning shared directories..."));
+
         statusHashing->setVisible(!_compactMode) ;
     }
     break;
@@ -152,7 +157,7 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
             parts << misc::friendlyUnit(total_size);
 
             if(fe->mTotalIsProvisional)
-                parts << tr("scanning shared directories...");
+                parts << tr("scanning...");
 
             const QString text = tr("Hashing done") + separator + parts.join(separator);
 
@@ -198,7 +203,7 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         }
 
         if(fe->mTotalIsProvisional)
-            parts << tr("scanning shared directories...");
+            parts << tr("scanning...");
 
         const QString progress = parts.join(separator);
 
