@@ -52,6 +52,7 @@ TransferPage::TransferPage(QWidget * parent, Qt::WindowFlags flags)
     QObject::connect(ui._queueSize_SB,SIGNAL(valueChanged(int)),this,SLOT(updateQueueSize(int))) ;
     QObject::connect(ui._max_up_SB,SIGNAL(valueChanged(int)),this,SLOT(updateMaxUploadSlots(int))) ;
     QObject::connect(ui._defaultStrategy_CB,SIGNAL(activated(int)),this,SLOT(updateDefaultStrategy(int))) ;
+    QObject::connect(ui._defaultSpeed_CB,SIGNAL(activated(int)),this,SLOT(updateDefaultSpeed(int))) ;
     //QObject::connect(ui._e2e_encryption_CB,SIGNAL(activated(int)),this,SLOT(updateEncryptionPolicy(int))) ;
     QObject::connect(ui._diskSpaceLimit_SB,SIGNAL(valueChanged(int)),this,SLOT(updateDiskSizeLimit(int))) ;
     QObject::connect(ui._max_tr_up_per_sec_SB, SIGNAL( valueChanged( int ) ), this, SLOT( updateMaxTRUpRate(int) ) );
@@ -155,6 +156,13 @@ void TransferPage::load()
 	whileBlocking(ui.ignoreDuplicates_CB)->setChecked(rsFiles->ignoreDuplicates());
 	whileBlocking(ui.maxDepth_SB)->setValue(rsFiles->maxShareDepth());
 
+	switch(rsFiles->defaultDownloadSpeed())
+	{
+	case SPEED_LOW:    whileBlocking(ui._defaultSpeed_CB)->setCurrentIndex(0) ; break ;
+	case SPEED_NORMAL: whileBlocking(ui._defaultSpeed_CB)->setCurrentIndex(1) ; break ;
+	case SPEED_HIGH:   whileBlocking(ui._defaultSpeed_CB)->setCurrentIndex(2) ; break ;
+	}
+
 	whileBlocking(ui._queueSize_SB)->setValue(rsFiles->getQueueSize()) ;
 
     switch(rsFiles->defaultChunkStrategy())
@@ -255,6 +263,17 @@ void TransferPage::updateIgnoreDuplicates()
 void TransferPage::updateMaxShareDepth(int s)
 {
 	rsFiles->setMaxShareDepth(s) ;
+}
+
+void TransferPage::updateDefaultSpeed(int i)
+{
+	switch(i)
+	{
+		case 0: rsFiles->setDefaultDownloadSpeed(SPEED_LOW) ;    break ;
+		case 1: rsFiles->setDefaultDownloadSpeed(SPEED_NORMAL) ; break ;
+		case 2: rsFiles->setDefaultDownloadSpeed(SPEED_HIGH) ;   break ;
+		default: ;
+	}
 }
 
 void TransferPage::updateQueueSize(int s)

@@ -45,6 +45,7 @@ class TransferPage: public ConfigPage
 	public slots:
 		void updateQueueSize(int) ;
 		void updateDefaultStrategy(int) ;
+		void updateDefaultSpeed(int) ;
 		void updateDiskSizeLimit(int) ;
 		void updateMaxTRUpRate(int);
 		void updateMaxUploadSlots(int);

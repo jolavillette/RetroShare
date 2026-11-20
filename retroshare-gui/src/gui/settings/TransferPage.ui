@@ -459,6 +459,13 @@ p, li { white-space: pre-wrap; }
                </widget>
               </item>
               <item>
+               <widget class="QLabel" name="_defaultSpeed_Label">
+                <property name="text">
+                 <string>Default download speed:</string>
+                </property>
+               </widget>
+              </item>
+              <item>
                <widget class="QLabel" name="_diskSpaceLimit_Label">
                 <property name="text">
                  <string>Safety disk space limit :</string>
@@ -523,6 +530,28 @@ p, li { white-space: pre-wrap; }
                 <item>
                  <property name="text">
                   <string>Random</string>
+                 </property>
+                </item>
+               </widget>
+              </item>
+              <item>
+               <widget class="RSComboBox" name="_defaultSpeed_CB">
+                <property name="toolTip">
+                 <string>Speed given to every new download: how fast it raises the rate it asks from each source. It can still be changed for one download from its context menu.</string>
+                </property>
+                <item>
+                 <property name="text">
+                  <string>Slower</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>Average</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>Faster</string>
                  </property>
                 </item>
                </widget>
