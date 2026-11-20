@@ -201,7 +201,15 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
             parts << tr("scanning shared directories...");
 
         const QString progress = parts.join(separator);
-        const QString msg = progress + " : " + QFileInfo(path).fileName();
+
+        // The label cuts what does not fit at its right end. The name comes first so that it is the last thing to
+        // go, and a long one is shortened in its middle so that it does not push the figures out.
+        QString name = QFileInfo(path).fileName();
+
+        if(name.length() > 40)
+            name = name.left(20) + QChar(0x2026) + name.right(19);
+
+        const QString msg = name + separator + progress;
         const QString text = tr("Hashing file") + " " + msg;
 
         // The file being hashed when the pause is asked is hashed to its end, and keeps sending its progress.
