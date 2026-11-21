@@ -200,4 +200,8 @@ if(RS_DEVELOPMENT_BUILD)
 endif()
 
 # --- Installation ---
+# so that tools looking at the installed plugin alone find the bundled libretroshare
+if(COMMAND retroshare_install_rpath)
+	retroshare_install_rpath(VOIP "${RS_PLUGIN_INSTALL_DIR}")
+endif()
 install(TARGETS VOIP DESTINATION ${RS_PLUGIN_INSTALL_DIR})
