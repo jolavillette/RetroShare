@@ -27,9 +27,12 @@
  * RetroShare GUI own version, independent from libretroshare.
  *
  * @def RS_GUI_VERSION
- * Human readable version string of the RetroShare GUI, injected at compile time
- * by the build system (both qmake and CMake) from `git describe` of the
- * RetroShare super-project, i.e. the repository that hosts retroshare-gui.
+ * Human readable version string of the RetroShare GUI, injected by the build
+ * system from `git describe` of the RetroShare super-project, i.e. the
+ * repository that hosts retroshare-gui. qmake passes it as a compile
+ * definition. CMake generates it at build time in rsguiversion_build.h: it
+ * changes at every commit, so include this file only where the version is
+ * really needed, each file that does is rebuilt at every commit.
  *
  * This is the GUI application's OWN version, distinct from the core engine
  * version exposed by libretroshare (RS_HUMAN_READABLE_VERSION in
@@ -40,6 +43,10 @@
  * A default is provided so builds without version injection (e.g. a source
  * tarball without git metadata, or a reduced build) still compile.
  */
+#ifdef RS_GUI_VERSION_BUILD_HEADER
+#	include "rsguiversion_build.h"
+#endif
+
 #ifndef RS_GUI_VERSION
 #	define RS_GUI_VERSION "version not available"
 #endif

@@ -578,32 +578,52 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE RS_DIRECT_CHAT)
 # RetroShare GUI own version (RS_GUI_VERSION), independent from libretroshare.
 # retroshare-gui is a directory of the RetroShare super-project (not a submodule),
 # so `git describe` here resolves to the super-project version, which is exactly
-# what the GUI should report as its own version. Drop the leading 'v' to match the
-# usual version style. rsguiversion.h provides a default, so a build without git
-# metadata (or the qmake/Android build path) still compiles.
-# A source tarball made by build_scripts/make-source-tarball.sh carries the
-# super-project `git describe` in Source_Version: use it first, because the
-# tarball may be unpacked inside another git repository (git-buildpackage).
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Source_Version")
-	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../Source_Version" RS_GUI_VERSION)
-	string(STRIP "${RS_GUI_VERSION}" RS_GUI_VERSION)
-	set(RS_GUI_GIT_RESULT 0)
-else()
-	execute_process(
-		COMMAND ${GIT_EXECUTABLE} describe --tags --always --dirty
-		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-		OUTPUT_VARIABLE RS_GUI_VERSION
-		OUTPUT_STRIP_TRAILING_WHITESPACE
-		RESULT_VARIABLE RS_GUI_GIT_RESULT ) # Avoid CMake failure if git fails
-endif()
+# what the GUI should report as its own version. rsguiversion.h provides a
+# default, so a build without git metadata (or the qmake/Android build path)
+# still compiles.
+#
+# The version changes at every commit, so it is not a compile definition: as
+# such it would change the command line of every object at every commit, which
+# rebuilds everything and defeats compiler caches, and it would only be
+# refreshed when CMake runs again. cmake/RsGuiVersionStamp.cmake writes it at
+# build time into rsguiversion_build.h, that only rshare.cpp (through
+# rsguiversion.h) and the Windows resource file include.
+set(RS_GUI_VERSION_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/rsguiversion_build")
+set(
+	RS_GUI_VERSION_STAMP_COMMAND
+	"${CMAKE_COMMAND}"
+	"-DRS_STAMP_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+	"-DRS_STAMP_TEMPLATE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/rsguiversion_build.h.in"
+	"-DRS_STAMP_OUTPUT=${RS_GUI_VERSION_BUILD_DIR}/rsguiversion_build.h"
+	"-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
+	-P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RsGuiVersionStamp.cmake" )
 
-if(RS_GUI_GIT_RESULT EQUAL 0 AND NOT RS_GUI_VERSION STREQUAL "")
-	string(REGEX REPLACE "^v" "" RS_GUI_VERSION "${RS_GUI_VERSION}")
-	message(STATUS "RetroShare GUI version ${RS_GUI_VERSION}")
-	target_compile_definitions(
-		${PROJECT_NAME} PRIVATE RS_GUI_VERSION="${RS_GUI_VERSION}" )
-else()
-	message(WARNING "Determining RetroShare GUI version via git failed")
+# Once now, so that the header exists whatever the generator does first
+execute_process(COMMAND ${RS_GUI_VERSION_STAMP_COMMAND})
+
+# Then at every build: a target without output is always out of date
+add_custom_target(
+	${PROJECT_NAME}_version_stamp
+	COMMAND ${RS_GUI_VERSION_STAMP_COMMAND}
+	BYPRODUCTS "${RS_GUI_VERSION_BUILD_DIR}/rsguiversion_build.h"
+	COMMENT "Checking RetroShare GUI version"
+	VERBATIM )
+add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_version_stamp)
+
+target_include_directories(
+	${PROJECT_NAME} PRIVATE "${RS_GUI_VERSION_BUILD_DIR}" )
+set_property(
+	SOURCE src/rshare.cpp
+	APPEND PROPERTY COMPILE_DEFINITIONS RS_GUI_VERSION_BUILD_HEADER )
+if(WIN32)
+	set_property(
+		SOURCE src/gui/images/retroshare_win.rc
+		APPEND PROPERTY COMPILE_DEFINITIONS RS_GUI_VERSION_BUILD_HEADER )
+	# The resource compiler does not track the headers it includes
+	set_property(
+		SOURCE src/gui/images/retroshare_win.rc
+		APPEND PROPERTY OBJECT_DEPENDS
+		"${RS_GUI_VERSION_BUILD_DIR}/rsguiversion_build.h" )
 endif()
 
 # Match the actual option name RS_GXSCIRCLES (defined above). It was previously
