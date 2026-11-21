@@ -49,6 +49,13 @@ string(TOLOWER ${PROJECT_NAME} PROJECT_NAME_LOWER)
 ### options
 
 include(GNUInstallDirs)
+
+# Windows has no run-time search path: a program finds its DLLs in its own
+# directory. Put the programs and the DLLs built here (a shared libretroshare)
+# in one directory, so that what is built runs from the build tree.
+if(WIN32 AND PROJECT_IS_TOP_LEVEL AND NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
+endif()
 include(CMakeDependentOption)
 
 set(RS_VERSION_SUFFIX

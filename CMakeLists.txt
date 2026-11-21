@@ -39,6 +39,13 @@ option(RS_GUI "Build RetroShare GUI" ON)
 option(RS_SERVICE "Build RetroShare Service" ON)
 option(RS_FRIENDSERVER "Build RetroShare Friendserver" ON)
 option(RS_PLUGINS "Build RetroShare Plugins" OFF)
+# Windows has no run-time search path: a program finds its DLLs in its own
+# directory. Put the programs and the DLLs built here (a shared libretroshare)
+# in one directory, so that what is built runs from the build tree.
+if(WIN32 AND NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
+endif()
+
 # The engine looks for the plugins shipped with the program next to the running
 # binary, in ../lib/retroshare/extensions6 (libretroshare, rsinit.cc). Build
 # them there, so that the program run from the build tree finds them; they are
@@ -48,6 +55,8 @@ if(APPLE)
 	set(rs_gui_exe_build_dir
 		${PROJECT_BINARY_DIR}/retroshare-gui/retroshare-gui.app/Contents/MacOS
 	)
+elseif(CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+	set(rs_gui_exe_build_dir ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 else()
 	set(rs_gui_exe_build_dir ${PROJECT_BINARY_DIR}/retroshare-gui)
 endif()
