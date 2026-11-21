@@ -398,7 +398,11 @@ add_subdirectory(data)
 set(BUILD_CONFIG_DIR "${PROJECT_BINARY_DIR}/cmake")
 set(INSTALL_CONFIG_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
 set(TARGET_NAMESPACE retroshare)
+# Two install components, as in libretroshare: "retroshare-gui" is the program
+# and its data; "retroshare-gui-dev" is what a plugin needs to build against it
+# (headers, the import library on Windows, CMake package files).
 set(INSTALL_COMPONENT COMPONENT retroshare-gui)
+set(INSTALL_COMPONENT_DEV COMPONENT retroshare-gui-dev)
 
 file(GLOB INSTALL_MODULES LIST_DIRECTORIES FALSE
 	"${PROJECT_SOURCE_DIR}/mk/cmake/*"
@@ -408,6 +412,7 @@ file(GLOB INSTALL_MODULES LIST_DIRECTORIES FALSE
 if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.23)
 	set(FILESET_HEADERS_INSTALL
 		FILE_SET HEADERS DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/retroshare-gui
+			${INSTALL_COMPONENT_DEV}
 	)
 else()
 	set(FILESET_HEADERS_INSTALL
@@ -435,7 +440,7 @@ else()
 		file(RELATIVE_PATH dest ${base} ${dest})
 		install(FILES ${source}
 			DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/retroshare-gui/${dest}
-			${INSTALL_COMPONENT}
+			${INSTALL_COMPONENT_DEV}
 		)
 	endforeach()
 endif()
@@ -471,9 +476,10 @@ endif()
 
 install(TARGETS ${PROJECT_NAME}
 	EXPORT ${PROJECT_NAME}_export
-	${INSTALL_COMPONENT}
+	RUNTIME ${INSTALL_COMPONENT}
+	BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR} ${INSTALL_COMPONENT}
+	ARCHIVE ${INSTALL_COMPONENT_DEV}
 	${FILESET_HEADERS_INSTALL}
-	BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 
@@ -507,7 +513,7 @@ if(NOT FETCH_DEPENDENCY_PROVIDER)
 		DESTINATION "${INSTALL_CONFIG_DIR}"
 		FILE ${PROJECT_NAME_LOWER}-targets.cmake
 		NAMESPACE ${TARGET_NAMESPACE}::
-		${INSTALL_COMPONENT}
+		${INSTALL_COMPONENT_DEV}
 		${EXPORT_PACKAGE_DEPENDENCIES}
 	)
 	include(CMakePackageConfigHelpers)
@@ -525,10 +531,13 @@ if(NOT FETCH_DEPENDENCY_PROVIDER)
 			"${BUILD_CONFIG_DIR}/${PROJECT_NAME_LOWER}-${config}-install.cmake"
 			DESTINATION "${INSTALL_CONFIG_DIR}"
 			RENAME ${PROJECT_NAME_LOWER}-${config}.cmake
-			${INSTALL_COMPONENT}
+			${INSTALL_COMPONENT_DEV}
 		)
 	endforeach()
-	install(FILES ${INSTALL_MODULES} DESTINATION ${INSTALL_CONFIG_DIR}/Modules)
+	install(FILES ${INSTALL_MODULES}
+		DESTINATION ${INSTALL_CONFIG_DIR}/Modules
+		${INSTALL_COMPONENT_DEV}
+	)
 
 
 	## config for build tree
