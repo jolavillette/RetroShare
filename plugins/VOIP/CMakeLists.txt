@@ -44,10 +44,14 @@ if(QT_VERSION_MAJOR EQUAL 6)
 	find_package(Qt6 COMPONENTS Core5Compat REQUIRED)
 endif()
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(AVCODEC REQUIRED libavcodec)
-pkg_check_modules(AVUTIL REQUIRED libavutil)
-pkg_check_modules(SPEEX REQUIRED speex)
-pkg_check_modules(SPEEXDSP REQUIRED speexdsp)
+# IMPORTED_TARGET: the PkgConfig::<name> targets carry the include directories,
+# the library directories and the libraries. Bare library names are not enough
+# where the libraries are outside the linker's default path (Homebrew:
+# "ld: library 'avcodec' not found").
+pkg_check_modules(AVCODEC REQUIRED IMPORTED_TARGET libavcodec)
+pkg_check_modules(AVUTIL REQUIRED IMPORTED_TARGET libavutil)
+pkg_check_modules(SPEEX REQUIRED IMPORTED_TARGET speex)
+pkg_check_modules(SPEEXDSP REQUIRED IMPORTED_TARGET speexdsp)
 find_package(RetroShare REQUIRED)
 find_package(RetroShare-GUI REQUIRED)
 
@@ -140,10 +144,6 @@ target_include_directories(VOIP PRIVATE
 	${CMAKE_CURRENT_SOURCE_DIR}/gui
 	${CMAKE_CURRENT_SOURCE_DIR}/services
 	${CMAKE_CURRENT_SOURCE_DIR}/interface
-	${AVCODEC_INCLUDE_DIRS}
-	${AVUTIL_INCLUDE_DIRS}
-	${SPEEX_INCLUDE_DIRS}
-	${SPEEXDSP_INCLUDE_DIRS}
 )
 
 target_link_libraries(VOIP PRIVATE
@@ -152,10 +152,10 @@ target_link_libraries(VOIP PRIVATE
 	Qt${QT_VERSION_MAJOR}::Multimedia
 	Qt${QT_VERSION_MAJOR}::Xml
 	Qt${QT_VERSION_MAJOR}::Network
-	${AVCODEC_LIBRARIES}
-	${AVUTIL_LIBRARIES}
-	${SPEEX_LIBRARIES}
-	${SPEEXDSP_LIBRARIES}
+	PkgConfig::AVCODEC
+	PkgConfig::AVUTIL
+	PkgConfig::SPEEX
+	PkgConfig::SPEEXDSP
 	retroshare::retroshare
 	retroshare::retroshare-gui
 )
