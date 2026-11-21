@@ -202,8 +202,9 @@ protected:
     bool mDistSyncAllowed;
     std::map<RsGxsGroupId,GxsGroupStatistic> mCachedGroupStats;
 
-    // Service statistics waiting to be written to the settings: getServiceStatistics() is called at every
-    // refresh, and each write to the settings ends in a save of the whole file on the GUI thread.
+    // Service statistics waiting to be written to the settings, which is done when the page is destroyed:
+    // getServiceStatistics() is called at every refresh, and each write to the settings ends in a save of
+    // the whole file on the GUI thread.
     void saveServiceStatistics();
 
     mutable GxsServiceStatistic mServiceStatsToSave;

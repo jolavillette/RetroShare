@@ -20,7 +20,6 @@
 
 #include <QMenu>
 #include <QMessageBox>
-#include <QTimer>
 #include <QToolButton>
 
 #include "GxsGroupFrameDialog.h"
@@ -1185,19 +1184,14 @@ void GxsGroupFrameDialog::getServiceStatistics(GxsServiceStatistic& stats) const
         }
 
         // Also save the service statistics in conf file, so that we can display it right away at start.
-        // The values are written one minute later at most, and once for all the calls made in between:
-        // while the groups load, this function is called about twice a second with new counts, and every
-        // write makes Qt save the whole settings file on the GUI thread.
+        // The values are only written when the page is destroyed, at exit: every write makes Qt save
+        // the whole settings file on the GUI thread, which waits for the disk (0.7 to 5.5 s measured on
+        // busy rotating disks, for these counters alone), and this function is called about twice a
+        // second with new counts while the groups load. After a crash the counts of the previous clean
+        // exit are shown at start, until the real ones are computed.
 
         mServiceStatsToSave = stats;
-
-        if(!mServiceStatsSavePending)
-        {
-            mServiceStatsSavePending = true;
-
-            GxsGroupFrameDialog *self = const_cast<GxsGroupFrameDialog*>(this);
-            QTimer::singleShot(60000, self, [self]() { self->saveServiceStatistics(); });
-        }
+        mServiceStatsSavePending = true;
     }
     else	// Get statistics from settings if no cache is already present: allows to display at start.
     {
