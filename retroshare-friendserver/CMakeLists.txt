@@ -150,6 +150,14 @@ endif()
 
 
 ## install
+include(GNUInstallDirs)
+
+# A shared libretroshare built in the same build is installed with this
+# program: let the installed executable find it from where it is.
+if(COMMAND retroshare_install_rpath)
+	retroshare_install_rpath(${PROJECT_NAME} "${CMAKE_INSTALL_BINDIR}")
+endif()
+
 install(TARGETS ${PROJECT_NAME}
 	COMPONENT retroshare-friendserver
 )
