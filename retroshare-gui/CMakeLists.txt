@@ -50,6 +50,23 @@ string(TOLOWER ${PROJECT_NAME} PROJECT_NAME_LOWER)
 
 include(GNUInstallDirs)
 
+# macOS: the program is an application bundle, and what it needs at run time is
+# installed inside it. The engine looks for its data in Contents/Resources;
+# libretroshare goes to Contents/Frameworks. Set before libretroshare is
+# looked for, so that its own defaults (share/..., lib) do not apply.
+if(APPLE)
+	set(RS_MACOS_BUNDLE_DIR "${CMAKE_INSTALL_BINDIR}/${PROJECT_NAME}.app")
+	set(RS_INSTALL_DATADIR "${RS_MACOS_BUNDLE_DIR}/Contents/Resources" CACHE PATH
+		"Path where to install RetroShare system wide data"
+	)
+	set(RS_DATA_DIR "${RS_MACOS_BUNDLE_DIR}/Contents/Resources" CACHE PATH
+		"Path where to install RetroShare system wide data"
+	)
+	set(RS_LIB_INSTALL_DIR "${RS_MACOS_BUNDLE_DIR}/Contents/Frameworks" CACHE PATH
+		"Path where to install libretroshare"
+	)
+endif()
+
 # Windows has no run-time search path: a program finds its DLLs in its own
 # directory. Put the programs and the DLLs built here (a shared libretroshare)
 # in one directory, so that what is built runs from the build tree.
@@ -119,7 +136,7 @@ cmake_dependent_option(
 
 cmake_dependent_option(RS_PACKAGE_RUNTIME_DEPENDENCIES
 	"Bundle runtime dependencies (DLLs) into packages"
-	TRUE "WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.16"
+	TRUE "(WIN32 OR APPLE) AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.16"
 	FALSE
 )
 
@@ -633,8 +650,43 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.12)
 	set(CPACK_NSIS_SECTION_SELECTED_VARS ${workaround_19982})
 endif()
 
-## runtime dependencies
-if(RS_PACKAGE_RUNTIME_DEPENDENCIES)
+## runtime dependencies, macOS: an install-time script makes the bundle
+## self-contained (macdeployqt, then a new signature)
+if(RS_PACKAGE_RUNTIME_DEPENDENCIES AND APPLE)
+	get_target_property(qmake_location Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION)
+	get_filename_component(qt_bin_dir "${qmake_location}" DIRECTORY)
+	find_program(MACDEPLOYQT_EXECUTABLE macdeployqt HINTS "${qt_bin_dir}")
+	if(NOT MACDEPLOYQT_EXECUTABLE)
+		message(FATAL_ERROR
+			"macdeployqt not found: it comes with Qt and is needed to bundle "
+			"the runtime dependencies (RS_PACKAGE_RUNTIME_DEPENDENCIES)."
+		)
+	endif()
+	set(RS_MACOS_CODESIGN_IDENTITY "-" CACHE STRING
+		"identity to sign the application bundle with; - is an ad-hoc signature"
+	)
+	set(RS_MACOS_BUNDLE_EXECUTABLE ${PROJECT_NAME})
+	set(RS_MACOS_BUNDLE_PLUGIN_SUBDIR "Contents/lib/retroshare/extensions6")
+	configure_file(
+		mk/cmake/FinishMacOSBundle.cmake.in
+		${CMAKE_CURRENT_BINARY_DIR}/finish-macos-bundle.cmake
+		@ONLY
+	)
+	# The script must run after everything is installed into the bundle. A
+	# package of this project alone: one of CPack's install scripts. Inside the
+	# super-project, which also installs the plugins: the super-project runs it
+	# last.
+	set(RS_MACOS_BUNDLE_FINISH_SCRIPT
+		${CMAKE_CURRENT_BINARY_DIR}/finish-macos-bundle.cmake
+		CACHE INTERNAL "install-time script that finishes the macOS bundle"
+	)
+	if(PROJECT_IS_TOP_LEVEL)
+		list(APPEND CPACK_INSTALL_SCRIPTS ${RS_MACOS_BUNDLE_FINISH_SCRIPT})
+	endif()
+endif()
+
+## runtime dependencies, Windows
+if(RS_PACKAGE_RUNTIME_DEPENDENCIES AND NOT APPLE)
 	if(CMAKE_VERSION VERSION_LESS 3.16)
 		message(WARNING
 			"Packaging runtime dependencies with CMake version <3.16. "

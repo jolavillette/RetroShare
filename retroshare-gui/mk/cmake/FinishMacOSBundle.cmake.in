@@ -1,0 +1,90 @@
+## ------------------------------------------------------------------------- ##
+ # mk/cmake/FinishMacOSBundle.cmake.in
+ # This file is part of RetroShare-GUI.
+ #
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ #
+ # This program is free software: you can redistribute it and/or modify
+ # it under the terms of the GNU Affero General Public License as
+ # published by the Free Software Foundation, either version 3 of the
+ # License, or (at your option) any later version.
+ #
+ # This program is distributed in the hope that it will be useful,
+ # but WITHOUT ANY WARRANTY; without even the implied warranty of
+ # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ # GNU Affero General Public License for more details.
+ #
+ # You should have received a copy of the GNU Affero General Public License
+ # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+## ------------------------------------------------------------------------- ##
+
+# Install-time script: makes the installed retroshare-gui.app self-contained.
+# Run once everything is installed into the bundle (the program, libretroshare
+# in Contents/Frameworks, the RetroShare plugins, the data).
+#
+# 1. macdeployqt copies the Qt frameworks, the Qt plugins and every other
+#    library the program and the RetroShare plugins link (Homebrew's, ...) into
+#    the bundle, and rewrites their install names.
+# 2. Search paths pointing outside the bundle are removed from the executable.
+# 3. The bundle is signed again: the libraries copied in step 1 were modified
+#    after they had been signed, and macOS on Apple Silicon refuses to load a
+#    library whose signature does not match.
+
+cmake_minimum_required(VERSION 3.16)
+
+set(app "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/@RS_MACOS_BUNDLE_DIR@")
+set(exe "${app}/Contents/MacOS/@RS_MACOS_BUNDLE_EXECUTABLE@")
+if(NOT EXISTS "${exe}")
+	message(FATAL_ERROR "no application bundle at ${app}")
+endif()
+
+file(GLOB plugins "${app}/@RS_MACOS_BUNDLE_PLUGIN_SUBDIR@/*.dylib")
+set(macdeployqt_args "${app}" "-libpath=${app}/Contents/Frameworks")
+foreach(plugin IN LISTS plugins)
+	list(APPEND macdeployqt_args "-executable=${plugin}")
+endforeach()
+
+message(STATUS "macdeployqt: ${app}")
+execute_process(
+	COMMAND "@MACDEPLOYQT_EXECUTABLE@" ${macdeployqt_args}
+	RESULT_VARIABLE result
+	OUTPUT_VARIABLE output
+	ERROR_VARIABLE output
+)
+if(NOT result EQUAL 0)
+	message(FATAL_ERROR "macdeployqt failed (${result}):\n${output}")
+endif()
+
+execute_process(COMMAND otool -l "${exe}" OUTPUT_VARIABLE load_commands)
+string(REGEX MATCHALL "path /[^\n]* \\(offset" rpaths "${load_commands}")
+foreach(rpath IN LISTS rpaths)
+	string(REGEX REPLACE "^path (.*) \\(offset$" "\\1" rpath "${rpath}")
+	message(STATUS "removing the search path ${rpath}")
+	execute_process(
+		COMMAND install_name_tool -delete_rpath "${rpath}" "${exe}"
+		RESULT_VARIABLE result
+	)
+	if(NOT result EQUAL 0)
+		message(FATAL_ERROR "cannot remove the search path ${rpath}")
+	endif()
+endforeach()
+
+message(STATUS "codesign (@RS_MACOS_CODESIGN_IDENTITY@): ${app}")
+execute_process(
+	COMMAND codesign --force --deep --sign "@RS_MACOS_CODESIGN_IDENTITY@" "${app}"
+	RESULT_VARIABLE result
+	OUTPUT_VARIABLE output
+	ERROR_VARIABLE output
+)
+if(NOT result EQUAL 0)
+	message(FATAL_ERROR "codesign failed (${result}):\n${output}")
+endif()
+execute_process(
+	COMMAND codesign --verify --deep --strict "${app}"
+	RESULT_VARIABLE result
+	OUTPUT_VARIABLE output
+	ERROR_VARIABLE output
+)
+if(NOT result EQUAL 0)
+	message(FATAL_ERROR "the signed bundle does not verify:\n${output}")
+endif()

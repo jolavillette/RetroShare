@@ -162,3 +162,11 @@ endif()
 if(RS_WEBUI)
 	add_subdirectory(retroshare-webui)
 endif()
+
+# macOS: once the program, libretroshare, the plugins and the data are installed
+# into the application bundle, make it self-contained (RetroShare-GUI's
+# install-time script; this directory's install rules run after the
+# subdirectories').
+if(APPLE AND RS_GUI AND RS_PACKAGE_RUNTIME_DEPENDENCIES AND RS_MACOS_BUNDLE_FINISH_SCRIPT)
+	install(SCRIPT ${RS_MACOS_BUNDLE_FINISH_SCRIPT})
+endif()
