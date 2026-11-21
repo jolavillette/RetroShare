@@ -433,6 +433,15 @@ else()
 	endforeach()
 endif()
 
+# libretroshare built in this build, as opposed to one found installed
+get_target_property(retroshare_imported retroshare::retroshare IMPORTED)
+get_target_property(retroshare_type retroshare::retroshare TYPE)
+if(NOT retroshare_imported AND retroshare_type STREQUAL "SHARED_LIBRARY")
+	set(retroshare_bundled_shared TRUE)
+else()
+	set(retroshare_bundled_shared FALSE)
+endif()
+
 install(TARGETS ${PROJECT_NAME}
 	EXPORT ${PROJECT_NAME}_export
 	${INSTALL_COMPONENT}
@@ -533,6 +542,16 @@ set(CPACK_INSTALL_CMAKE_PROJECTS
 	retroshare-gui
 	/
 )
+if(NOT retroshare_imported)
+	# libretroshare is built in this build: what it needs at run time (the
+	# shared library when it is one, bdboot.txt) belongs in this package.
+	list(APPEND CPACK_INSTALL_CMAKE_PROJECTS
+		${CMAKE_BINARY_DIR}
+		retroshare
+		libretroshare
+		/
+	)
+endif()
 
 ## generators
 set(CPACK_GENERATOR TXZ)
@@ -594,11 +613,17 @@ if(RS_PACKAGE_RUNTIME_DEPENDENCIES)
 		)
 	endif()
 
+	# a shared libretroshare built here is not in RUNTIME_DEPENDENCY_PATH
+	set(retroshare_runtime_dir "")
+	if(retroshare_bundled_shared)
+		set(retroshare_runtime_dir "$<TARGET_FILE_DIR:retroshare::retroshare>")
+	endif()
+
 	include(RuntimeDependenciesInstallScript)
 	runtime_dependencies_install_script(
 		install-${PROJECT_NAME}-deps.cmake
 		EXECUTABLES "$<TARGET_FILE:${PROJECT_NAME}>"
-		DIRECTORIES ${RUNTIME_DEPENDENCY_PATH}
+		DIRECTORIES ${RUNTIME_DEPENDENCY_PATH} ${retroshare_runtime_dir}
 	)
 	list(APPEND CPACK_INSTALL_SCRIPTS
 		${CMAKE_CURRENT_BINARY_DIR}/install-${PROJECT_NAME}-deps.cmake
