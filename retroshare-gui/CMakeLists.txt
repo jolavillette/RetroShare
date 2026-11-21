@@ -577,6 +577,43 @@ add_executable(${TARGET_NAMESPACE}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 
 
 ################################################################################
+### macOS: self-contained application bundle
+
+# An install-time script makes the bundle self-contained (macdeployqt, then a
+# new signature). Prepared here, outside the packaging section below, because
+# the super-project needs it too.
+if(RS_PACKAGE_RUNTIME_DEPENDENCIES AND APPLE)
+	get_target_property(qmake_location Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION)
+	get_filename_component(qt_bin_dir "${qmake_location}" DIRECTORY)
+	find_program(MACDEPLOYQT_EXECUTABLE macdeployqt HINTS "${qt_bin_dir}")
+	if(NOT MACDEPLOYQT_EXECUTABLE)
+		message(FATAL_ERROR
+			"macdeployqt not found: it comes with Qt and is needed to bundle "
+			"the runtime dependencies (RS_PACKAGE_RUNTIME_DEPENDENCIES)."
+		)
+	endif()
+	set(RS_MACOS_CODESIGN_IDENTITY "-" CACHE STRING
+		"identity to sign the application bundle with; - is an ad-hoc signature"
+	)
+	set(RS_MACOS_BUNDLE_EXECUTABLE ${PROJECT_NAME})
+	set(RS_MACOS_BUNDLE_PLUGIN_SUBDIR "Contents/lib/retroshare/extensions6")
+	configure_file(
+		mk/cmake/FinishMacOSBundle.cmake.in
+		${CMAKE_CURRENT_BINARY_DIR}/finish-macos-bundle.cmake
+		@ONLY
+	)
+	# The script must run after everything is installed into the bundle. A
+	# package of this project alone: one of CPack's install scripts (below).
+	# Inside the super-project, which also installs the plugins: the
+	# super-project runs it last.
+	set(RS_MACOS_BUNDLE_FINISH_SCRIPT
+		${CMAKE_CURRENT_BINARY_DIR}/finish-macos-bundle.cmake
+		CACHE INTERNAL "install-time script that finishes the macOS bundle"
+	)
+endif()
+
+
+################################################################################
 ### packaging
 
 if(PROJECT_IS_TOP_LEVEL)
@@ -650,39 +687,9 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.12)
 	set(CPACK_NSIS_SECTION_SELECTED_VARS ${workaround_19982})
 endif()
 
-## runtime dependencies, macOS: an install-time script makes the bundle
-## self-contained (macdeployqt, then a new signature)
+## runtime dependencies, macOS: the bundle is finished at install time
 if(RS_PACKAGE_RUNTIME_DEPENDENCIES AND APPLE)
-	get_target_property(qmake_location Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION)
-	get_filename_component(qt_bin_dir "${qmake_location}" DIRECTORY)
-	find_program(MACDEPLOYQT_EXECUTABLE macdeployqt HINTS "${qt_bin_dir}")
-	if(NOT MACDEPLOYQT_EXECUTABLE)
-		message(FATAL_ERROR
-			"macdeployqt not found: it comes with Qt and is needed to bundle "
-			"the runtime dependencies (RS_PACKAGE_RUNTIME_DEPENDENCIES)."
-		)
-	endif()
-	set(RS_MACOS_CODESIGN_IDENTITY "-" CACHE STRING
-		"identity to sign the application bundle with; - is an ad-hoc signature"
-	)
-	set(RS_MACOS_BUNDLE_EXECUTABLE ${PROJECT_NAME})
-	set(RS_MACOS_BUNDLE_PLUGIN_SUBDIR "Contents/lib/retroshare/extensions6")
-	configure_file(
-		mk/cmake/FinishMacOSBundle.cmake.in
-		${CMAKE_CURRENT_BINARY_DIR}/finish-macos-bundle.cmake
-		@ONLY
-	)
-	# The script must run after everything is installed into the bundle. A
-	# package of this project alone: one of CPack's install scripts. Inside the
-	# super-project, which also installs the plugins: the super-project runs it
-	# last.
-	set(RS_MACOS_BUNDLE_FINISH_SCRIPT
-		${CMAKE_CURRENT_BINARY_DIR}/finish-macos-bundle.cmake
-		CACHE INTERNAL "install-time script that finishes the macOS bundle"
-	)
-	if(PROJECT_IS_TOP_LEVEL)
-		list(APPEND CPACK_INSTALL_SCRIPTS ${RS_MACOS_BUNDLE_FINISH_SCRIPT})
-	endif()
+	list(APPEND CPACK_INSTALL_SCRIPTS ${RS_MACOS_BUNDLE_FINISH_SCRIPT})
 endif()
 
 ## runtime dependencies, Windows
