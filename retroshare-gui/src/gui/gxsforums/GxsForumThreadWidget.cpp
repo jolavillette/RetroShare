@@ -280,6 +280,12 @@ GxsForumThreadWidget::GxsForumThreadWidget(const RsGxsGroupId &forumId, QWidget 
 
     ui->threadTreeWidget->setSortingEnabled(true);
 
+    // Every row of the thread tree has the same height (RsGxsForumModel::sizeHintRole() only
+    // depends on the column). Tell the view, so that it does not ask the delegates for the size
+    // of each row again whenever the model says a range of rows changed: marking a forum read
+    // cost 0.6 to 1.7 s of frozen interface that way, growing with the number of posts shown.
+    ui->threadTreeWidget->setUniformRowHeights(true);
+
     ui->threadTreeWidget->setItemDelegateForColumn(RsGxsForumModel::COLUMN_THREAD_DISTRIBUTION,new DistributionItemDelegate()) ;
     ui->threadTreeWidget->setItemDelegateForColumn(RsGxsForumModel::COLUMN_THREAD_AUTHOR,new GxsIdTreeItemDelegate()) ;
     ui->threadTreeWidget->setItemDelegateForColumn(RsGxsForumModel::COLUMN_THREAD_READ,new ReadStatusItemDelegate()) ;
