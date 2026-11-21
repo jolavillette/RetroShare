@@ -442,6 +442,26 @@ else()
 	set(retroshare_bundled_shared FALSE)
 endif()
 
+# A shared libretroshare built here is installed with this program, in
+# RS_LIB_INSTALL_DIR: let the installed executable find it from where it is.
+if(retroshare_bundled_shared AND NOT WIN32 AND NOT IS_ABSOLUTE "${RS_LIB_INSTALL_DIR}")
+	if(APPLE)
+		set(exe_origin "@executable_path")
+		set(exe_install_dir
+			"${CMAKE_INSTALL_BINDIR}/${PROJECT_NAME}.app/Contents/MacOS"
+		)
+	else()
+		set(exe_origin "$ORIGIN")
+		set(exe_install_dir "${CMAKE_INSTALL_BINDIR}")
+	endif()
+	file(RELATIVE_PATH retroshare_lib_from_exe
+		"/${exe_install_dir}" "/${RS_LIB_INSTALL_DIR}"
+	)
+	set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY
+		INSTALL_RPATH "${exe_origin}/${retroshare_lib_from_exe}"
+	)
+endif()
+
 install(TARGETS ${PROJECT_NAME}
 	EXPORT ${PROJECT_NAME}_export
 	${INSTALL_COMPONENT}
