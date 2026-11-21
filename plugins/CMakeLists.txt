@@ -31,6 +31,20 @@ if(RS_GUI)
 	include(RedirectFindPackage)
 	redirect_find_package(RetroShare-GUI)
 
+	# A plugin is loaded into the running program and uses the same
+	# libretroshare as it. That only holds when libretroshare is a shared
+	# library: linked statically, every plugin would carry its own copy of the
+	# whole library, with its own global state.
+	find_package(RetroShare REQUIRED)
+	get_target_property(retroshare_type retroshare::retroshare TYPE)
+	if(NOT retroshare_type STREQUAL "SHARED_LIBRARY")
+		message(FATAL_ERROR
+			"RetroShare plugins need a shared libretroshare, but it is a "
+			"${retroshare_type}. Configure with -DRS_LIBRETROSHARE_SHARED=ON, "
+			"or without plugins (-DRS_PLUGINS=OFF)."
+		)
+	endif()
+
 	if(RS_PLUGIN_FEEDREADER)
 		add_subdirectory(FeedReader)
 	endif()
