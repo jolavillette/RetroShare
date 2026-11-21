@@ -31,6 +31,7 @@
 #include "util/RsQtVersion.h"
 #include "util/DateTime.h"
 
+#include <QTextDocument>
 #include <QMenu>
 #include <QToolButton>
 #include <QScreen>
@@ -384,6 +385,11 @@ void GroupTreeWidget::fillGroupItems(QTreeWidgetItem *categoryItem, const QList<
 
 	QString filterText = ui->filterLineEdit->text();
 
+	// Sorting is switched off while the items are updated, and done once at the end. With sorting on, every
+	// child() or takeChild() that follows a change of an item sorts the whole category again.
+	bool sortingEnabled = ui->treeWidget->isSortingEnabled();
+	ui->treeWidget->setSortingEnabled(false);
+
 	/* Iterate all items */
 	QList<GroupItemInfo>::const_iterator it;
 	for (it = itemList.begin(); it != itemList.end(); ++it) {
@@ -480,16 +486,29 @@ void GroupTreeWidget::fillGroupItems(QTreeWidgetItem *categoryItem, const QList<
 
 		tooltip += "\n" + tr("Id") + ": " + itemInfo.id;
 
-		item->setToolTip(GTW_COLUMN_NAME, tooltip);
-		item->setToolTip(GTW_COLUMN_UNREAD, tooltip);
-		item->setToolTip(GTW_COLUMN_POSTS, tooltip);
-		item->setToolTip(GTW_COLUMN_POPULARITY, tooltip);
+		// The description (and the circle name below) come from other people: show
+		// them as text. A tooltip that looks like HTML is otherwise rendered as such.
+		const QString tooltipHtml = Qt::convertFromPlainText(tooltip);
+
+		item->setToolTip(GTW_COLUMN_NAME, tooltipHtml);
+		item->setToolTip(GTW_COLUMN_UNREAD, tooltipHtml);
+		item->setToolTip(GTW_COLUMN_POSTS, tooltipHtml);
+		item->setToolTip(GTW_COLUMN_POPULARITY, tooltipHtml);
 
 		item->setData(GTW_COLUMN_DATA, ROLE_SUBSCRIBE_FLAGS, itemInfo.subscribeFlags);
 
 		/* Set color */
 
-        if(itemInfo.deprecated_format)
+        if(!itemInfo.circle_warning.isEmpty())
+        {
+            // Subscribed, but the circle's members do not include us: the posts are encrypted for them
+            // and will never reach this node. Say it where the user looks, on the group itself.
+            item->setText(GTW_COLUMN_NAME, itemInfo.name + " " + tr("(not in circle)"));
+            item->setData(GTW_COLUMN_DATA, ROLE_COLOR, GROUPTREEWIDGET_COLOR_WARNING);
+            item->setData(GTW_COLUMN_NAME, Qt::ForegroundRole, QBrush(textColorWarning()));
+            item->setToolTip(GTW_COLUMN_NAME, Qt::convertFromPlainText(itemInfo.circle_warning + "\n\n" + tooltip));
+        }
+        else if(itemInfo.deprecated_format)
         {
             item->setData(GTW_COLUMN_DATA, ROLE_COLOR, GROUPTREEWIDGET_COLOR_WARNING);
             item->setData(GTW_COLUMN_NAME, Qt::ForegroundRole, QBrush(textColorWarning()));
@@ -527,6 +546,8 @@ void GroupTreeWidget::fillGroupItems(QTreeWidgetItem *categoryItem, const QList<
 			++child;
 		}
 	}
+
+	ui->treeWidget->setSortingEnabled(sortingEnabled);
 }
 
 void GroupTreeWidget::setUnreadCount(QTreeWidgetItem *item, int unreadCount)

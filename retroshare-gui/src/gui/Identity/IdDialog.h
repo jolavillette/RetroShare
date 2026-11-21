@@ -79,6 +79,7 @@ private slots:
     void createExternalCircle();
 	void showEditExistingCircle();
 	void updateCirclesDisplay();
+	void circleItemExpanded(QTreeWidgetItem *item);
 	void toggleAutoBanIdentities(bool b);
     void sortColumn(int col,Qt::SortOrder so);
 

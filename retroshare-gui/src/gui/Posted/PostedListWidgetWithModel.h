@@ -22,6 +22,7 @@
 #define _POSTED_LISTWIDGETWITHMODEL_H
 
 #include <map>
+#include <QFont>
 
 #include <QStyledItemDelegate>
 
@@ -72,6 +73,25 @@ private:
     BoardPostDisplayWidget_compact::DisplayMode mDisplayMode;
     std::set<RsGxsMessageId> mExpandedItems;
     std::set<RsGxsMessageId> mShowCommentItems;
+
+    // Size of the cells already measured. Measuring a cell means building a complete post widget, and the view
+    // asks for the size of the rows at every layout (resize, redraw, scroll). An entry is only used again as
+    // long as everything the size depends on is unchanged.
+
+    struct CellSizeEntry
+    {
+        int         mDisplayMode;
+        uint8_t     mDisplayFlags;
+        bool        mRedacted;
+        bool        mIsNew;
+        uint32_t    mComments;
+        uint32_t    mImageSize;
+        std::string mTitle;
+        std::string mNotes;
+        QSize       mSize;
+    };
+    mutable std::map<RsGxsMessageId,CellSizeEntry> mCellSizes;
+    mutable QFont mCellSizesFont;
 };
 
 class PostedListWidgetWithModel: public GxsMessageFrameWidget
@@ -146,6 +166,7 @@ private slots:
 	void subscribeGroup(bool subscribe);
 	void settingsChanged();
 	void postPostLoad();
+	void displayedPostsChanged();
 	void copyMessageLink();
     void copyHttpLink();
     void nextPosts();
@@ -177,6 +198,7 @@ private:
 	std::map<RsGxsGroupId,RsGxsMessageId> mLastSelectedPosts;
 #endif
 	RsGxsMessageId mNavigatePendingMsgId;
+	RsGxsMessageId mNotifiedMissingMsgId;
 
 	/* UI - from Designer */
 	Ui::PostedListWidgetWithModel *ui;

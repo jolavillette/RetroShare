@@ -704,7 +704,17 @@ void RsGxsChannelPostsModel::setMsgReadStatus(const QModelIndex& i,bool read_sta
 	if(!convertRefPointerToTabEntry(ref,entry) || entry >= mFilteredPosts.size())
 		return ;
 
-    rsGxsChannels->setMessageReadStatus(RsGxsGrpMsgIdPair(mPosts[mFilteredPosts[entry]].mMeta.mGroupId,mPosts[mFilteredPosts[entry]].mMeta.mMsgId),read_status);
+    // setMessageReadStatus() blocks until the channels service has committed the change
+    // (0.6 s seen, seconds when the disk is busy): not on the GUI thread. The post is
+    // updated right below, without waiting for the result.
+
+    const RsGxsGrpMsgIdPair msgPair(mPosts[mFilteredPosts[entry]].mMeta.mGroupId,mPosts[mFilteredPosts[entry]].mMeta.mMsgId);
+
+    RsThread::async([msgPair, read_status]()
+    {
+        if(!rsGxsChannels->setMessageReadStatus(msgPair, read_status))
+            RsErr() << "setMsgReadStatus: failed to change status of message " << msgPair.second << " in channel " << msgPair.first << std::endl;
+    });
 
     // Quick update to the msg itself. Normally setMsgReadStatus will launch an event,
     // that we can catch to update the msg, but all the information is already here.

@@ -513,7 +513,24 @@
             </property>
            </widget>
           </item>
-          <item row="14" column="2" rowspan="2">
+          <item row="16" column="0">
+           <widget class="QLabel" name="copyInfo_LB">
+            <property name="text">
+             <string>Node information:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="16" column="1">
+           <widget class="QPushButton" name="copyInfo_PB">
+            <property name="toolTip">
+             <string>Copy the information shown on this page to the clipboard</string>
+            </property>
+            <property name="text">
+             <string>Copy info</string>
+            </property>
+           </widget>
+          </item>
+          <item row="14" column="2" rowspan="3">
            <spacer name="horizontalSpacer_4">
             <property name="orientation">
              <enum>Qt::Horizontal</enum>

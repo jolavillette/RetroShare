@@ -31,6 +31,8 @@
 
 #include <inttypes.h>
 
+class QTimer;
+
 #include "GxsIdTreeWidgetItem.h"
 #include "GxsGroupDialog.h"
 
@@ -194,6 +196,12 @@ protected:
     virtual void updateGroupStatistics(const RsGxsGroupId &groupId);
     virtual void updateGroupStatisticsReal(const RsGxsGroupId &groupId);
 
+private:
+    /*! Re-apply the known local post/unread counts after a group tree refill. */
+    void restoreCachedGroupCounts();
+
+protected:
+
     // This needs to be overloaded by subclasses, possibly calling the blocking API, since it is used asynchronously.
     virtual bool getGroupStatistics(const RsGxsGroupId& groupId, GxsGroupStatistic& stat) = 0;
 
@@ -201,6 +209,14 @@ protected:
     RsGxsIfaceHelper *mInterface;
     bool mDistSyncAllowed;
     std::map<RsGxsGroupId,GxsGroupStatistic> mCachedGroupStats;
+
+    // Service statistics waiting to be written to the settings, which is done when the page is destroyed:
+    // getServiceStatistics() is called at every refresh, and each write to the settings ends in a save of
+    // the whole file on the GUI thread.
+    void saveServiceStatistics();
+
+    mutable GxsServiceStatistic mServiceStatsToSave;
+    mutable bool mServiceStatsSavePending;
     bool mShouldUpdateGroupStatistics;
     std::set<RsGxsGroupId> mGroupStatisticsToUpdate;
     bool mCountChildMsgs;
@@ -211,9 +227,11 @@ protected:
 private:
 	GxsMessageFrameWidget *currentWidget() const;
 	bool useTabs();
+	void scheduleMallocTrim();
 
 	bool mInitialized;
 	bool mInFill;
+	QTimer *mMallocTrimTimer;
 
 	RsGxsGroupId mGroupId;
 

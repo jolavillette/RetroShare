@@ -238,22 +238,22 @@ void DLListDelegate::paint(QPainter * painter, const QStyleOptionViewItem & opti
 			pixmap = qvariant_cast<QIcon>(value).pixmap(option.decorationSize, option.state & QStyle::State_Enabled ? QIcon::Normal : QIcon::Disabled, option.state & QStyle::State_Open ? QIcon::On : QIcon::Off);
 			pixmapRect = (pixmap.isNull() ? QRect(0, 0, 0, 0): QRect(QPoint(0, 0), option.decorationSize));
 			if (pixmapRect.isValid()){
-				QPoint p = QStyle::alignedRect(option.direction, Qt::AlignLeft | Qt::AlignVCenter, pixmap.size(), option.rect).topLeft();
+				QPoint p = QStyle::alignedRect(option.direction, Qt::AlignLeft | Qt::AlignVCenter, pixmap.size() / pixmap.devicePixelRatio(), option.rect).topLeft();
 				p.setX( p.x() + pixOffset);
 				painter->drawPixmap(p, pixmap);
 				temp = " " + temp;
-				pixOffset += pixmap.size().width();
+				pixOffset += (pixmap.size() / pixmap.devicePixelRatio()).width();
 			}
 			value = index.data(Qt::DecorationRole);
 			temp = index.data().toString();
 			pixmap = qvariant_cast<QIcon>(value).pixmap(option.decorationSize, option.state & QStyle::State_Enabled ? QIcon::Normal : QIcon::Disabled, option.state & QStyle::State_Open ? QIcon::On : QIcon::Off);
 			pixmapRect = (pixmap.isNull() ? QRect(0, 0, 0, 0): QRect(QPoint(0, 0), option.decorationSize));
 			if (pixmapRect.isValid()){
-				QPoint p = QStyle::alignedRect(option.direction, Qt::AlignLeft | Qt::AlignVCenter, pixmap.size(), option.rect).topLeft();
+				QPoint p = QStyle::alignedRect(option.direction, Qt::AlignLeft | Qt::AlignVCenter, pixmap.size() / pixmap.devicePixelRatio(), option.rect).topLeft();
 				p.setX( p.x() + pixOffset);
 				painter->drawPixmap(p, pixmap);
 				temp = " " + temp;
-				pixOffset += pixmap.size().width();
+				pixOffset += (pixmap.size() / pixmap.devicePixelRatio()).width();
 			}
 			painter->drawText(option.rect.translated(pixOffset, 0), Qt::AlignLeft | Qt::AlignVCenter, temp);
 		}

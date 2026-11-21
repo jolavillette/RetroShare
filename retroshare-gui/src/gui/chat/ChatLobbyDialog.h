@@ -28,6 +28,11 @@
 #include "PopupChatWindow.h"
 #include "util/FontSizeHandler.h"
 
+#include <QElapsedTimer>
+#include <QStringList>
+#include <QTimer>
+#include <retroshare/rshistory.h>
+
 // Q_DECLARE_METATYPE(RsGxsId)
 // Q_DECLARE_METATYPE(QList<RsGxsId>)
 
@@ -43,6 +48,7 @@ class ChatLobbyDialog: public ChatDialog
 
 public:
     void handleLobbyEvent(RsChatLobbyEventCode event_type, const RsGxsId& gxs_id, const QString& str);
+    void handleLobbyHistoryEvent(const RsChatLobbyEvent* ev);
 
     virtual void showDialog(RsChatFlags chatflags) override;
     virtual ChatWidget *getChatWidget() override;
@@ -57,6 +63,7 @@ public:
 
 public slots:
 	void leaveLobby() ;
+	void fetchHistory() ;
 private slots:
 	void participantsTreeWidgetCustomPopupMenu( QPoint point );
 	void textBrowserAskContextMenu(QMenu* contextMnu, QString anchorForPosition, const QPoint point);
@@ -112,6 +119,7 @@ private:
 	QToolButton *undockButton ;
 	QToolButton *inviteFriendsButton ;
 	QToolButton *unsubscribeButton ;
+	QToolButton *fetchHistoryButton ;
 
 	bool mWindowedSetted;
 	PopupChatWindow* mPCWindow;
@@ -141,6 +149,31 @@ private:
 
     RsEventsHandlerId_t mEventHandlerId_identity;
     void handleIdentityEvent(std::shared_ptr<const RsEvent> event);
+
+private slots:
+    void onHistoryProbeTimeout();
+    void onHistoryDataTimeout();
+    void displayNextHistoryBatch();
+
+private:
+    // Chat history retrieval: probe phase, then data phase, then display
+    void finishHistoryFetch();
+
+    QTimer* mHistoryProbeTimer;
+    QTimer* mHistoryDataTimer;
+    QElapsedTimer mHistoryDataElapsed; // time since the data requests were sent
+
+    bool mIsWaitingForProbes;
+    bool mIsWaitingForData;
+    uint32_t mRequestedOldestTs;
+
+    std::set<RsPeerId> mSelectedPeersForHistory;
+    std::set<RsPeerId> mPendingHistoryPeers; // friends we sent a request to, that have not finished answering
+    std::map<RsPeerId, uint32_t> mBufferedProbeResponses; // PeerId -> oldest available timestamp
+    std::list<HistoryMsg> mBufferedHistoryData; // All messages received from the friends
+    std::list<HistoryMsg> mBufferedLocalHistoryData; // Local history buffered for merged display
+    QStringList mHistoryRelayNames; // friends that sent lines, for the header of the block
+    std::list<HistoryMsg> mHistoryDisplayQueue; // lines waiting to be shown, a batch at a time
 };
 
 #endif

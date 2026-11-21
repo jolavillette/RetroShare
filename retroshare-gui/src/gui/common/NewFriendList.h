@@ -37,6 +37,7 @@ namespace Ui {
 }
 
 class RSTreeWidgetItemCompareRole;
+class QTimer;
 class QTreeWidgetItem;
 class QToolButton;
 class FriendListSortFilterProxyModel;
@@ -128,6 +129,10 @@ private:
 	bool mShowState;
     RsEventsHandlerId_t mEventHandlerId_peer;
     RsEventsHandlerId_t mEventHandlerId_gssp;
+
+    // Coalesces the rebuilds asked by FRIEND_LIST / GOSSIP_DISCOVERY events: one rebuild per
+    // burst instead of one per event (a rebuild of the fully expanded tree takes hundreds of ms).
+    QTimer *mRefreshTimer;
 //    RsEventsHandlerId_t mEventHandlerId_pssc;
 
 	std::set<RsNodeGroupId> openGroups;

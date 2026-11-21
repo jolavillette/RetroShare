@@ -10,6 +10,9 @@ on:
 
 jobs:
   mirror:
+    # Only the upstream repository holds the GitLab deploy key, and only it is
+    # the mirror source. On a fork this job can only fail, on every single push.
+    if: github.repository == 'RetroShare/RetroShare'
     runs-on: ubuntu-latest
 
     steps:

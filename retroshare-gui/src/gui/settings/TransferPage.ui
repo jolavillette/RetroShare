@@ -459,6 +459,13 @@ p, li { white-space: pre-wrap; }
                </widget>
               </item>
               <item>
+               <widget class="QLabel" name="_defaultSpeed_Label">
+                <property name="text">
+                 <string>Default download speed:</string>
+                </property>
+               </widget>
+              </item>
+              <item>
                <widget class="QLabel" name="_diskSpaceLimit_Label">
                 <property name="text">
                  <string>Safety disk space limit :</string>
@@ -508,11 +515,11 @@ p, li { white-space: pre-wrap; }
                  <bool>true</bool>
                 </property>
                 <property name="toolTip">
-                 <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Streaming &lt;/span&gt;causes the transfer to request 1MB file chunks in increasing order, facilitating preview while downloading. &lt;span style=&quot; font-weight:600;&quot;&gt;Random&lt;/span&gt; is purely random and favors swarming behavior (although not recommended on Windows systems). &lt;span style=&quot; font-weight:600;&quot;&gt;Progressive&lt;/span&gt; is a good compromise, selecting the next chunk at random within less than 50MB after the end of the partial file. That allows some randomness while preventing large empty file initialization times.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                 <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Sequential &lt;/span&gt;causes the transfer to request 1MB file chunks in increasing order. &lt;span style=&quot; font-weight:600;&quot;&gt;Progressive&lt;/span&gt; selects the next chunk at random within less than 50MB after the end of the partial file. This is a useful compromise on filesystems without sparse file support (such as FAT32 or exFAT), to allow some randomness while preventing large empty file initialization times. &lt;span style=&quot; font-weight:600;&quot;&gt;Random&lt;/span&gt; is purely random and favors swarming behavior. On filesystems without sparse file support, this may freeze RetroShare during the allocation of the whole file to disk. &lt;span style=&quot; font-weight:600;&quot;&gt;Streaming&lt;/span&gt; downloads chunks sequentially but prioritizes the index (usually located at the end of the file) to allow immediate preview of MP4 videos. On filesystems without sparse file support, this may freeze RetroShare during the allocation of the whole file to disk.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
                 </property>
                 <item>
                  <property name="text">
-                  <string>Streaming</string>
+                  <string>Sequential</string>
                  </property>
                 </item>
                 <item>
@@ -523,6 +530,33 @@ p, li { white-space: pre-wrap; }
                 <item>
                  <property name="text">
                   <string>Random</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>Streaming</string>
+                 </property>
+                </item>
+               </widget>
+              </item>
+              <item>
+               <widget class="RSComboBox" name="_defaultSpeed_CB">
+                <property name="toolTip">
+                 <string>Speed given to every new download: how fast it raises the rate it asks from each source. It can still be changed for one download from its context menu.</string>
+                </property>
+                <item>
+                 <property name="text">
+                  <string>Slower</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>Average</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>Faster</string>
                  </property>
                 </item>
                </widget>

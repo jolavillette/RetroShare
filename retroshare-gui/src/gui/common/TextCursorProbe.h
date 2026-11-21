@@ -1,7 +1,7 @@
 /*******************************************************************************
- * gui/elastic/arrow.h                                                         *
+ * gui/common/TextCursorProbe.h                                                *
  *                                                                             *
- * Copyright (c) 2012, RetroShare Team <retroshare.project@gmail.com>          *
+ * Copyright (C) 2026 RetroShare Team <retroshare.project@gmail.com>           *
  *                                                                             *
  * This program is free software: you can redistribute it and/or modify        *
  * it under the terms of the GNU Affero General Public License as              *
@@ -17,43 +17,18 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.       *
  *                                                                             *
  *******************************************************************************/
+#pragma once
 
-// This code is inspired from http://doc.qt.io/qt-5/qtwidgets-graphicsview-diagramscene-arrow-h.html
+class QTextEdit;
 
-#ifndef ARROW_H
-#define ARROW_H
-
-#include <QGraphicsItem>
-
-class Node;
-
-class Arrow : public QGraphicsItem
+/* Diagnostics only (RS_TEXTCURSOR_PROBE). Watches the cursor a QTextEdit keeps
+ * internally and reports the moment it stops being registered in its
+ * document's cursor set: Qt then never resets it when the document dies, and
+ * the edit crashes in ~QTextCursorPrivate when it is destroyed. Every report
+ * is one "TEXTCURSOR-PROBE" line on stderr. */
+namespace TextCursorProbe
 {
-public:
-    Arrow(Node *sourceNode, Node *destNode);
-    ~Arrow();
-
-    Node *sourceNode() const;
-    void setSourceNode(Node *node);
-
-    Node *destNode() const;
-    void setDestNode(Node *node);
-
-    void adjust();
-
-    enum { Type = UserType + 3 };
-    int type() const { return Type; }
-    
-protected:
-    QRectF boundingRect() const;
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
-    
-private:
-    Node *source, *dest;
-
-    QPointF sourcePoint;
-    QPointF destPoint;
-    qreal arrowSize;
-};
-
-#endif
+	void attach(QTextEdit *edit, const char *name);
+	void check(QTextEdit *edit, const char *where);
+	void detach(QTextEdit *edit);
+}

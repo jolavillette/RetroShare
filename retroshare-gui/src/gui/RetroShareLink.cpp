@@ -2102,6 +2102,42 @@ void RSLinkClipboard::copyLinks(const QList<RetroShareLink>& links)
 	QApplication::clipboard()->setText(res) ;
 }
 
+// The text of the clipboard, read again only after the clipboard has changed.
+//
+// Reading the clipboard is a round trip to the program that owns it, and that program can be
+// slow to answer, or far away (remote desktop): seconds, on the GUI thread. The context menus
+// call empty() at every right click, some of them several times, to enable "Paste link". The
+// text is kept until the clipboard says it has changed, or until the application becomes
+// active again, which covers the platforms that only notice a change at that moment.
+
+static bool    clipboardTextIsStale = true;
+static QString clipboardTextCache;
+
+static const QString& clipboardText()
+{
+	static bool connected = false;
+
+	if(!connected)
+	{
+		connected = true;
+
+		QObject::connect(QApplication::clipboard(), &QClipboard::dataChanged, qApp, [](){ clipboardTextIsStale = true; });
+		QObject::connect(qApp, &QGuiApplication::applicationStateChanged, qApp, [](Qt::ApplicationState state)
+		{
+			if(state == Qt::ApplicationActive)
+				clipboardTextIsStale = true;
+		});
+	}
+
+	if(clipboardTextIsStale)
+	{
+		clipboardTextCache = QApplication::clipboard()->text();
+		clipboardTextIsStale = false;
+	}
+
+	return clipboardTextCache;
+}
+
 void RSLinkClipboard::pasteLinks(QList<RetroShareLink> &links,RetroShareLink::enumType type)
 {
 	return parseClipboard(links,type);
@@ -2111,8 +2147,7 @@ void RSLinkClipboard::parseClipboard(QList<RetroShareLink> &links,RetroShareLink
 {
 	// parse clipboard for links.
 	//
-	QString text = QApplication::clipboard()->text() ;
-	parseText(text, links,type);
+	parseText(clipboardText(), links,type);
 }
 
 QString RSLinkClipboard::toString()

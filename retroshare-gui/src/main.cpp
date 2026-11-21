@@ -28,7 +28,13 @@ CrashStackTrace gCrashStackTrace;
 
 #include <QObject>
 #include <QMessageBox>
+#include <QProgressDialog>
 #include <QSplashScreen>
+
+#include <atomic>
+#include <chrono>
+#include <mutex>
+#include <thread>
 #include <QMessageBox>
 #include <QBuffer>
 #include <QSharedMemory>
@@ -58,6 +64,7 @@ CrashStackTrace gCrashStackTrace;
 #include "util/RsGxsUpdateBroadcast.h"
 #include "util/rsdir.h"
 #include "util/rstime.h"
+#include "util/rsdebug.h"
 #include "retroshare/rsinit.h"
 #include "util/RsQtVersion.h"
 
@@ -87,6 +94,11 @@ CrashStackTrace gCrashStackTrace;
 #include <QFileDialog>
 #endif
 #endif
+
+#include <QDir>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QPushButton>
 
 #ifdef Q_OS_WIN
 #if QT_VERSION >= QT_VERSION_CHECK (5, 7, 0)
@@ -239,6 +251,90 @@ static bool setLanguage(const std::string& language)
 }
 
 
+// Compaction of the GXS databases asked for in the settings (General page).
+// It has to run before RsControl::StartupRetroShare() opens the databases,
+// takes minutes for large ones, and cannot be split, so it runs on a thread
+// while a dialog shows which database is being compacted. Stopping takes
+// effect between two databases; an interrupted database stays as it was.
+static void compactGxsDatabasesWithProgress()
+{
+	const uint64_t total = RsInit::gxsDatabasesSize();
+
+	auto db_label = [](const std::string& name) -> QString
+	{
+		if(name == "gxsid_db")       return QObject::tr("identities");
+		if(name == "gxscircles_db")  return QObject::tr("circles");
+		if(name == "gxsforums_db")   return QObject::tr("forums");
+		if(name == "gxschannels_db") return QObject::tr("channels");
+		if(name == "posted_db")      return QObject::tr("boards");
+		if(name == "gxstrans_db")    return QObject::tr("distant mail");
+		return QString::fromStdString(name);
+	};
+
+	QProgressDialog dialog(QObject::tr("Compacting the databases..."), QObject::tr("Stop"), 0, 1000);
+	dialog.setWindowTitle(QObject::tr("RetroShare"));
+	dialog.setWindowModality(Qt::ApplicationModal);
+	dialog.setMinimumDuration(0);
+	dialog.setAutoClose(false);
+	dialog.setAutoReset(false);
+	dialog.setValue(0);
+	dialog.show();
+
+	std::mutex mtx;
+	std::string current;
+	uint64_t done = 0;
+	std::atomic<bool> stop(false);
+	std::atomic<bool> finished(false);
+	bool ok = false;
+
+	std::thread worker([&]()
+	{
+		ok = RsInit::compactGxsDatabases([&](const std::string& name, uint64_t done_bytes, uint64_t)
+		{
+			std::lock_guard<std::mutex> lock(mtx);
+			current = name;
+			done = done_bytes;
+			return !stop;
+		});
+		finished = true;
+	});
+
+	while(!finished)
+	{
+		QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+
+		if(dialog.wasCanceled() && !stop)
+			stop = true;
+
+		std::string name;
+		uint64_t done_bytes;
+		{
+			std::lock_guard<std::mutex> lock(mtx);
+			name = current;
+			done_bytes = done;
+		}
+
+		if(stop)
+			dialog.setLabelText(QObject::tr("Stopping after the current database..."));
+		else if(!name.empty())
+			dialog.setLabelText(QObject::tr("Compacting the %1 database (%2 of %3 MB done).\nThis can take several minutes.")
+			                    .arg(db_label(name)).arg(done_bytes / (1024 * 1024)).arg(total / (1024 * 1024)));
+
+		if(total > 0)
+			dialog.setValue((int)(done_bytes * 1000 / total));
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(50));
+	}
+
+	worker.join();
+	dialog.close();
+
+	if(!ok && !stop)
+		QMessageBox::warning(nullptr, QObject::tr("RetroShare"),
+		                     QObject::tr("Some databases could not be compacted, they were left as they were. "
+		                                 "The log tells which ones and why (often: not enough free disk space)."));
+}
+
 static void displayWarningAboutDSAKeys()
 {
     std::map<std::string,std::vector<std::string> > unsupported_keys;
@@ -296,6 +392,40 @@ QString filedialog_existing_directory_hook(QWidget *parent, const QString &capti
 }
 #endif
 #endif
+
+/* Explains a Tor problem and offers to pick another tor executable, which is
+ * saved for the next start (it then takes precedence over the tor bundled next
+ * to RetroShare, which may be too old). Returns true if one was chosen. */
+static bool askForTorExecutable(QMessageBox::Icon icon, const QString& title, const QString& text)
+{
+	QMessageBox box(icon, title, text);
+	QPushButton *choose = box.addButton(QObject::tr("Choose a Tor executable..."), QMessageBox::ActionRole);
+	// Without an explicit escape button, a box whose other button is Ok (accept
+	// role) has none at all: Esc does nothing and the window's close button is
+	// ignored, so the only ways out were Ok or choosing a file.
+	QAbstractButton *dismiss = box.addButton(icon == QMessageBox::Critical ? QMessageBox::Close : QMessageBox::Ok);
+	box.setEscapeButton(dismiss);
+	box.exec();
+
+	if(box.clickedButton() != choose)
+		return false;
+
+	QString current = QString::fromStdString(RsTor::torExecutablePath());
+	QString path = QFileDialog::getOpenFileName(nullptr, QObject::tr("Select the Tor executable"),
+	                                            current.isEmpty() ? QString() : QFileInfo(current).absolutePath()
+#ifdef WINDOWS_SYS
+	                                            , QObject::tr("Tor executable (tor.exe)")
+#endif
+	                                            );
+	if(path.isEmpty())
+		return false;
+
+	Settings->setTorExecutablePath(path);
+	Settings->sync();
+
+	QMessageBox::information(nullptr, title, QObject::tr("RetroShare will use %1 from its next start. Please restart RetroShare.").arg(QDir::toNativeSeparators(path)));
+	return true;
+}
 
 int main(int argc, char *argv[])
 {
@@ -432,6 +562,12 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
     // Now start RS login system
 
     conf.main_executable_path = applicationFilePath.toStdString();
+
+    /* Hand QApplication our argv[0], and only that: RetroShare parses its own options above.
+       With argc == 0 Qt has no application name and sets no WM_CLASS on X11 windows, so the
+       window list of XFCE (libwnck) shows RetroShare as "Untitled application". */
+    conf.argc = 1;
+    conf.argv[0] = argv[0];
 
     int initResult = RsInit::InitRetroShare(conf);
 
@@ -586,8 +722,19 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
 
     if(is_auto_tor)
     {
+        // Precedence: -t on the command line, then the path saved in the
+        // settings, then RetroShare's own lookup (bundled tor first).
+        QString saved_tor = Settings->getTorExecutablePath();
+
         if(!conf.userSuppliedTorExecutable.empty())
             RsTor::setTorExecutablePath(conf.userSuppliedTorExecutable);
+        else if(!saved_tor.isEmpty())
+        {
+            if(QFileInfo(saved_tor).isFile())
+                RsTor::setTorExecutablePath(saved_tor.toStdString());
+            else
+                RsWarn() << "Saved Tor executable " << saved_tor.toStdString() << " not found. Looking for another one." ;
+        }
 
         // Now that we know the Tor service running, and we know the SSL id, we can make sure it provides a viable hidden service
 
@@ -603,7 +750,7 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
 
         if(! RsTor::start() || RsTor::hasError())
         {
-            QMessageBox::critical(NULL,QObject::tr("Cannot start Tor Manager!"),QObject::tr("Tor cannot be started on your system: \n\n")+QString::fromStdString(RsTor::errorMessage())) ;
+            askForTorExecutable(QMessageBox::Critical,QObject::tr("Cannot start Tor Manager!"),QObject::tr("Tor cannot be started on your system: \n\n")+QString::fromStdString(RsTor::errorMessage())) ;
             return 1 ;
         }
 
@@ -619,12 +766,18 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
 
                 if(!error_msg.isNull())
                 {
-                    QMessageBox::critical(NULL,QObject::tr("Cannot start Tor"),QObject::tr("Sorry but Tor cannot be started on your system!\n\nThe error reported is:\"")+error_msg+"\"") ;
+                    tcd.hide();
+                    askForTorExecutable(QMessageBox::Critical,QObject::tr("Cannot start Tor"),QObject::tr("Sorry but Tor cannot be started on your system!\n\nThe error reported is:\"")+error_msg+"\"") ;
                     return 1;
                 }
             }
 
             tcd.hide();
+
+            // Tor works for now, but the Tor network may already condemn it.
+            std::string version_warning = RsTor::torVersionWarning();
+            if(!version_warning.empty())
+                askForTorExecutable(QMessageBox::Warning,QObject::tr("Your Tor is outdated"),QString::fromStdString(version_warning)) ;
 
             if(tcd.checkForHiddenService() != TorControlDialog::HIDDEN_SERVICE_STATUS_OK)
             {
@@ -633,6 +786,10 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
             }
         }
     }
+
+    // Before StartupRetroShare(), which opens the GXS databases.
+    if(RsInit::isGxsDatabaseCompactionRequested())
+        compactGxsDatabasesWithProgress();
 
     QSplashScreen splashScreen(FilesDefs::getPixmapFromQtResourcePath(":/images/logo/logo_splash.png")/* , Qt::WindowStaysOnTopHint*/);
 
@@ -777,7 +934,9 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
 
     /* dive into the endless loop */
     int ti = rshare.exec();
+    RsInfo() << "shutdown: GUI event loop left, destroying the main window";
     delete w ;
+    RsInfo() << "shutdown: main window destroyed";
 
 #ifdef RS_JSONAPI
     JsonApiPage::checkShutdownJsonApi();
@@ -794,6 +953,7 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
     }
 
     RsControl::instance()->rsGlobalShutDown();
+    RsInfo() << "shutdown: library stopped, leaving main()";
 
     delete(soundManager);
     soundManager = NULL;

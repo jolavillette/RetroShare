@@ -41,6 +41,7 @@
 #ifdef USE_CMARK
 //Include for CMark
 #include <cmark.h>
+#include <cstdlib>
 #endif
 
 #include <iostream>
@@ -624,17 +625,27 @@ QString RsHtml::formatText(QTextDocument *textDocument, const QString &text, ulo
 		QTextBrowser textBrowser;
 		textBrowser.setHtml(text);
 		formattedText = textBrowser.toPlainText();
-		// Parse CommonMark
-		int options = CMARK_OPT_DEFAULT;
+		// Parse CommonMark. Drop raw HTML and javascript:/file: links like
+		// cmark >= 0.29 does by default (the bundled cmark 0.28 keeps them).
+		int options = CMARK_OPT_DEFAULT | CMARK_OPT_VALIDATE_UTF8;
+#ifdef CMARK_OPT_SAFE
+		options |= CMARK_OPT_SAFE;
+#endif
 		cmark_parser *parser = cmark_parser_new(options);
-		cmark_parser_feed(parser, formattedText.toStdString().c_str(),static_cast<size_t>(formattedText.length()));
+		// The length is in bytes of the UTF-8 text, not in QChars: with the
+		// QString length any non ASCII message was cut short.
+		const QByteArray utf8 = formattedText.toUtf8();
+		cmark_parser_feed(parser, utf8.constData(), static_cast<size_t>(utf8.size()));
 		cmark_node *document = cmark_parser_finish(parser);
 		cmark_parser_free(parser);
-		char *result;
-		result = cmark_render_html(document, options);
+		char *result = cmark_render_html(document, options);
 		// Get result as html
 		formattedText = QString::fromUtf8(result);
-		//Clean
+		//Clean: the rendered string was leaked for every message. cmark allocates
+		// it with calloc()/realloc() and is linked statically (libcmark_static), so
+		// free() is the matching call. cmark_get_default_mem_allocator() does not
+		// exist in the bundled cmark 0.28.
+		free(result);
 		cmark_node_free(document);
 		//Get document formed HTML
 		textBrowser.setHtml(formattedText);
@@ -1258,7 +1269,7 @@ QString RsHtml::makeQuotedText(RSTextBrowser *browser)
 	QStringList sl = text.split(QRegularExpression("[\r\n]"),QtSkipEmptyParts);
 	text = sl.join("\n> ");
 	text.replace("\n> >","\n>>"); // Don't add space for already quotted lines.
-	text.replace(QChar(-4)," ");//Char used when image on text.
+	text.replace(QChar(QChar::ObjectReplacementCharacter)," ");//Char used when image on text.
 	QString quote = (text.left(1) == ">") ? QString(">") : QString("> ");
 	return quote + text;
 }

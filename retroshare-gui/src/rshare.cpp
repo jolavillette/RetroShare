@@ -27,6 +27,7 @@
 #include <QFileOpenEvent>
 #include <QLocale>
 #include <QLocalSocket>
+#include <QPalette>
 #include <QRegularExpression>
 #include <QSharedMemory>
 #include <QShortcut>
@@ -114,6 +115,14 @@ RsApplication::RsApplication(const RsGUIConfigOptions& conf)
     mStartupTime = QDateTime::currentDateTime();
     localServer = NULL;
     options = conf;
+
+    /* Sets the X11 WM_CLASS class "RetroShare" (the instance is argv[0]'s basename, e.g.
+       "retroshare-gui") and, below, the Wayland app id; must be set before the first window
+       is created. */
+    setApplicationName("RetroShare");
+#if QT_VERSION >= QT_VERSION_CHECK (5, 7, 0)
+    setDesktopFileName("retroshare");
+#endif
 
     // So we start a Local Server to listen for connections from new process
     localServer= new QLocalServer();
@@ -398,6 +407,30 @@ void RsApplication::resetLanguageAndStyle()
 //   Language depended stylesheet
 //     <Internal|External>_<locale>.lqss
 
+/* Rich-text links (<a href> in QLabel, QTextBrowser, chat and post bodies) take
+ * their colour from QPalette::Link when the HTML is parsed; a stylesheet cannot
+ * override it. The platform default (pure blue) is nearly invisible on the dark
+ * sheet's #19232D background, so give that sheet a readable link colour and put
+ * the platform colours back for any other sheet. */
+static void applyLinkPalette(const QString &sheetName)
+{
+    static const QColor platformLink = qApp->palette().color(QPalette::Link);
+    static const QColor platformLinkVisited = qApp->palette().color(QPalette::LinkVisited);
+
+    QPalette palette = qApp->palette();
+    if (sheetName == ":Standard_Dark") {
+        palette.setColor(QPalette::Link, QColor(0x25, 0x9A, 0xE9)); // the sheet's accent colour
+        palette.setColor(QPalette::LinkVisited, QColor(0xA9, 0x8B, 0xDD));
+    } else {
+        palette.setColor(QPalette::Link, platformLink);
+        palette.setColor(QPalette::LinkVisited, platformLinkVisited);
+    }
+
+    if (palette != qApp->palette()) {
+        qApp->setPalette(palette);
+    }
+}
+
 void RsApplication::loadStyleSheet(const QString &sheetName)
 {
     QString locale = QLocale().name();
@@ -465,6 +498,11 @@ void RsApplication::loadStyleSheet(const QString &sheetName)
         }
     }
 
+    // Applying a style sheet re-polishes every widget of the application, which takes seconds. Nothing to do
+    // when the sheet is the one already in force (the preferences call this on a mere click on the list).
+    if (styleSheet == qApp->styleSheet())
+        return;
+
 #ifdef Q_OS_WIN
     QSettings settings("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",QSettings::NativeFormat);
     if(/*sheetName == ":default" && */settings.value("AppsUseLightTheme")==0){
@@ -495,6 +533,7 @@ void RsApplication::loadStyleSheet(const QString &sheetName)
         qApp->setStyleSheet("QToolTip { color: #ffffff; background-color: #2a82da; border: 1px solid white; }");
     } 
 #endif
+    applyLinkPalette(sheetName);
     qApp->setStyleSheet(styleSheet);
 }
 

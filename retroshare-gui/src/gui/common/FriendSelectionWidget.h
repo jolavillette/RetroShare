@@ -33,6 +33,7 @@ namespace Ui {
 class FriendSelectionWidget;
 }
 
+class QTimer;
 class QTreeWidgetItem;
 class RSTreeWidgetItemCompareRole;
 
@@ -66,7 +67,8 @@ public:
         SHOW_SSL              = 4,
         SHOW_NON_FRIEND_GPG   = 8,
         SHOW_GXS              =16,
-        SHOW_CONTACTS         =32
+        SHOW_CONTACTS         =32,
+        SHOW_OWN_GPG          =64  // also list the own PGP profile among the SHOW_GPG / SHOW_NON_FRIEND_GPG entries
     };
 
     Q_DECLARE_FLAGS(ShowTypes, ShowType)
@@ -184,6 +186,7 @@ private:
 
     RsEventsHandlerId_t mEventHandlerId_identities;
     RsEventsHandlerId_t mEventHandlerId_peers;
+    QTimer *mIdentityEventTimer;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(FriendSelectionWidget::ShowTypes)
