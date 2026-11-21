@@ -64,8 +64,7 @@ get_filename_component(rs_plugin_binary_dir_default
 	"${rs_gui_exe_build_dir}/${RS_PLUGIN_DIR_FROM_EXE}" ABSOLUTE
 )
 set(RS_PLUGIN_BINARY_DIR ${rs_plugin_binary_dir_default} CACHE PATH
-	"directory to place plugin shared objects at build time"
-	" (does not affect install location)"
+	"directory to place plugin shared objects at build time (does not affect install location)"
 )
 
 
