@@ -106,6 +106,41 @@ list(APPEND CMAKE_MODULE_PATH
 )
 set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
 
+# The dependencies that libretroshare can fetch are also submodules of this
+# repository, at the same commits. When a submodule is checked out, build from
+# it: nothing is downloaded. FETCHCONTENT_SOURCE_DIR_<NAME> is FetchContent's
+# own switch for local sources; FETCH_sam3_SOURCE_DIR is its equivalent for
+# libsam3, which is not built by CMake.
+set(rs_dependency_submodules
+	"RNP|supportlibs/librnp|src/libsexpp/CMakeLists.txt"
+	"RESTBED|supportlibs/restbed|CMakeLists.txt"
+	"UDP-DISCOVERY-CPP|supportlibs/udp-discovery-cpp|CMakeLists.txt"
+	"RAPIDJSON|supportlibs/rapidjson|include/rapidjson/rapidjson.h"
+	"BITDHT|supportlibs/libbitdht|CMakeLists.txt"
+	"OPENPGPSDK|supportlibs/openpgpsdk|CMakeLists.txt"
+	"JNI.HPP|supportlibs/jni.hpp|CMakeLists.txt"
+	"CMARK|supportlibs/cmark|CMakeLists.txt"
+)
+foreach(rs_dependency_submodule ${rs_dependency_submodules})
+	string(REPLACE "|" ";" rs_dependency_submodule "${rs_dependency_submodule}")
+	list(GET rs_dependency_submodule 0 rs_dependency_name)
+	list(GET rs_dependency_submodule 1 rs_dependency_path)
+	list(GET rs_dependency_submodule 2 rs_dependency_marker)
+	set(rs_dependency_dir "${PROJECT_SOURCE_DIR}/${rs_dependency_path}")
+	if(NOT FETCHCONTENT_SOURCE_DIR_${rs_dependency_name}
+		AND EXISTS "${rs_dependency_dir}/${rs_dependency_marker}")
+		set(FETCHCONTENT_SOURCE_DIR_${rs_dependency_name} "${rs_dependency_dir}"
+			CACHE PATH "local sources of ${rs_dependency_name} (submodule)"
+		)
+	endif()
+endforeach()
+if(NOT FETCH_sam3_SOURCE_DIR
+	AND EXISTS "${PROJECT_SOURCE_DIR}/supportlibs/libsam3/Makefile")
+	set(FETCH_sam3_SOURCE_DIR "${PROJECT_SOURCE_DIR}/supportlibs/libsam3"
+		CACHE PATH "local sources of libsam3 (submodule)"
+	)
+endif()
+
 # avoid using system libretroshare unless the user specifically asks for it
 set(FETCH_PROVIDER_RetroShare_MODE FETCH_ONLY CACHE STRING
 	"control how the Fetch dependency provider handles RetroShare"
