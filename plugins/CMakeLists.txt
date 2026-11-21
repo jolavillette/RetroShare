@@ -63,6 +63,12 @@ if(RS_GUI)
 	)
 	string(REGEX REPLACE "^/" "" RS_PLUGIN_INSTALL_DIR "${RS_PLUGIN_INSTALL_DIR}")
 
+	# On macOS the plugin manager only loads files named *.dylib
+	# (libretroshare, pluginmanager.cc), while CMake names a MODULE *.so there.
+	if(APPLE)
+		set(CMAKE_SHARED_MODULE_SUFFIX ".dylib")
+	endif()
+
 	if(RS_PLUGIN_FEEDREADER)
 		add_subdirectory(FeedReader)
 	endif()
