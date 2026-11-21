@@ -701,6 +701,8 @@ find_package(Git QUIET)
 configure_file(mk/cmake/RSCPackConfig.cmake.in RSCPackConfig.cmake @ONLY)
 set(CPACK_PROJECT_CONFIG_FILE ${CMAKE_CURRENT_BINARY_DIR}/RSCPackConfig.cmake)
 
+# compress the package on every core (0 = as many threads as there are cores)
+set(CPACK_THREADS 0)
 include(CPack)
 
 endif()
