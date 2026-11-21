@@ -177,4 +177,4 @@ if(RS_DEVELOPMENT_BUILD)
 endif()
 
 # --- Installation ---
-install(TARGETS FeedReader DESTINATION lib/retroshare/plugins)
+install(TARGETS FeedReader DESTINATION ${RS_PLUGIN_INSTALL_DIR})

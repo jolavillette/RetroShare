@@ -39,7 +39,22 @@ option(RS_GUI "Build RetroShare GUI" ON)
 option(RS_SERVICE "Build RetroShare Service" ON)
 option(RS_FRIENDSERVER "Build RetroShare Friendserver" ON)
 option(RS_PLUGINS "Build RetroShare Plugins" OFF)
-set(RS_PLUGIN_BINARY_DIR ${PROJECT_BINARY_DIR}/plugins CACHE PATH
+# The engine looks for the plugins shipped with the program next to the running
+# binary, in ../lib/retroshare/extensions6 (libretroshare, rsinit.cc). Build
+# them there, so that the program run from the build tree finds them; they are
+# installed to the same place relative to the installed binary.
+set(RS_PLUGIN_DIR_FROM_EXE "../lib/retroshare/extensions6")
+if(APPLE)
+	set(rs_gui_exe_build_dir
+		${PROJECT_BINARY_DIR}/retroshare-gui/retroshare-gui.app/Contents/MacOS
+	)
+else()
+	set(rs_gui_exe_build_dir ${PROJECT_BINARY_DIR}/retroshare-gui)
+endif()
+get_filename_component(rs_plugin_binary_dir_default
+	"${rs_gui_exe_build_dir}/${RS_PLUGIN_DIR_FROM_EXE}" ABSOLUTE
+)
+set(RS_PLUGIN_BINARY_DIR ${rs_plugin_binary_dir_default} CACHE PATH
 	"directory to place plugin shared objects at build time"
 	" (does not affect install location)"
 )

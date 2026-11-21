@@ -45,6 +45,24 @@ if(RS_GUI)
 		)
 	endif()
 
+	# Install the plugins where the engine looks for them: RS_PLUGIN_DIR_FROM_EXE
+	# (set by the super-project) relative to the installed program.
+	include(GNUInstallDirs)
+	if(NOT DEFINED RS_PLUGIN_DIR_FROM_EXE)
+		set(RS_PLUGIN_DIR_FROM_EXE "../lib/retroshare/extensions6")
+	endif()
+	if(APPLE)
+		set(rs_gui_exe_install_dir
+			"${CMAKE_INSTALL_BINDIR}/retroshare-gui.app/Contents/MacOS"
+		)
+	else()
+		set(rs_gui_exe_install_dir "${CMAKE_INSTALL_BINDIR}")
+	endif()
+	get_filename_component(RS_PLUGIN_INSTALL_DIR
+		"/${rs_gui_exe_install_dir}/${RS_PLUGIN_DIR_FROM_EXE}" ABSOLUTE
+	)
+	string(REGEX REPLACE "^/" "" RS_PLUGIN_INSTALL_DIR "${RS_PLUGIN_INSTALL_DIR}")
+
 	if(RS_PLUGIN_FEEDREADER)
 		add_subdirectory(FeedReader)
 	endif()
