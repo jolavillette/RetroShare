@@ -25,6 +25,10 @@ cmake_minimum_required(VERSION 3.0...4.4)
 # it with -DRS_PLUGIN_<NAME>=OFF and keep compiling the rest.
 option(RS_PLUGIN_FEEDREADER "Build the FeedReader plugin" ON)
 option(RS_PLUGIN_VOIP       "Build the VOIP plugin"       ON)
+option(RS_PLUGIN_RETROCHESS
+	"Build the RetroChess plugin when it is checked out in plugins/RetroChess"
+	ON
+)
 
 if(RS_GUI)
 	# don't accidentally find an installed version of RetroShare-GUI
@@ -74,5 +78,16 @@ if(RS_GUI)
 	endif()
 	if(RS_PLUGIN_VOIP)
 		add_subdirectory(VOIP)
+	endif()
+	# RetroChess is an out-of-tree plugin (github.com/RetroShare/Retrochess),
+	# cloned into plugins/RetroChess. Built when that checkout is there.
+	if(RS_PLUGIN_RETROCHESS)
+		if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/RetroChess/CMakeLists.txt")
+			add_subdirectory(RetroChess)
+		else()
+			message(STATUS
+				"RetroChess plugin: no checkout in plugins/RetroChess, skipped"
+			)
+		endif()
 	endif()
 endif()
