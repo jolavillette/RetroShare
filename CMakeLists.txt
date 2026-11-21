@@ -84,16 +84,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_ENABLE_EXPORTS ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-if(APPLE)
-	# On macOS, allow undefined symbols in shared modules/libraries at link time
-	# because they will be resolved at runtime by the host executable (retroshare-gui)
-	set(CMAKE_SHARED_LINKER_FLAGS
-		"${CMAKE_SHARED_LINKER_FLAGS} -undefined dynamic_lookup"
-	)
-	set(CMAKE_MODULE_LINKER_FLAGS
-		"${CMAKE_MODULE_LINKER_FLAGS} -undefined dynamic_lookup"
-	)
-endif()
 
 
 ################################################################################
