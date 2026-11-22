@@ -29,7 +29,12 @@ set(FETCH_cmark_GIT_TAG "" CACHE STRING
 )
 mark_as_advanced(FETCH_cmark_GIT_TAG)
 if(NOT FETCH_cmark_GIT_TAG)
-	set(FETCH_cmark_GIT_TAG origin/master)
+	# A commit, not a branch: everybody builds the same sources, and git does
+	# not go back to the network once they are there.
+	# RetroShare's cmark submodule.
+	set(FETCH_cmark_GIT_TAG
+		b9c7a496ba7dd9c3495bae2ff2855899e47b245d
+	)
 endif()
 
 include(FetchContent)
