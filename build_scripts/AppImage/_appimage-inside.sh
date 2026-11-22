@@ -134,6 +134,14 @@ else
     echo ">>> WARNING: no plugin in $BUILD/plugins — the AppImage will ship none."
 fi
 
+# The VOIP plugin plays its call sounds from the data directory's sounds/, next
+# to the GUI's: bundle them with the plugin.
+if ls "$PLUGINDIR"/*VOIP*.so >/dev/null 2>&1; then
+    install -m 0644 "$SRC/plugins/VOIP/gui/sounds/"*.wav "$RSDATA/sounds/"
+    install -m 0644 "$SRC/plugins/VOIP/gui/sounds/CREDITS" "$RSDATA/sounds/CREDITS-VOIP"
+    echo ">>> VOIP call sounds bundled"
+fi
+
 # --- 3. bundle Qt + libs, emit the AppImage -----------------------------------
 # VERSION is passed in from the host for the output filename.
 # --deploy-deps-only: the plugins must STAY in extensions6 (RetroShare looks them

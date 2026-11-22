@@ -197,6 +197,14 @@ else
     echo "    Configure the build with -DRS_PLUGINS=ON to get VOIP and FeedReader."
 fi
 
+# The VOIP plugin plays its call sounds from the data directory's sounds/, next
+# to the GUI's: bundle them with the plugin.
+if ls "$PLUGINDIR"/*VOIP*.so >/dev/null 2>&1; then
+    install -m 0644 "$ROOT/plugins/VOIP/gui/sounds/"*.wav "$RSDATA/sounds/"
+    install -m 0644 "$ROOT/plugins/VOIP/gui/sounds/CREDITS" "$RSDATA/sounds/CREDITS-VOIP"
+    echo ">>> VOIP call sounds bundled"
+fi
+
 # --- 3. bundle Qt + libs and emit the .AppImage -------------------------------
 # linuxdeploy names the output from $VERSION; we rename it afterwards (step 4)
 # because the glibc floor can only be read once every library is bundled.
