@@ -1,5 +1,93 @@
 # RetroShare — CMake build (Linux / macOS / Windows)
 
+## Build with the finished CMake refactor (this branch)
+
+This branch carries the refactored CMake build: one configure for the whole
+super-project, a shared libretroshare used by the programs and the plugins, and
+a self-contained package per system. Tested with Qt6 on Ubuntu 24.04, macOS 15
+(Homebrew, Apple Silicon) and Windows 10 (MSYS2 UCRT64).
+
+The dependency package lists further down in this file are still the ones to
+install. **The build commands further down predate the refactor: use the ones of
+this section instead.**
+
+### Sources
+
+```bash
+git clone -b NewCmakeStack https://github.com/jolavillette/RetroShare.git rs-newcmake
+cd rs-newcmake
+git submodule update --init libretroshare retroshare-webui supportlibs/openpgpsdk supportlibs/rapidjson
+git clone -b feature/retroshare-cmake-targets https://github.com/jolavillette/RetroChess.git plugins/RetroChess
+```
+
+The other dependencies (rnp, restbed, libsam3, udp-discovery-cpp, BitDHT,
+cpptrace) are downloaded at configure time, each at its pinned commit. To build
+without network, initialise their submodules too
+(`git submodule update --init --recursive supportlibs/librnp` and
+`git submodule update --init supportlibs/restbed supportlibs/libsam3 supportlibs/udp-discovery-cpp supportlibs/libbitdht`):
+a populated submodule is used instead of a download. RetroChess is optional:
+without the clone, drop `-DRS_PLUGIN_RETROCHESS=ON`.
+
+### Options used below
+
+| Option | Meaning |
+|---|---|
+| `RS_GUI`, `RS_SERVICE` | build retroshare-gui, retroshare-service |
+| `RS_JSON_API`, `RS_WEBUI` | JSON API and the web UI served by it |
+| `RS_PLUGINS` | FeedReader and VOIP; needs `RS_LIBRETROSHARE_SHARED=ON` |
+| `RS_PLUGIN_RETROCHESS` | RetroChess, when checked out in `plugins/RetroChess` |
+| `RS_LIBRETROSHARE_SHARED` | libretroshare as a shared library |
+| `RS_PACKAGE_RUNTIME_DEPENDENCIES` | bundle Qt and the other libraries into the package (default ON on Windows and macOS) |
+
+### Linux — AppImage
+
+```bash
+cmake -G Ninja -B Build -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib \
+  -DRS_GUI=ON -DRS_SERVICE=ON -DRS_JSON_API=ON -DRS_WEBUI=ON \
+  -DRS_LIBRETROSHARE_SHARED=ON -DRS_PLUGINS=ON -DRS_PLUGIN_RETROCHESS=ON
+cmake --build Build -j8
+build_scripts/AppImage/build-appimage-cmake.sh Build Build/appimage
+```
+
+The AppImage lands in `Build/appimage/`. `cpack` in `Build/` makes a `.tar.xz`
+instead, which holds RetroShare alone and relies on the libraries of the system
+(the base of a distribution package); `cmake --install Build` installs the same
+files.
+
+### macOS — disk image
+
+```bash
+cmake -G Ninja -B Build -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
+  -DRS_GUI=ON -DRS_SERVICE=ON -DRS_JSON_API=ON -DRS_WEBUI=ON \
+  -DRS_LIBRETROSHARE_SHARED=ON -DRS_PLUGINS=ON -DRS_PLUGIN_RETROCHESS=ON
+cmake --build Build -j6
+cd Build && cpack
+```
+
+`cpack` makes `Build/RetroShare-<version>-Darwin.dmg`: the application, signed
+ad hoc, with Qt, every other library, the plugins, the data, the web UI,
+retroshare-service and retroshare-friendserver inside it, and a link to
+`/Applications`. Set `RS_MACOS_CODESIGN_IDENTITY` to sign with a real identity.
+
+### Windows (MSYS2 UCRT64 shell) — zip
+
+```bash
+cmake -G Ninja -B Build -DCMAKE_BUILD_TYPE=Release \
+  -DRS_GUI=ON -DRS_SERVICE=ON -DRS_JSON_API=ON -DRS_WEBUI=ON \
+  -DRS_LIBRETROSHARE_SHARED=ON -DRS_PLUGINS=ON -DRS_PLUGIN_RETROCHESS=ON
+cmake --build Build -j8
+cd Build && cpack -G ZIP
+```
+
+`cpack` makes `Build/RetroShare-<version>-win64.zip` with `bin` (the programs
+and every DLL), `lib` (the plugins) and `share` (the data, the web UI). It runs
+from anywhere once unpacked. The programs built are in `Build/bin`. A Release
+build fits in 16 GB of memory at `-j8`; lower it on a smaller machine.
+
+---
+
 Build commands for the whole tree from the root of the super-project. The
 top-level `CMakeLists.txt` only *aggregates* the independent component projects
 (libretroshare + GUI + service + friendserver + plugins) — each is a standalone
