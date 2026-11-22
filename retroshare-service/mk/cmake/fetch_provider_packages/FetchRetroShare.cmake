@@ -25,18 +25,61 @@
 cmake_minimum_required(VERSION 3.14...4.4)
 
 set(FETCH_RetroShare_GIT_TAG "" CACHE STRING
-	"git tag to use for fetching RetroShare"
+	"commit of libretroshare to fetch instead of the one the repository pins"
 )
 mark_as_advanced(FETCH_RetroShare_GIT_TAG)
-if(NOT FETCH_RetroShare_GIT_TAG)
-	set(FETCH_RetroShare_GIT_TAG origin/master)
+
+# This program lives in the RetroShare repository, next to the libretroshare
+# submodule, and that submodule is the libretroshare to build with: its sources
+# when it is checked out, else the commit the repository pins, fetched from the
+# submodule's address. Never a branch: the sources built would depend on the
+# day of the build.
+get_filename_component(rs_repository_dir
+	"${CMAKE_CURRENT_LIST_DIR}/../../../.." ABSOLUTE
+)
+if(EXISTS "${rs_repository_dir}/libretroshare/CMakeLists.txt")
+	set(rs_libretroshare_source SOURCE_DIR "${rs_repository_dir}/libretroshare")
+else()
+	find_program(RS_GIT_EXECUTABLE git)
+	mark_as_advanced(RS_GIT_EXECUTABLE)
+	set(rs_libretroshare_url "")
+	if(RS_GIT_EXECUTABLE)
+		if(NOT FETCH_RetroShare_GIT_TAG)
+			execute_process(
+				COMMAND "${RS_GIT_EXECUTABLE}" rev-parse HEAD:libretroshare
+				WORKING_DIRECTORY "${rs_repository_dir}"
+				OUTPUT_VARIABLE FETCH_RetroShare_GIT_TAG
+				OUTPUT_STRIP_TRAILING_WHITESPACE
+				ERROR_QUIET
+			)
+		endif()
+		execute_process(
+			COMMAND "${RS_GIT_EXECUTABLE}" config -f .gitmodules
+				submodule.libretroshare.url
+			WORKING_DIRECTORY "${rs_repository_dir}"
+			OUTPUT_VARIABLE rs_libretroshare_url
+			OUTPUT_STRIP_TRAILING_WHITESPACE
+			ERROR_QUIET
+		)
+	endif()
+	if(NOT FETCH_RetroShare_GIT_TAG OR NOT rs_libretroshare_url)
+		message(FATAL_ERROR
+			"libretroshare: no sources in ${rs_repository_dir}/libretroshare, "
+			"and the commit the repository pins cannot be read (not a git "
+			"checkout?). Check out the libretroshare submodule, or set "
+			"FETCHCONTENT_SOURCE_DIR_RETROSHARE to its sources."
+		)
+	endif()
+	set(rs_libretroshare_source
+		GIT_REPOSITORY "${rs_libretroshare_url}"
+		GIT_TAG ${FETCH_RetroShare_GIT_TAG}
+		GIT_PROGRESS TRUE
+	)
 endif()
 
 include(FetchContent)
 FetchContent_Declare(RetroShare
-	GIT_REPOSITORY "https://github.com/RetroShare/libretroshare.git"
-	GIT_TAG ${FETCH_RetroShare_GIT_TAG}
-	GIT_PROGRESS TRUE
+	${rs_libretroshare_source}
 )
 FetchContent_MakeAvailable(RetroShare)
 set(RetroShare_FOUND TRUE)
