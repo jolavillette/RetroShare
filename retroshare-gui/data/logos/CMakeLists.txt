@@ -46,16 +46,20 @@ foreach(icon ${icons})
 endforeach()
 set(ICON_INSTALL_DESTINATION_pixmap.xpm ${CMAKE_INSTALL_DATADIR}/pixmaps)
 
-foreach(icon ${icons})
-	if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.20)
-		cmake_path(GET icon EXTENSION ext)
-	else()
-		get_filename_component(ext ${icon} EXT)
-	endif()
-	install(
-		FILES ${icon}
-		DESTINATION ${ICON_INSTALL_DESTINATION_${icon}}
-		RENAME retroshare${ext}
-		COMPONENT retroshare-gui
-	)
-endforeach()
+# The icon theme and pixmaps directories are freedesktop.org conventions: they
+# mean nothing on Windows and macOS, where the icon is in the program itself.
+if(UNIX AND NOT APPLE)
+	foreach(icon ${icons})
+		if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.20)
+			cmake_path(GET icon EXTENSION ext)
+		else()
+			get_filename_component(ext ${icon} EXT)
+		endif()
+		install(
+			FILES ${icon}
+			DESTINATION ${ICON_INSTALL_DESTINATION_${icon}}
+			RENAME retroshare${ext}
+			COMPONENT retroshare-gui
+		)
+	endforeach()
+endif()

@@ -47,8 +47,11 @@ target_sources(${PROJECT_NAME}
 	images/images.qrc
 )
 
-install(
-	FILES retroshare-gui.desktop
-	DESTINATION "${CMAKE_INSTALL_DATADIR}/applications/"
-	COMPONENT retroshare-gui
-)
+# the desktop entry is a freedesktop.org convention, see logos/
+if(UNIX AND NOT APPLE)
+	install(
+		FILES retroshare-gui.desktop
+		DESTINATION "${CMAKE_INSTALL_DATADIR}/applications/"
+		COMPONENT retroshare-gui
+	)
+endif()
