@@ -56,9 +56,8 @@ if(RS_GUI)
 		set(RS_PLUGIN_DIR_FROM_EXE "../lib/retroshare/extensions6")
 	endif()
 	if(APPLE)
-		set(rs_gui_exe_install_dir
-			"${CMAKE_INSTALL_BINDIR}/retroshare-gui.app/Contents/MacOS"
-		)
+		get_property(rs_macos_bundle_dir GLOBAL PROPERTY RS_MACOS_BUNDLE_DIR)
+		set(rs_gui_exe_install_dir "${rs_macos_bundle_dir}/Contents/MacOS")
 	else()
 		set(rs_gui_exe_install_dir "${CMAKE_INSTALL_BINDIR}")
 	endif()

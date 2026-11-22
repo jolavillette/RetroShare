@@ -55,7 +55,10 @@ include(GNUInstallDirs)
 # libretroshare goes to Contents/Frameworks. Set before libretroshare is
 # looked for, so that its own defaults (share/..., lib) do not apply.
 if(APPLE)
-	set(RS_MACOS_BUNDLE_DIR "${CMAKE_INSTALL_BINDIR}/${PROJECT_NAME}.app")
+	# The bundle is installed at the root of the install prefix, not in bin:
+	# an application is a top-level item on macOS (/Applications/<name>.app
+	# with the prefix /Applications), and the one item of a disk image.
+	set(RS_MACOS_BUNDLE_DIR "${PROJECT_NAME}.app")
 	# for the other programs of a super-project, installed inside the bundle
 	set_property(GLOBAL PROPERTY RS_MACOS_BUNDLE_DIR "${RS_MACOS_BUNDLE_DIR}")
 	set(RS_INSTALL_DATADIR "${RS_MACOS_BUNDLE_DIR}/Contents/Resources" CACHE PATH
@@ -479,7 +482,7 @@ endif()
 if(COMMAND retroshare_install_rpath)
 	if(APPLE)
 		retroshare_install_rpath(${PROJECT_NAME}
-			"${CMAKE_INSTALL_BINDIR}/${PROJECT_NAME}.app/Contents/MacOS"
+			"${RS_MACOS_BUNDLE_DIR}/Contents/MacOS"
 		)
 	else()
 		retroshare_install_rpath(${PROJECT_NAME} "${CMAKE_INSTALL_BINDIR}")
@@ -489,7 +492,7 @@ endif()
 install(TARGETS ${PROJECT_NAME}
 	EXPORT ${PROJECT_NAME}_export
 	RUNTIME ${INSTALL_COMPONENT}
-	BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR} ${INSTALL_COMPONENT}
+	BUNDLE DESTINATION . ${INSTALL_COMPONENT}
 	ARCHIVE ${INSTALL_COMPONENT_DEV}
 	${FILESET_HEADERS_INSTALL}
 )
@@ -744,6 +747,10 @@ set(CPACK_SOURCE_GENERATOR TXZ)
 if(WIN32)
 	set(CPACK_GENERATOR ZIP NSIS)
 	set(CPACK_SOURCE_GENERATOR ZIP)
+elseif(APPLE)
+	# a disk image holding the application and a link to /Applications
+	set(CPACK_GENERATOR DragNDrop)
+	set(CPACK_DMG_VOLUME_NAME ${PROJECT_NAME_PRETTY})
 endif()
 set(CPACK_PACKAGE_CHECKSUM SHA256)
 
