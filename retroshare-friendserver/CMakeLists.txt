@@ -152,12 +152,25 @@ endif()
 ## install
 include(GNUInstallDirs)
 
+# macOS, built with the GUI: the program is installed inside the application
+# bundle, next to the GUI's executable. There it shares the bundle's libraries
+# and finds the data where the engine looks for it on macOS, in the bundle's
+# Contents/Resources.
+set(rs_program_install_dir "${CMAKE_INSTALL_BINDIR}")
+if(APPLE)
+	get_property(rs_macos_bundle_dir GLOBAL PROPERTY RS_MACOS_BUNDLE_DIR)
+	if(rs_macos_bundle_dir)
+		set(rs_program_install_dir "${rs_macos_bundle_dir}/Contents/MacOS")
+	endif()
+endif()
+
 # A shared libretroshare built in the same build is installed with this
 # program: let the installed executable find it from where it is.
 if(COMMAND retroshare_install_rpath)
-	retroshare_install_rpath(${PROJECT_NAME} "${CMAKE_INSTALL_BINDIR}")
+	retroshare_install_rpath(${PROJECT_NAME} "${rs_program_install_dir}")
 endif()
 
 install(TARGETS ${PROJECT_NAME}
+	DESTINATION ${rs_program_install_dir}
 	COMPONENT retroshare-friendserver
 )

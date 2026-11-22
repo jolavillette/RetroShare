@@ -19,13 +19,14 @@
 ## ------------------------------------------------------------------------- ##
 
 # Install-time script: makes the installed retroshare-gui.app self-contained.
-# Run once everything is installed into the bundle (the program, libretroshare
-# in Contents/Frameworks, the RetroShare plugins, the data).
+# Run once everything is installed into the bundle (the program, the other
+# programs of a super-project, libretroshare in Contents/Frameworks, the
+# RetroShare plugins, the data).
 #
 # 1. macdeployqt copies the Qt frameworks, the Qt plugins and every other
-#    library the program and the RetroShare plugins link (Homebrew's, ...) into
-#    the bundle, and rewrites their install names.
-# 2. Search paths pointing outside the bundle are removed from the executable.
+#    library the programs and the RetroShare plugins link (Homebrew's, ...)
+#    into the bundle, and rewrites their install names.
+# 2. Search paths pointing outside the bundle are removed from the programs.
 # 3. The bundle is signed again: the libraries copied in step 1 were modified
 #    after they had been signed, and macOS on Apple Silicon refuses to load a
 #    library whose signature does not match.
@@ -38,10 +39,15 @@ if(NOT EXISTS "${exe}")
 	message(FATAL_ERROR "no application bundle at ${app}")
 endif()
 
+# macdeployqt handles the bundle's main executable by itself, and what it is
+# told of besides: the other programs, the RetroShare plugins
+file(GLOB programs "${app}/Contents/MacOS/*")
 file(GLOB plugins "${app}/@RS_MACOS_BUNDLE_PLUGIN_SUBDIR@/*.dylib")
 set(macdeployqt_args "${app}" "-libpath=${app}/Contents/Frameworks")
-foreach(plugin IN LISTS plugins)
-	list(APPEND macdeployqt_args "-executable=${plugin}")
+foreach(binary IN LISTS programs plugins)
+	if(NOT binary STREQUAL exe)
+		list(APPEND macdeployqt_args "-executable=${binary}")
+	endif()
 endforeach()
 
 message(STATUS "macdeployqt: ${app}")
@@ -55,18 +61,20 @@ if(NOT result EQUAL 0)
 	message(FATAL_ERROR "macdeployqt failed (${result}):\n${output}")
 endif()
 
-execute_process(COMMAND otool -l "${exe}" OUTPUT_VARIABLE load_commands)
-string(REGEX MATCHALL "path /[^\n]* \\(offset" rpaths "${load_commands}")
-foreach(rpath IN LISTS rpaths)
-	string(REGEX REPLACE "^path (.*) \\(offset$" "\\1" rpath "${rpath}")
-	message(STATUS "removing the search path ${rpath}")
-	execute_process(
-		COMMAND install_name_tool -delete_rpath "${rpath}" "${exe}"
-		RESULT_VARIABLE result
-	)
-	if(NOT result EQUAL 0)
-		message(FATAL_ERROR "cannot remove the search path ${rpath}")
-	endif()
+foreach(program IN LISTS programs)
+	execute_process(COMMAND otool -l "${program}" OUTPUT_VARIABLE load_commands)
+	string(REGEX MATCHALL "path /[^\n]* \\(offset" rpaths "${load_commands}")
+	foreach(rpath IN LISTS rpaths)
+		string(REGEX REPLACE "^path (.*) \\(offset$" "\\1" rpath "${rpath}")
+		message(STATUS "removing the search path ${rpath} from ${program}")
+		execute_process(
+			COMMAND install_name_tool -delete_rpath "${rpath}" "${program}"
+			RESULT_VARIABLE result
+		)
+		if(NOT result EQUAL 0)
+			message(FATAL_ERROR "cannot remove the search path ${rpath}")
+		endif()
+	endforeach()
 endforeach()
 
 message(STATUS "codesign (@RS_MACOS_CODESIGN_IDENTITY@): ${app}")

@@ -56,6 +56,8 @@ include(GNUInstallDirs)
 # looked for, so that its own defaults (share/..., lib) do not apply.
 if(APPLE)
 	set(RS_MACOS_BUNDLE_DIR "${CMAKE_INSTALL_BINDIR}/${PROJECT_NAME}.app")
+	# for the other programs of a super-project, installed inside the bundle
+	set_property(GLOBAL PROPERTY RS_MACOS_BUNDLE_DIR "${RS_MACOS_BUNDLE_DIR}")
 	set(RS_INSTALL_DATADIR "${RS_MACOS_BUNDLE_DIR}/Contents/Resources" CACHE PATH
 		"Path where to install RetroShare system wide data"
 	)
