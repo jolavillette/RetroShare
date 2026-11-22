@@ -225,6 +225,8 @@ endif()
 ################################################################################
 ### install
 
+include(GNUInstallDirs)
+
 # macOS, built with the GUI: the program is installed inside the application
 # bundle, next to the GUI's executable. There it shares the bundle's libraries
 # and finds the data where the engine looks for it on macOS, in the bundle's
@@ -251,14 +253,14 @@ install(TARGETS ${PROJECT_NAME}
 if(UNIX AND NOT APPLE AND RS_SERVICE_DESKTOP)
 	install(
 		FILES data/retroshare-service.svg
-		DESTINATION ${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/scalable/
+		DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps/
 		COMPONENT retroshare-service
 	)
 
 	foreach(size 48x48 128x128)
 		install(
 			FILES data/retroshare-service_${size}.png
-			DESTINATION ${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/${size}/apps/
+			DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}/apps/
 			RENAME retroshare-service.png
 			COMPONENT retroshare-service
 		)
@@ -266,7 +268,7 @@ if(UNIX AND NOT APPLE AND RS_SERVICE_DESKTOP)
 
 	install(
 		FILES data/retroshare-service.desktop
-		DESTINATION ${CMAKE_INSTALL_PREFIX}/data/
+		DESTINATION ${CMAKE_INSTALL_DATADIR}/applications/
 		COMPONENT retroshare-service
 	)
 endif()

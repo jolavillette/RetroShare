@@ -28,21 +28,18 @@ set(sounds
 	alert.wav
 	chat1.wav
 	chat2.wav
-	file.wav
 	ft_complete.wav
 	ft_incoming.wav
 	incomingchat.wav
-	notify.wav
 	offline.wav
 	online1.wav
 	online2.wav
 	receive.wav
 	send1.wav
 	send2.wav
-	startup.wav
 )
 
-install(FILES ${sounds}
+install(FILES ${sounds} CREDITS
 	DESTINATION ${RS_INSTALL_DATADIR}/sounds
 	COMPONENT retroshare-gui
 )

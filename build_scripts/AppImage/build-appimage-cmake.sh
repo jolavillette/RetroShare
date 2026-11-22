@@ -62,7 +62,7 @@ DESTDIR="$APPDIR" cmake --install "$BUILD" > "$OUT/appimage-install.log"
 # what is only needed to build against RetroShare stays out of the image
 rm -rf "$APPDIR/usr/include" "$APPDIR/usr/lib/cmake" "$APPDIR/usr/lib/libretroshare.so" "$APPDIR"/usr/lib/*.a
 
-DESKTOP="$APPDIR/usr/share/applications/retroshare-gui.desktop"
+DESKTOP="$APPDIR/usr/share/applications/retroshare.desktop"
 [ -f "$DESKTOP" ] || die "no desktop file installed"
 PLUGINS="$APPDIR/usr/lib/retroshare/extensions6"
 # the plugins stay where RetroShare looks for them; linuxdeploy only pulls in

@@ -47,11 +47,18 @@ target_sources(${PROJECT_NAME}
 	images/images.qrc
 )
 
-# the desktop entry is a freedesktop.org convention, see logos/
+# the desktop entry and the AppStream metadata are freedesktop.org
+# conventions, see logos/. The metadata names the desktop entry by its file
+# name, retroshare.desktop.
 if(UNIX AND NOT APPLE)
 	install(
-		FILES retroshare-gui.desktop
+		FILES retroshare.desktop
 		DESTINATION "${CMAKE_INSTALL_DATADIR}/applications/"
+		COMPONENT retroshare-gui
+	)
+	install(
+		FILES cc.retroshare.RetroShare.metainfo.xml
+		DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo/"
 		COMPONENT retroshare-gui
 	)
 endif()
