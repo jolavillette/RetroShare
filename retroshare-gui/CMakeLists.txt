@@ -145,7 +145,7 @@ cmake_dependent_option(RS_PACKAGE_RUNTIME_DEPENDENCIES
 set(RUNTIME_DEPENDENCY_PATH
 	""
 	CACHE STRING
-	"Extra paths to search for runtime dependencies."
+	"Extra paths to search for the runtime dependencies (DLLs) of a package."
 )
 
 ################################################################################
@@ -635,7 +635,31 @@ if(RS_PACKAGE_RUNTIME_DEPENDENCIES AND NOT APPLE)
 		)
 	endif()
 
-	# a shared libretroshare built here is not in RUNTIME_DEPENDENCY_PATH
+	# Where the DLLs are looked for: the directories the user names, then, for
+	# a native build, the compiler's (the DLLs of its runtime are beside it)
+	# and Qt's. With MSYS2 that one directory holds every other dependency
+	# too, so a package needs no option.
+	set(rs_runtime_dependency_dirs ${RUNTIME_DEPENDENCY_PATH})
+	if(WIN32 AND NOT CMAKE_CROSSCOMPILING)
+		get_filename_component(rs_compiler_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+		list(APPEND rs_runtime_dependency_dirs "${rs_compiler_dir}")
+		if(TARGET Qt${QT_VERSION_MAJOR}::qmake)
+			get_target_property(rs_qmake_location
+				Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION
+			)
+			if(rs_qmake_location)
+				get_filename_component(rs_qt_bin_dir "${rs_qmake_location}" DIRECTORY)
+				list(APPEND rs_runtime_dependency_dirs "${rs_qt_bin_dir}")
+			endif()
+		endif()
+		list(REMOVE_DUPLICATES rs_runtime_dependency_dirs)
+	endif()
+	# for the plugins
+	set_property(GLOBAL PROPERTY RS_RUNTIME_DEPENDENCY_DIRS
+		${rs_runtime_dependency_dirs}
+	)
+
+	# a shared libretroshare built here is in none of these
 	set(retroshare_runtime_dir "")
 	if(retroshare_bundled_shared)
 		set(retroshare_runtime_dir "$<TARGET_FILE_DIR:retroshare::retroshare>")
@@ -645,7 +669,7 @@ if(RS_PACKAGE_RUNTIME_DEPENDENCIES AND NOT APPLE)
 	runtime_dependencies_install_script(
 		install-${PROJECT_NAME}-deps.cmake
 		EXECUTABLES "$<TARGET_FILE:${PROJECT_NAME}>"
-		DIRECTORIES ${RUNTIME_DEPENDENCY_PATH} ${retroshare_runtime_dir}
+		DIRECTORIES ${rs_runtime_dependency_dirs} ${retroshare_runtime_dir}
 	)
 	set_property(GLOBAL APPEND PROPERTY RS_PACKAGE_INSTALL_SCRIPTS
 		${CMAKE_CURRENT_BINARY_DIR}/install-${PROJECT_NAME}-deps.cmake
@@ -682,7 +706,7 @@ if(RS_PACKAGE_RUNTIME_DEPENDENCIES AND NOT APPLE)
 	runtime_dependencies_install_script(
 		install-qtplugins-deps.cmake
 		MODULES ${qtplugin_files}
-		DIRECTORIES ${RUNTIME_DEPENDENCY_PATH}
+		DIRECTORIES ${rs_runtime_dependency_dirs}
 	)
 
 	set_property(GLOBAL APPEND PROPERTY RS_PACKAGE_INSTALL_SCRIPTS

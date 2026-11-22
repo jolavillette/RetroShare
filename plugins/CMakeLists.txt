@@ -116,10 +116,13 @@ if(RS_GUI)
 			include(
 				${PROJECT_SOURCE_DIR}/retroshare-gui/mk/cmake/RuntimeDependenciesInstallScript.cmake
 			)
+			get_property(rs_runtime_dependency_dirs
+				GLOBAL PROPERTY RS_RUNTIME_DEPENDENCY_DIRS
+			)
 			runtime_dependencies_install_script(
 				install-retroshare-plugins-deps.cmake
 				MODULES ${rs_plugin_files}
-				DIRECTORIES ${RUNTIME_DEPENDENCY_PATH}
+				DIRECTORIES ${rs_runtime_dependency_dirs}
 					"$<TARGET_FILE_DIR:retroshare::retroshare>"
 					"$<TARGET_FILE_DIR:retroshare::retroshare-gui>"
 			)
