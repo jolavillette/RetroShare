@@ -1,0 +1,128 @@
+## ------------------------------------------------------------------------- ##
+ # mk/cmake/NamePackage.cmake.in
+ # This file is part of RetroShare-SuperProject.
+ #
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ #
+ # This program is free software: you can redistribute it and/or modify
+ # it under the terms of the GNU Affero General Public License as
+ # published by the Free Software Foundation, either version 3 of the
+ # License, or (at your option) any later version.
+ #
+ # This program is distributed in the hope that it will be useful,
+ # but WITHOUT ANY WARRANTY; without even the implied warranty of
+ # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ # GNU Affero General Public License for more details.
+ #
+ # You should have received a copy of the GNU Affero General Public License
+ # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+## ------------------------------------------------------------------------- ##
+
+# CPack post-build script: gives the package the name every RetroShare release
+# file has, on every system:
+#
+#   RetroShare-v<version>-<build day>-<commits>-g<commit>-lib-<commits>-g<commit>
+#     -Qt-<Qt version>-<runtime>-<architecture>.<extension>
+#
+# <runtime> says what the package needs to run: glibc-<lowest glibc> on Linux,
+# macos-<lowest macOS> on macOS, the MSYS2 environment it was built in on
+# Windows. The lowest glibc and macOS are read from the files of the package,
+# which is why the name is given here, once the package is made, and not by
+# CPACK_PACKAGE_FILE_NAME, which CPack reads before it gathers the files.
+#
+# CPack runs this script before it puts the package, under the name it chose,
+# into CPACK_PACKAGE_DIRECTORY. The super-project sets that directory to
+# <build dir>/package, CPack's work area; this script puts the package under
+# its real name, with its checksum file, into the build directory.
+
+cmake_minimum_required(VERSION 3.19)
+
+set(version "@rs_package_version@")
+set(commit "@rs_package_commit@")
+set(lib_commit "@rs_package_lib_commit@")
+set(qt_version "@rs_package_qt_version@")
+set(architecture "@rs_package_architecture@")
+
+# every file the package holds
+file(GLOB_RECURSE files LIST_DIRECTORIES false "${CPACK_TEMPORARY_DIRECTORY}/*")
+
+if("@WIN32@")
+	set(runtime "@rs_package_windows_runtime@")
+elseif("@APPLE@")
+	# the lowest macOS every binary of the package accepts
+	set(lowest "")
+	foreach(file IN LISTS files)
+		if(IS_SYMLINK "${file}" OR file MATCHES "/Resources/")
+			continue()
+		endif()
+		execute_process(COMMAND otool -l "${file}"
+			RESULT_VARIABLE result
+			OUTPUT_VARIABLE load_commands
+			ERROR_QUIET
+		)
+		if(NOT result EQUAL 0)
+			continue()
+		endif()
+		string(REGEX MATCH "LC_BUILD_VERSION[^=]*minos ([0-9.]+)" found "${load_commands}")
+		if(NOT found)
+			string(REGEX MATCH "LC_VERSION_MIN_MACOSX[^=]*version ([0-9.]+)" found "${load_commands}")
+		endif()
+		if(found AND (NOT lowest OR CMAKE_MATCH_1 VERSION_GREATER lowest))
+			set(lowest "${CMAKE_MATCH_1}")
+		endif()
+	endforeach()
+	if(NOT lowest)
+		message(FATAL_ERROR "no binary found in ${CPACK_TEMPORARY_DIRECTORY}")
+	endif()
+	set(runtime "macos-${lowest}")
+else()
+	# the lowest glibc every binary of the package accepts: the highest
+	# GLIBC_2.x symbol version one of them asks for
+	set(lowest "")
+	foreach(file IN LISTS files)
+		if(IS_SYMLINK "${file}" OR NOT file MATCHES "/(bin|lib[^/]*)/")
+			continue()
+		endif()
+		execute_process(COMMAND objdump -T "${file}"
+			RESULT_VARIABLE result
+			OUTPUT_VARIABLE symbols
+			ERROR_QUIET
+		)
+		if(NOT result EQUAL 0)
+			continue()
+		endif()
+		string(REGEX MATCHALL "GLIBC_2\\.[0-9]+(\\.[0-9]+)?" versions "${symbols}")
+		list(REMOVE_DUPLICATES versions)
+		foreach(glibc IN LISTS versions)
+			string(REPLACE "GLIBC_" "" glibc "${glibc}")
+			if(NOT lowest OR glibc VERSION_GREATER lowest)
+				set(lowest "${glibc}")
+			endif()
+		endforeach()
+	endforeach()
+	if(NOT lowest)
+		message(FATAL_ERROR "no binary found in ${CPACK_TEMPORARY_DIRECTORY}")
+	endif()
+	set(runtime "glibc-${lowest}")
+endif()
+
+string(TIMESTAMP build_day "%Y%m%d")
+string(CONCAT name
+	"RetroShare-v${version}-${build_day}${commit}"
+	"-lib-${lib_commit}-Qt-${qt_version}-${runtime}-${architecture}"
+)
+
+set(output_directory "@CMAKE_BINARY_DIR@")
+foreach(package IN LISTS CPACK_PACKAGE_FILES)
+	get_filename_component(old_name "${package}" NAME)
+	# what follows the name CPack gave: the extension, .tar.xz included
+	string(LENGTH "${CPACK_PACKAGE_FILE_NAME}" length)
+	string(SUBSTRING "${old_name}" ${length} -1 extension)
+	set(named_package "${output_directory}/${name}${extension}")
+	file(REMOVE "${named_package}" "${named_package}.sha256")
+	file(COPY "${package}" DESTINATION "${output_directory}")
+	file(RENAME "${output_directory}/${old_name}" "${named_package}")
+	file(SHA256 "${named_package}" checksum)
+	file(WRITE "${named_package}.sha256" "${checksum}  ${name}${extension}\n")
+	message(STATUS "package: ${named_package}")
+endforeach()

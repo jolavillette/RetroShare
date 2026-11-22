@@ -90,4 +90,22 @@ export LINUXDEPLOY_OUTPUT_VERSION="${LINUXDEPLOY_OUTPUT_VERSION:-$(git -C "$ROOT
 
 IMAGE="$(ls -1t "$OUT"/*.AppImage | head -1)"
 GLIBC="$(find "$APPDIR" -type f \( -name '*.so*' -o -path '*/bin/*' \) | while read -r f; do objdump -T "$f" 2>/dev/null | grep -oE 'GLIBC_2\.[0-9]+(\.[0-9]+)?'; done | sort -uV | tail -1)"
+
+# The name every RetroShare release file has, on every system (the packages
+# cpack makes get it from mk/cmake/NamePackage.cmake.in):
+#   RetroShare-v<version>-<build day>-<commits>-g<commit>-lib-<commits>-g<commit>
+#     -Qt-<Qt version>-glibc-<lowest glibc>-<architecture>.AppImage
+DESCRIBE="$(git -C "$ROOT" describe --tags --match 'v*.*.*' --always 2>/dev/null || echo dev)"
+VERSION="${DESCRIBE#v}"
+COMMIT=""
+case "$VERSION" in
+	*-*) COMMIT="-${VERSION#*-}"; VERSION="${VERSION%%-*}" ;;
+esac
+LIB_DESCRIBE="$(git -C "$ROOT/libretroshare" describe --tags --match 'v*.*.*' --always 2>/dev/null || echo unknown)"
+LIB="$(echo "$LIB_DESCRIBE" | sed -nE 's/.*-([0-9]+-g[0-9a-f]+)$/\1/p')"
+[ -n "$LIB" ] || LIB="$LIB_DESCRIBE"
+GLIBC_MIN="${GLIBC#GLIBC_}"
+NAME="RetroShare-v${VERSION}-$(date +%Y%m%d)${COMMIT}-lib-${LIB}-Qt-$("$QMAKE" -query QT_VERSION)-glibc-${GLIBC_MIN:-unknown}-$(uname -m).AppImage"
+mv "$IMAGE" "$OUT/$NAME"
+IMAGE="$OUT/$NAME"
 echo ">>> $IMAGE ($(du -h "$IMAGE" | cut -f1)), needs ${GLIBC:-an unknown glibc} or later"
