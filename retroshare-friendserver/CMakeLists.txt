@@ -24,7 +24,9 @@
 cmake_minimum_required(VERSION 3.10...4.4)
 
 project(retroshare-friendserver
-	VERSION 0.0.0
+	# the version of the RetroShare repository this program is part of,
+	# like retroshare-gui
+	VERSION 0.6.7.3
 	LANGUAGES CXX
 )
 
@@ -99,7 +101,9 @@ if(DEFINED RS_VERSION_SUFFIX AND NOT (RS_VERSION_SUFFIX STREQUAL ""))
 else()
 	include(GetGitRevisionDescription)
 	git_describe_working_tree(PROJECT_VERSION_FULL --dirty --match "v*.*.*")
-	if(PROJECT_VERSION_FULL AND EXISTS ${PROJECT_SOURCE_DIR}/.git)
+	# no test for ${PROJECT_SOURCE_DIR}/.git: this directory is inside the
+	# RetroShare repository, whose tags git describe reads from here
+	if(PROJECT_VERSION_FULL)
 		string(SUBSTRING ${PROJECT_VERSION_FULL} 1 -1 PROJECT_VERSION_FULL)
 		string(FIND ${PROJECT_VERSION_FULL}- ${PROJECT_VERSION}- pos)
 		if(NOT pos EQUAL 0)
