@@ -1,0 +1,45 @@
+## ------------------------------------------------------------------------- ##
+ # mk/cmake/PackageName.cmake.in
+ # This file is part of RetroShare-SuperProject.
+ #
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ #
+ # This program is free software: you can redistribute it and/or modify
+ # it under the terms of the GNU Affero General Public License as
+ # published by the Free Software Foundation, either version 3 of the
+ # License, or (at your option) any later version.
+ #
+ # This program is distributed in the hope that it will be useful,
+ # but WITHOUT ANY WARRANTY; without even the implied warranty of
+ # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ # GNU Affero General Public License for more details.
+ #
+ # You should have received a copy of the GNU Affero General Public License
+ # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+## ------------------------------------------------------------------------- ##
+
+# CPack project configuration file, read by cpack when it starts: the parts of
+# the package name that are known before the files of the package are
+# gathered. See NamePackage.cmake.in for the whole name.
+#
+# CPACK_PACKAGE_FILE_NAME is also the name of the folder inside an archive
+# (.zip, .tar.xz). On Windows every part is known now, so the folder has the
+# name of the archive. Elsewhere the runtime part (lowest glibc, lowest macOS)
+# is read from the gathered files: the folder has the name without it.
+
+string(TIMESTAMP rs_package_build_day "%Y%m%d")
+string(CONCAT RS_PACKAGE_NAME_HEAD
+	"RetroShare-v@rs_package_version@-${rs_package_build_day}@rs_package_commit@"
+	"-lib-@rs_package_lib_commit@-Qt-@rs_package_qt_version@"
+)
+set(RS_PACKAGE_ARCHITECTURE "@rs_package_architecture@")
+if("@WIN32@")
+	set(RS_PACKAGE_RUNTIME "@rs_package_windows_runtime@")
+	string(CONCAT CPACK_PACKAGE_FILE_NAME
+		"${RS_PACKAGE_NAME_HEAD}-${RS_PACKAGE_RUNTIME}-${RS_PACKAGE_ARCHITECTURE}"
+	)
+else()
+	set(CPACK_PACKAGE_FILE_NAME
+		"${RS_PACKAGE_NAME_HEAD}-${RS_PACKAGE_ARCHITECTURE}"
+	)
+endif()

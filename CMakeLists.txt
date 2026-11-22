@@ -257,6 +257,8 @@ if(WIN32 AND DEFINED ENV{MSYSTEM})
 	string(TOLOWER "$ENV{MSYSTEM}-msys2" rs_package_windows_runtime)
 endif()
 if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.19)
+	configure_file(mk/cmake/PackageName.cmake.in package-name.cmake @ONLY)
+	set(CPACK_PROJECT_CONFIG_FILE ${CMAKE_CURRENT_BINARY_DIR}/package-name.cmake)
 	configure_file(mk/cmake/NamePackage.cmake.in name-package.cmake @ONLY)
 	set(CPACK_POST_BUILD_SCRIPTS ${CMAKE_CURRENT_BINARY_DIR}/name-package.cmake)
 	# CPack's work area, where it also leaves the package under the name it

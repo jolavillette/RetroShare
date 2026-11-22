@@ -30,6 +30,9 @@
 # which is why the name is given here, once the package is made, and not by
 # CPACK_PACKAGE_FILE_NAME, which CPack reads before it gathers the files.
 #
+# The parts known before that are set by PackageName.cmake.in, which also gives
+# the folder inside an archive its name.
+#
 # CPack runs this script before it puts the package, under the name it chose,
 # into CPACK_PACKAGE_DIRECTORY. The super-project sets that directory to
 # <build dir>/package, CPack's work area; this script puts the package under
@@ -37,17 +40,17 @@
 
 cmake_minimum_required(VERSION 3.19)
 
-set(version "@rs_package_version@")
-set(commit "@rs_package_commit@")
-set(lib_commit "@rs_package_lib_commit@")
-set(qt_version "@rs_package_qt_version@")
-set(architecture "@rs_package_architecture@")
+# set by PackageName.cmake.in when cpack started
+if(NOT RS_PACKAGE_NAME_HEAD OR NOT RS_PACKAGE_ARCHITECTURE)
+	message(FATAL_ERROR "the package name parts of PackageName.cmake.in are missing")
+endif()
 
 # every file the package holds
 file(GLOB_RECURSE files LIST_DIRECTORIES false "${CPACK_TEMPORARY_DIRECTORY}/*")
 
-if("@WIN32@")
-	set(runtime "@rs_package_windows_runtime@")
+if(RS_PACKAGE_RUNTIME)
+	# known before the files were gathered (Windows)
+	set(runtime "${RS_PACKAGE_RUNTIME}")
 elseif("@APPLE@")
 	# the lowest macOS every binary of the package accepts
 	set(lowest "")
@@ -106,11 +109,7 @@ else()
 	set(runtime "glibc-${lowest}")
 endif()
 
-string(TIMESTAMP build_day "%Y%m%d")
-string(CONCAT name
-	"RetroShare-v${version}-${build_day}${commit}"
-	"-lib-${lib_commit}-Qt-${qt_version}-${runtime}-${architecture}"
-)
+set(name "${RS_PACKAGE_NAME_HEAD}-${runtime}-${RS_PACKAGE_ARCHITECTURE}")
 
 set(output_directory "@CMAKE_BINARY_DIR@")
 foreach(package IN LISTS CPACK_PACKAGE_FILES)
@@ -121,7 +120,9 @@ foreach(package IN LISTS CPACK_PACKAGE_FILES)
 	set(named_package "${output_directory}/${name}${extension}")
 	file(REMOVE "${named_package}" "${named_package}.sha256")
 	file(COPY "${package}" DESTINATION "${output_directory}")
-	file(RENAME "${output_directory}/${old_name}" "${named_package}")
+	if(NOT "${output_directory}/${old_name}" STREQUAL "${named_package}")
+		file(RENAME "${output_directory}/${old_name}" "${named_package}")
+	endif()
 	file(SHA256 "${named_package}" checksum)
 	file(WRITE "${named_package}.sha256" "${checksum}  ${name}${extension}\n")
 	message(STATUS "package: ${named_package}")
