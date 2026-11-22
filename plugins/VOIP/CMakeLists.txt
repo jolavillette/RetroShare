@@ -205,3 +205,19 @@ if(COMMAND retroshare_install_rpath)
 	retroshare_install_rpath(VOIP "${RS_PLUGIN_INSTALL_DIR}")
 endif()
 install(TARGETS VOIP DESTINATION ${RS_PLUGIN_INSTALL_DIR})
+
+# The plugin plays its call sounds from <data directory>/sounds, where
+# RetroShare-GUI installs its own sounds: install them there too. Their
+# credits go next to the GUI's, under a name of their own.
+set(voip_sounds_install_dir "${RS_INSTALL_DATADIR}")
+if(NOT voip_sounds_install_dir)
+	include(GNUInstallDirs)
+	set(voip_sounds_install_dir "${CMAKE_INSTALL_DATADIR}/retroshare")
+endif()
+install(FILES gui/sounds/incomingcall.wav gui/sounds/outgoingcall.wav
+	DESTINATION "${voip_sounds_install_dir}/sounds"
+)
+install(FILES gui/sounds/CREDITS
+	DESTINATION "${voip_sounds_install_dir}/sounds"
+	RENAME CREDITS-VOIP
+)
