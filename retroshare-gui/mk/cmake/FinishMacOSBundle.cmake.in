@@ -26,7 +26,9 @@
 # 1. macdeployqt copies the Qt frameworks, the Qt plugins and every other
 #    library the programs and the RetroShare plugins link (Homebrew's, ...)
 #    into the bundle, and rewrites their install names.
-# 2. Search paths pointing outside the bundle are removed from the programs.
+# 2. Search paths pointing outside the bundle are removed from every binary in
+#    it: the programs keep those of the build tree, and libraries copied from
+#    Homebrew keep Homebrew's.
 # 3. The bundle is signed again: the libraries copied in step 1 were modified
 #    after they had been signed, and macOS on Apple Silicon refuses to load a
 #    library whose signature does not match.
@@ -61,14 +63,33 @@ if(NOT result EQUAL 0)
 	message(FATAL_ERROR "macdeployqt failed (${result}):\n${output}")
 endif()
 
-foreach(program IN LISTS programs)
-	execute_process(COMMAND otool -l "${program}" OUTPUT_VARIABLE load_commands)
+# every binary of the bundle: the programs, the libraries and frameworks copied
+# in, the Qt plugins, the RetroShare plugins
+file(GLOB_RECURSE bundle_files LIST_DIRECTORIES false
+	"${app}/Contents/MacOS/*"
+	"${app}/Contents/Frameworks/*"
+	"${app}/Contents/PlugIns/*"
+	"${app}/@RS_MACOS_BUNDLE_PLUGIN_SUBDIR@/*"
+)
+foreach(binary IN LISTS bundle_files)
+	if(IS_SYMLINK "${binary}")
+		continue()
+	endif()
+	# fails on what is not a binary (a framework's Info.plist, ...)
+	execute_process(COMMAND otool -l "${binary}"
+		RESULT_VARIABLE result
+		OUTPUT_VARIABLE load_commands
+		ERROR_QUIET
+	)
+	if(NOT result EQUAL 0)
+		continue()
+	endif()
 	string(REGEX MATCHALL "path /[^\n]* \\(offset" rpaths "${load_commands}")
 	foreach(rpath IN LISTS rpaths)
 		string(REGEX REPLACE "^path (.*) \\(offset$" "\\1" rpath "${rpath}")
-		message(STATUS "removing the search path ${rpath} from ${program}")
+		message(STATUS "removing the search path ${rpath} from ${binary}")
 		execute_process(
-			COMMAND install_name_tool -delete_rpath "${rpath}" "${program}"
+			COMMAND install_name_tool -delete_rpath "${rpath}" "${binary}"
 			RESULT_VARIABLE result
 		)
 		if(NOT result EQUAL 0)
