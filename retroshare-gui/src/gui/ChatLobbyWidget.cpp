@@ -53,6 +53,9 @@
 
 //#define CHAT_LOBBY_GUI_DEBUG 1
 
+// Shortest time between two refreshes of the list asked by the "list changed" events.
+#define LIST_REFRESH_MIN_INTERVAL_MS 2000
+
 #define COLUMN_NAME       0
 #define COLUMN_USER_COUNT 1
 #define COLUMN_TOPIC      2
@@ -411,7 +414,31 @@ void ChatLobbyWidget::lobbyTreeWidgetCustomPopupMenu(QPoint)
 
 void ChatLobbyWidget::lobbyChanged()
 {
-	ChatLobbyWidget::updateDisplay();
+	// One "list changed" event arrives for every list of rooms a friend sends, among others: 150 a
+	// minute were counted on a node with 92 rooms, each one a full refresh of the list, page shown
+	// or not. A lone event still refreshes at once; the events that follow within the interval are
+	// served by a single refresh at its end.
+
+	if (mListRefreshPending)
+		return;
+
+	const qint64 elapsed = mLastListRefresh.isValid() ? mLastListRefresh.elapsed() : LIST_REFRESH_MIN_INTERVAL_MS;
+
+	if (elapsed >= LIST_REFRESH_MIN_INTERVAL_MS)
+	{
+		mLastListRefresh.start();
+		ChatLobbyWidget::updateDisplay();
+		return;
+	}
+
+	mListRefreshPending = true;
+
+	QTimer::singleShot(LIST_REFRESH_MIN_INTERVAL_MS - elapsed, this, [this]()
+	{
+		mListRefreshPending = false;
+		mLastListRefresh.start();
+		ChatLobbyWidget::updateDisplay();
+	});
 }
 
 static void updateItem(QTreeWidget *treeWidget, QTreeWidgetItem *item, ChatLobbyId id, const std::string &name, const std::string &topic, int count, bool subscribed, bool autoSubscribe,ChatLobbyFlags lobby_flags)

@@ -31,6 +31,7 @@
 #include <retroshare/rschats.h>
 
 #include <QAbstractButton>
+#include <QElapsedTimer>
 #include <QTreeWidget>
 
 #define IMAGE_CHATLOBBY			    ":/icons/png/chat-lobbies.png"
@@ -148,6 +149,10 @@ private:
 	GxsIdChooser* myInviteIdChooser;
 
 	FontSizeHandler mFontSizeHandler;
+
+	// lobbyChanged() refreshes the list at most once per LIST_REFRESH_MIN_INTERVAL_MS
+	QElapsedTimer mLastListRefresh;
+	bool mListRefreshPending = false;
 
 	/* UI - from Designer */
 	Ui::ChatLobbyWidget ui;
