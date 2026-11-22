@@ -311,6 +311,7 @@ pacman -S --needed base-devel git perl ruby \
   mingw-w64-ucrt-x86_64-doxygen mingw-w64-ucrt-x86_64-python \
   mingw-w64-ucrt-x86_64-qt5-base mingw-w64-ucrt-x86_64-qt5-multimedia \
   mingw-w64-ucrt-x86_64-qt5-svg mingw-w64-ucrt-x86_64-qt5-tools \
+  mingw-w64-ucrt-x86_64-qt5-translations \
   mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-libbotan mingw-w64-ucrt-x86_64-sqlcipher \
   mingw-w64-ucrt-x86_64-miniupnpc mingw-w64-ucrt-x86_64-json-c mingw-w64-ucrt-x86_64-rapidjson \
   mingw-w64-ucrt-x86_64-asio mingw-w64-ucrt-x86_64-libxml2 mingw-w64-ucrt-x86_64-libxslt \
@@ -324,12 +325,19 @@ pacman -S --needed base-devel git perl ruby \
   mingw-w64-ucrt-x86_64-doxygen mingw-w64-ucrt-x86_64-python \
   mingw-w64-ucrt-x86_64-qt6-base mingw-w64-ucrt-x86_64-qt6-multimedia \
   mingw-w64-ucrt-x86_64-qt6-svg mingw-w64-ucrt-x86_64-qt6-5compat mingw-w64-ucrt-x86_64-qt6-tools \
+  mingw-w64-ucrt-x86_64-qt6-translations \
   mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-libbotan mingw-w64-ucrt-x86_64-sqlcipher \
   mingw-w64-ucrt-x86_64-miniupnpc mingw-w64-ucrt-x86_64-json-c mingw-w64-ucrt-x86_64-rapidjson \
   mingw-w64-ucrt-x86_64-asio mingw-w64-ucrt-x86_64-libxml2 mingw-w64-ucrt-x86_64-libxslt \
   mingw-w64-ucrt-x86_64-speex mingw-w64-ucrt-x86_64-speexdsp mingw-w64-ucrt-x86_64-ffmpeg \
   mingw-w64-ucrt-x86_64-bzip2 mingw-w64-ucrt-x86_64-zlib
 ```
+
+`qt5-translations` / `qt6-translations` is not needed to compile. It holds Qt's
+own translations (standard dialog buttons, the context menu of text fields…),
+which the packaging script of [§5.5](#55-package-it) copies into the portable
+folder; without it these strings stay in English whatever language RetroShare
+is set to.
 
 Optional, for a compressed `.7z` archive in [§5.5](#55-package-it). Without it
 the script falls back to `zip` if installed, and otherwise leaves just the
