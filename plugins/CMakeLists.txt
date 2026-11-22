@@ -73,6 +73,10 @@ if(RS_GUI)
 		set(CMAKE_SHARED_MODULE_SUFFIX ".dylib")
 	endif()
 
+	# One install component for every plugin, out-of-tree ones included: their
+	# install() rules name none.
+	set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME retroshare-plugins)
+
 	if(RS_PLUGIN_FEEDREADER)
 		add_subdirectory(FeedReader)
 	endif()
@@ -87,6 +91,40 @@ if(RS_GUI)
 		else()
 			message(STATUS
 				"RetroChess plugin: no checkout in plugins/RetroChess, skipped"
+			)
+		endif()
+	endif()
+
+	# Windows packages: the DLLs the plugins link (FFmpeg, speex, libcurl, ...)
+	# are collected like the program's, by an install-time script.
+	if(RS_PACKAGE_RUNTIME_DEPENDENCIES AND NOT APPLE)
+		set(rs_plugin_files "")
+		foreach(rs_plugin_dir FeedReader VOIP RetroChess)
+			if(IS_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${rs_plugin_dir}")
+				get_property(rs_plugin_targets
+					DIRECTORY ${rs_plugin_dir} PROPERTY BUILDSYSTEM_TARGETS
+				)
+				foreach(rs_plugin_target ${rs_plugin_targets})
+					get_target_property(rs_plugin_type ${rs_plugin_target} TYPE)
+					if(rs_plugin_type STREQUAL "MODULE_LIBRARY")
+						list(APPEND rs_plugin_files "$<TARGET_FILE:${rs_plugin_target}>")
+					endif()
+				endforeach()
+			endif()
+		endforeach()
+		if(rs_plugin_files)
+			include(
+				${PROJECT_SOURCE_DIR}/retroshare-gui/mk/cmake/RuntimeDependenciesInstallScript.cmake
+			)
+			runtime_dependencies_install_script(
+				install-retroshare-plugins-deps.cmake
+				MODULES ${rs_plugin_files}
+				DIRECTORIES ${RUNTIME_DEPENDENCY_PATH}
+					"$<TARGET_FILE_DIR:retroshare::retroshare>"
+					"$<TARGET_FILE_DIR:retroshare::retroshare-gui>"
+			)
+			set_property(GLOBAL APPEND PROPERTY RS_PACKAGE_INSTALL_SCRIPTS
+				${CMAKE_CURRENT_BINARY_DIR}/install-retroshare-plugins-deps.cmake
 			)
 		endif()
 	endif()

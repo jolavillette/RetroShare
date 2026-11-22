@@ -576,6 +576,11 @@ endif()
 add_executable(${TARGET_NAMESPACE}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 
 
+# for the super-project's package
+set(RS_GUI_VERSION_FULL ${PROJECT_VERSION_FULL} CACHE INTERNAL
+	"full version of RetroShare-GUI"
+)
+
 ################################################################################
 ### macOS: self-contained application bundle
 
@@ -612,6 +617,77 @@ if(RS_PACKAGE_RUNTIME_DEPENDENCIES AND APPLE)
 	)
 endif()
 
+
+################################################################################
+### Windows: runtime dependencies of a package
+
+# Install-time scripts that copy into a package the DLLs the program needs and
+# the Qt plugins. Prepared here, outside the packaging section below, and
+# registered in the global property RS_PACKAGE_INSTALL_SCRIPTS, because the
+# super-project's package needs them too.
+if(RS_PACKAGE_RUNTIME_DEPENDENCIES AND NOT APPLE)
+	if(CMAKE_VERSION VERSION_LESS 3.16)
+		message(WARNING
+			"Packaging runtime dependencies with CMake version <3.16. "
+			"This is unlikely to work."
+		)
+	endif()
+
+	# a shared libretroshare built here is not in RUNTIME_DEPENDENCY_PATH
+	set(retroshare_runtime_dir "")
+	if(retroshare_bundled_shared)
+		set(retroshare_runtime_dir "$<TARGET_FILE_DIR:retroshare::retroshare>")
+	endif()
+
+	include(RuntimeDependenciesInstallScript)
+	runtime_dependencies_install_script(
+		install-${PROJECT_NAME}-deps.cmake
+		EXECUTABLES "$<TARGET_FILE:${PROJECT_NAME}>"
+		DIRECTORIES ${RUNTIME_DEPENDENCY_PATH} ${retroshare_runtime_dir}
+	)
+	set_property(GLOBAL APPEND PROPERTY RS_PACKAGE_INSTALL_SCRIPTS
+		${CMAKE_CURRENT_BINARY_DIR}/install-${PROJECT_NAME}-deps.cmake
+	)
+
+	# QT plugins
+	# QT doesn't offer a good way to precisely determine which plugins are needed,
+	# so we just install all of them.
+	get_property(qtplugins DIRECTORY PROPERTY IMPORTED_TARGETS)
+	list(FILTER qtplugins INCLUDE REGEX "^Qt[0-9.]+::.*Plugin\$")
+	string(CONCAT qtplugins.cmake
+		"# 3.15: file(FOLLOW_SYMLINK_CHAIN)\n"
+		"cmake_minimum_required(VERSION 3.15)\n\n"
+	)
+	foreach(plugin ${qtplugins})
+		string(APPEND qtplugins.cmake
+			"file(COPY $<TARGET_FILE:${plugin}>\n"
+				"DESTINATION "
+					"\${CMAKE_INSTALL_PREFIX}/"
+					"${CMAKE_INSTALL_SODIR}/"
+					"$<TARGET_PROPERTY:${plugin},QT_PLUGIN_TYPE>/\n"
+				"NO_SOURCE_PERMISSIONS\n"
+				"FOLLOW_SYMLINK_CHAIN\n"
+			")\n\n"
+		)
+	endforeach()
+	file(GENERATE OUTPUT install-qtplugins.cmake CONTENT "${qtplugins.cmake}")
+
+	# also install DLL dependencies of plugins
+	list(TRANSFORM qtplugins
+		REPLACE ".+" "$<TARGET_FILE:\\0>"
+		OUTPUT_VARIABLE qtplugin_files
+	)
+	runtime_dependencies_install_script(
+		install-qtplugins-deps.cmake
+		MODULES ${qtplugin_files}
+		DIRECTORIES ${RUNTIME_DEPENDENCY_PATH}
+	)
+
+	set_property(GLOBAL APPEND PROPERTY RS_PACKAGE_INSTALL_SCRIPTS
+		${CMAKE_CURRENT_BINARY_DIR}/install-qtplugins.cmake
+		${CMAKE_CURRENT_BINARY_DIR}/install-qtplugins-deps.cmake
+	)
+endif()
 
 ################################################################################
 ### packaging
@@ -687,74 +763,11 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.12)
 	set(CPACK_NSIS_SECTION_SELECTED_VARS ${workaround_19982})
 endif()
 
-## runtime dependencies, macOS: the bundle is finished at install time
+## runtime dependencies: the install-time scripts prepared above
+get_property(CPACK_INSTALL_SCRIPTS GLOBAL PROPERTY RS_PACKAGE_INSTALL_SCRIPTS)
 if(RS_PACKAGE_RUNTIME_DEPENDENCIES AND APPLE)
+	# macOS: the bundle is finished at install time
 	list(APPEND CPACK_INSTALL_SCRIPTS ${RS_MACOS_BUNDLE_FINISH_SCRIPT})
-endif()
-
-## runtime dependencies, Windows
-if(RS_PACKAGE_RUNTIME_DEPENDENCIES AND NOT APPLE)
-	if(CMAKE_VERSION VERSION_LESS 3.16)
-		message(WARNING
-			"Packaging runtime dependencies with CMake version <3.16. "
-			"This is unlikely to work."
-		)
-	endif()
-
-	# a shared libretroshare built here is not in RUNTIME_DEPENDENCY_PATH
-	set(retroshare_runtime_dir "")
-	if(retroshare_bundled_shared)
-		set(retroshare_runtime_dir "$<TARGET_FILE_DIR:retroshare::retroshare>")
-	endif()
-
-	include(RuntimeDependenciesInstallScript)
-	runtime_dependencies_install_script(
-		install-${PROJECT_NAME}-deps.cmake
-		EXECUTABLES "$<TARGET_FILE:${PROJECT_NAME}>"
-		DIRECTORIES ${RUNTIME_DEPENDENCY_PATH} ${retroshare_runtime_dir}
-	)
-	list(APPEND CPACK_INSTALL_SCRIPTS
-		${CMAKE_CURRENT_BINARY_DIR}/install-${PROJECT_NAME}-deps.cmake
-	)
-
-	# QT plugins
-	# QT doesn't offer a good way to precisely determine which plugins are needed,
-	# so we just install all of them.
-	get_property(qtplugins DIRECTORY PROPERTY IMPORTED_TARGETS)
-	list(FILTER qtplugins INCLUDE REGEX "^Qt[0-9.]+::.*Plugin\$")
-	string(CONCAT qtplugins.cmake
-		"# 3.15: file(FOLLOW_SYMLINK_CHAIN)\n"
-		"cmake_minimum_required(VERSION 3.15)\n\n"
-	)
-	foreach(plugin ${qtplugins})
-		string(APPEND qtplugins.cmake
-			"file(COPY $<TARGET_FILE:${plugin}>\n"
-				"DESTINATION "
-					"\${CMAKE_INSTALL_PREFIX}/"
-					"${CMAKE_INSTALL_SODIR}/"
-					"$<TARGET_PROPERTY:${plugin},QT_PLUGIN_TYPE>/\n"
-				"NO_SOURCE_PERMISSIONS\n"
-				"FOLLOW_SYMLINK_CHAIN\n"
-			")\n\n"
-		)
-	endforeach()
-	file(GENERATE OUTPUT install-qtplugins.cmake CONTENT "${qtplugins.cmake}")
-
-	# also install DLL dependencies of plugins
-	list(TRANSFORM qtplugins
-		REPLACE ".+" "$<TARGET_FILE:\\0>"
-		OUTPUT_VARIABLE qtplugin_files
-	)
-	runtime_dependencies_install_script(
-		install-qtplugins-deps.cmake
-		MODULES ${qtplugin_files}
-		DIRECTORIES ${RUNTIME_DEPENDENCY_PATH}
-	)
-
-	list(APPEND CPACK_INSTALL_SCRIPTS
-		${CMAKE_CURRENT_BINARY_DIR}/install-qtplugins.cmake
-		${CMAKE_CURRENT_BINARY_DIR}/install-qtplugins-deps.cmake
-	)
 endif()
 
 ## config file

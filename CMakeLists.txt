@@ -160,7 +160,17 @@ if(RS_FRIENDSERVER)
 endif()
 
 if(RS_WEBUI)
+	# The engine serves the web UI from <data directory>/webui: install it
+	# there (inside the application bundle on macOS), under its own component.
+	if(RS_DATA_DIR)
+		set(WEBUI_INSTALL_DIR "${RS_DATA_DIR}/webui" CACHE PATH
+			"WebUI install directory"
+		)
+	endif()
+	set(rs_default_component ${CMAKE_INSTALL_DEFAULT_COMPONENT_NAME})
+	set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME retroshare-webui)
 	add_subdirectory(retroshare-webui)
+	set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME ${rs_default_component})
 endif()
 
 # macOS: once the program, libretroshare, the plugins and the data are installed
@@ -168,5 +178,53 @@ endif()
 # install-time script; this directory's install rules run after the
 # subdirectories').
 if(APPLE AND RS_GUI AND RS_PACKAGE_RUNTIME_DEPENDENCIES AND RS_MACOS_BUNDLE_FINISH_SCRIPT)
-	install(SCRIPT ${RS_MACOS_BUNDLE_FINISH_SCRIPT})
+	install(SCRIPT ${RS_MACOS_BUNDLE_FINISH_SCRIPT}
+		COMPONENT retroshare-bundle-finish
+	)
 endif()
+
+
+################################################################################
+### packaging
+
+# One package with everything the super-project builds and a user runs: the
+# programs, libretroshare, the plugins, the data, the web UI. What is only
+# needed to build against RetroShare (the *-dev components) stays out.
+set(CPACK_VERBATIM_VARIABLES TRUE)
+set(CPACK_INSTALL_CMAKE_PROJECTS "")
+foreach(rs_package_component
+	retroshare-gui
+	libretroshare
+	retroshare-plugins
+	retroshare-service
+	retroshare-friendserver
+	retroshare-webui
+	# last: makes the macOS bundle self-contained once it is complete
+	retroshare-bundle-finish
+)
+	list(APPEND CPACK_INSTALL_CMAKE_PROJECTS
+		${CMAKE_BINARY_DIR} ${PROJECT_NAME} ${rs_package_component} /
+	)
+endforeach()
+# Windows: the scripts that copy the DLLs and the Qt plugins into the package
+get_property(CPACK_INSTALL_SCRIPTS GLOBAL PROPERTY RS_PACKAGE_INSTALL_SCRIPTS)
+
+set(CPACK_GENERATOR TXZ)
+if(WIN32)
+	set(CPACK_GENERATOR ZIP)
+endif()
+set(CPACK_PACKAGE_CHECKSUM SHA256)
+set(CPACK_PACKAGE_NAME "RetroShare")
+set(CPACK_PACKAGE_VENDOR "RetroShare")
+if(RS_GUI_VERSION_FULL)
+	set(CPACK_PACKAGE_VERSION ${RS_GUI_VERSION_FULL})
+endif()
+string(TOUPPER "${CMAKE_BUILD_TYPE}" rs_build_type_upper)
+if(rs_build_type_upper STREQUAL "RELEASE" OR rs_build_type_upper STREQUAL "MINSIZEREL")
+	set(CPACK_STRIP_FILES TRUE)
+else()
+	set(CPACK_STRIP_FILES FALSE)
+endif()
+# compress the package on every core
+set(CPACK_THREADS 0)
+include(CPack)
