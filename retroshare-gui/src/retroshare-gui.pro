@@ -205,7 +205,7 @@ win32-x-g++ {
 		INCLUDEPATH += ../../../../gpgme-1.1.8/src/
 		INCLUDEPATH += ../../../../libgpg-error-1.7/src/
 
-		RC_FILE = gui/images/retroshare_win.rc
+		RC_FILE = ../data/images/retroshare_win.rc
 }
 
 #################################### Windows #####################################
@@ -245,7 +245,7 @@ win32-g++|win32-clang-g++ {
     dLib = ws2_32 gdi32 uuid ole32 iphlpapi crypt32 winmm
     LIBS *= $$linkDynamicLibs(dLib)
 
-	RC_FILE = gui/images/retroshare_win.rc
+	RC_FILE = ../data/images/retroshare_win.rc
 
 	# export symbols for the plugins
 	LIBS += -Wl,--export-all-symbols,--out-implib,lib/libretroshare-gui.a
@@ -485,7 +485,7 @@ HEADERS +=  rshare.h \
             gui/msgs/TagsMenu.h \
             gui/msgs/textformat.h \
             gui/msgs/MessageUserNotify.h \
-            gui/images/retroshare_win.rc.h \
+            ../data/images/retroshare_win.rc.h \
             gui/settings/RSPermissionMatrixWidget.h \
             gui/settings/rsharesettings.h \
             gui/settings/RsharePeerSettings.h \
