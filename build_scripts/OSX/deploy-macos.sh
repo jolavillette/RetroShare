@@ -134,6 +134,13 @@ if [ -d "retroshare-gui/src/sounds" ]; then
     cp -r retroshare-gui/src/sounds/* "$APP_RESOURCES/sounds/" 2>/dev/null || true
 fi
 
+# The VOIP plugin plays its call sounds from the same sounds/ directory.
+if ls "$APP_RESOURCES"/extensions6/*VOIP*.dylib >/dev/null 2>&1; then
+    cp plugins/VOIP/gui/sounds/*.wav "$APP_RESOURCES/sounds/"
+    cp plugins/VOIP/gui/sounds/CREDITS "$APP_RESOURCES/sounds/CREDITS-VOIP"
+    echo "  VOIP call sounds copied to sounds/."
+fi
+
 if [ -f "libbitdht/src/bitdht/bdboot.txt" ]; then
     cp "libbitdht/src/bitdht/bdboot.txt" "$APP_RESOURCES/"
     echo "  Copied bdboot.txt"

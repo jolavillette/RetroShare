@@ -164,6 +164,13 @@ if [ -d "retroshare-gui/src/sounds" ]; then
     cp -r retroshare-gui/src/sounds/* "$DEPLOY_DIR/sounds/" 2>/dev/null || true
 fi
 
+# The VOIP plugin plays its call sounds from the same sounds/ directory.
+if ls "$DEPLOY_DIR"/Data/extensions6/*VOIP*.dll >/dev/null 2>&1; then
+    cp plugins/VOIP/gui/sounds/*.wav "$DEPLOY_DIR/sounds/"
+    cp plugins/VOIP/gui/sounds/CREDITS "$DEPLOY_DIR/sounds/CREDITS-VOIP"
+    echo "  VOIP call sounds copied to sounds/."
+fi
+
 if [ -d "retroshare-gui/src/license" ]; then
     cp -r retroshare-gui/src/license/* "$DEPLOY_DIR/license/" 2>/dev/null || true
 fi
