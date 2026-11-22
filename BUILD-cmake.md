@@ -48,7 +48,9 @@ Every package has the same kind of name, whatever the system:
 `<commits>-g<commit>` is `git describe` of the repository, then of libretroshare.
 `<runtime>` is what the package needs to run: `glibc-<lowest glibc>` on Linux,
 `macos-<lowest macOS>` on macOS, `ucrt64-msys2` on Windows. A checksum file
-`<name>.sha256` comes with it. `Build/package/` is CPack's work area.
+`<name>.sha256` comes with it. `Build/package/` is CPack's work area. The folder
+inside a `.zip` has the name of the zip; inside a `.tar.xz`, the name without the
+`<runtime>` part.
 
 ### Linux — AppImage
 
