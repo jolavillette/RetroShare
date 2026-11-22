@@ -39,6 +39,17 @@ without the clone, drop `-DRS_PLUGIN_RETROCHESS=ON`.
 | `RS_LIBRETROSHARE_SHARED` | libretroshare as a shared library |
 | `RS_PACKAGE_RUNTIME_DEPENDENCIES` | bundle Qt and the other libraries into the package (default ON on Windows and macOS) |
 
+### Package names
+
+Every package has the same kind of name, whatever the system:
+
+    RetroShare-v<version>-<build day>-<commits>-g<commit>-lib-<commits>-g<commit>-Qt-<Qt version>-<runtime>-<architecture>.<extension>
+
+`<commits>-g<commit>` is `git describe` of the repository, then of libretroshare.
+`<runtime>` is what the package needs to run: `glibc-<lowest glibc>` on Linux,
+`macos-<lowest macOS>` on macOS, `ucrt64-msys2` on Windows. A checksum file
+`<name>.sha256` comes with it. `Build/package/` is CPack's work area.
+
 ### Linux — AppImage
 
 ```bash
@@ -66,7 +77,7 @@ cmake --build Build -j6
 cd Build && cpack
 ```
 
-`cpack` makes `Build/RetroShare-<version>-Darwin.dmg`: the application, signed
+`cpack` makes a `.dmg` in `Build/`: the application, signed
 ad hoc, with Qt, every other library, the plugins, the data, the web UI,
 retroshare-service and retroshare-friendserver inside it, and a link to
 `/Applications`. Set `RS_MACOS_CODESIGN_IDENTITY` to sign with a real identity.
@@ -81,7 +92,7 @@ cmake --build Build -j8
 cd Build && cpack -G ZIP
 ```
 
-`cpack` makes `Build/RetroShare-<version>-win64.zip` with `bin` (the programs
+`cpack` makes a `.zip` in `Build/` with `bin` (the programs
 and every DLL), `lib` (the plugins) and `share` (the data, the web UI). It runs
 from anywhere once unpacked. The programs built are in `Build/bin`. A Release
 build fits in 16 GB of memory at `-j8`; lower it on a smaller machine.
