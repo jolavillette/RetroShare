@@ -585,6 +585,9 @@ add_executable(${TARGET_NAMESPACE}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 set(RS_GUI_VERSION_FULL ${PROJECT_VERSION_FULL} CACHE INTERNAL
 	"full version of RetroShare-GUI"
 )
+set(RS_GUI_QT_VERSION "${Qt${QT_VERSION_MAJOR}_VERSION}" CACHE INTERNAL
+	"version of the Qt RetroShare-GUI is built with"
+)
 
 ################################################################################
 ### macOS: self-contained application bundle

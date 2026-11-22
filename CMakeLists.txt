@@ -217,6 +217,53 @@ elseif(APPLE AND RS_GUI)
 	set(CPACK_GENERATOR DragNDrop)
 	set(CPACK_DMG_VOLUME_NAME "RetroShare")
 endif()
+# The name of the package: the same on every system, see NamePackage.cmake.in.
+# The parts known now go into that script; it finds the others in the package.
+set(rs_package_version "${RS_GUI_VERSION_FULL}")
+set(rs_package_commit "")
+if(rs_package_version MATCHES "^([^-]+)(-.+)$")
+	# <version>-<commits>-g<commit>, and what the build adds after it
+	set(rs_package_version "${CMAKE_MATCH_1}")
+	set(rs_package_commit "${CMAKE_MATCH_2}")
+endif()
+set(rs_package_lib_commit "unknown")
+find_program(RS_GIT_EXECUTABLE git)
+mark_as_advanced(RS_GIT_EXECUTABLE)
+if(RS_GIT_EXECUTABLE)
+	execute_process(
+		COMMAND "${RS_GIT_EXECUTABLE}" describe --tags --match "v*.*.*" --always
+		WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/libretroshare"
+		OUTPUT_VARIABLE rs_lib_describe
+		OUTPUT_STRIP_TRAILING_WHITESPACE
+		ERROR_QUIET
+	)
+	if(rs_lib_describe MATCHES "-([0-9]+-g[0-9a-f]+)$")
+		set(rs_package_lib_commit "${CMAKE_MATCH_1}")
+	elseif(rs_lib_describe)
+		set(rs_package_lib_commit "${rs_lib_describe}")
+	endif()
+endif()
+set(rs_package_qt_version "${RS_GUI_QT_VERSION}")
+if(NOT rs_package_qt_version)
+	set(rs_package_qt_version "none")
+endif()
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" rs_package_architecture)
+if(rs_package_architecture STREQUAL "amd64")
+	set(rs_package_architecture "x86_64")
+endif()
+set(rs_package_windows_runtime "windows")
+if(WIN32 AND DEFINED ENV{MSYSTEM})
+	# the MSYS2 environment the libraries of the package come from
+	string(TOLOWER "$ENV{MSYSTEM}-msys2" rs_package_windows_runtime)
+endif()
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.19)
+	configure_file(mk/cmake/NamePackage.cmake.in name-package.cmake @ONLY)
+	set(CPACK_POST_BUILD_SCRIPTS ${CMAKE_CURRENT_BINARY_DIR}/name-package.cmake)
+	# CPack's work area, where it also leaves the package under the name it
+	# chose; the script puts the named package into the build directory
+	set(CPACK_PACKAGE_DIRECTORY ${CMAKE_BINARY_DIR}/package)
+endif()
+
 set(CPACK_PACKAGE_CHECKSUM SHA256)
 set(CPACK_PACKAGE_NAME "RetroShare")
 set(CPACK_PACKAGE_VENDOR "RetroShare")
