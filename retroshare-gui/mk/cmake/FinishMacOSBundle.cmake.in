@@ -29,7 +29,14 @@
 # 2. Search paths pointing outside the bundle are removed from every binary in
 #    it: the programs keep those of the build tree, and libraries copied from
 #    Homebrew keep Homebrew's.
-# 3. The bundle is signed again: the libraries copied in step 1 were modified
+# 3. A Qt plugin that needs a library which is not in the bundle is removed.
+#    macdeployqt copies every plugin of the categories the program uses, also
+#    those whose own dependencies it cannot find (with Homebrew, where each Qt
+#    module has its own prefix: the PDF image format and the virtual keyboard,
+#    which need QtPdf and QtVirtualKeyboard). Such a plugin cannot be loaded;
+#    left in, it would be loaded on a machine that has that library and not
+#    on the others. The same lack in any other binary is an error.
+# 4. The bundle is signed again: the libraries copied in step 1 were modified
 #    after they had been signed, and macOS on Apple Silicon refuses to load a
 #    library whose signature does not match.
 
@@ -95,6 +102,43 @@ foreach(binary IN LISTS bundle_files)
 		if(NOT result EQUAL 0)
 			message(FATAL_ERROR "cannot remove the search path ${rpath}")
 		endif()
+	endforeach()
+endforeach()
+
+# What a binary of the bundle loads through @rpath must be in the bundle.
+set(frameworks_dir "${app}/Contents/Frameworks")
+set(qt_plugins_dir "${app}/Contents/PlugIns/")
+foreach(binary IN LISTS bundle_files)
+	if(IS_SYMLINK "${binary}")
+		continue()
+	endif()
+	execute_process(COMMAND otool -L "${binary}"
+		RESULT_VARIABLE result
+		OUTPUT_VARIABLE libraries
+		ERROR_QUIET
+	)
+	if(NOT result EQUAL 0)
+		continue()
+	endif()
+	string(REGEX MATCHALL "\n\t@rpath/[^ ]+" dependencies "${libraries}")
+	foreach(dependency IN LISTS dependencies)
+		string(REGEX REPLACE "^\n\t@rpath/" "" dependency "${dependency}")
+		if(EXISTS "${frameworks_dir}/${dependency}")
+			continue()
+		endif()
+		string(FIND "${binary}" "${qt_plugins_dir}" in_qt_plugins)
+		if(NOT in_qt_plugins EQUAL 0)
+			message(FATAL_ERROR
+				"the bundle is not self-contained: ${binary} needs "
+				"${dependency}, which is not in ${frameworks_dir}"
+			)
+		endif()
+		message(STATUS
+			"removing the Qt plugin ${binary}: it needs ${dependency}, "
+			"which is not in the bundle"
+		)
+		file(REMOVE "${binary}")
+		break()
 	endforeach()
 endforeach()
 
