@@ -404,7 +404,10 @@ void RsPostedPostsModel::updateDisplayedWindow()
 
     RsGxsGroupId grpId = mPostedGroup.mMeta.mGroupId;
 
-    RsThread::async([this, grpId, missing, ids, request_id]()
+    // `this` is used on the GUI thread only, once `self` shows the model is alive.
+    QPointer<RsPostedPostsModel> self(this);
+
+    RsThread::async([this, self, grpId, missing, ids, request_id]()
     {
         auto posts = std::make_shared<std::vector<RsPostedPost> >();
         std::vector<RsGxsComment> comments;
@@ -413,8 +416,10 @@ void RsPostedPostsModel::updateDisplayedWindow()
         if(!rsPosted->getBoardContent(grpId, missing, *posts, comments, votes))
             RS_ERR("failed to retrieve the content of ", missing.size(), " posts of board ", grpId);
 
-        RsQThreadUtils::postToObject( [this, grpId, posts, ids, request_id]()
+        RsQThreadUtils::postToObject( [this, self, grpId, posts, ids, request_id]()
         {
+            if(!self) return;
+
             if(request_id != mWindowRequestId || grpId != mPostedGroup.mMeta.mGroupId)
                 return;	// the window changed again meanwhile
 
@@ -423,7 +428,7 @@ void RsPostedPostsModel::updateDisplayedWindow()
 
             commitDisplayedWindow(ids);
             prefetchNextWindow();
-        }, this );
+        }, qApp );
     });
 }
 
@@ -472,7 +477,10 @@ void RsPostedPostsModel::prefetchNextWindow()
     uint32_t request_id = mWindowRequestId;
     RsGxsGroupId grpId = mPostedGroup.mMeta.mGroupId;
 
-    RsThread::async([this, grpId, missing, request_id]()
+    // `this` is used on the GUI thread only, once `self` shows the model is alive.
+    QPointer<RsPostedPostsModel> self(this);
+
+    RsThread::async([this, self, grpId, missing, request_id]()
     {
         auto posts = std::make_shared<std::vector<RsPostedPost> >();
         std::vector<RsGxsComment> comments;
@@ -481,14 +489,16 @@ void RsPostedPostsModel::prefetchNextWindow()
         if(!rsPosted->getBoardContent(grpId, missing, *posts, comments, votes))
             return;
 
-        RsQThreadUtils::postToObject( [this, grpId, posts, request_id]()
+        RsQThreadUtils::postToObject( [this, self, grpId, posts, request_id]()
         {
+            if(!self) return;
+
             if(request_id != mWindowRequestId || grpId != mPostedGroup.mMeta.mGroupId)
                 return;
 
             for(auto& p:*posts)
                 storePostContent(p);
-        }, this );
+        }, qApp );
     });
 }
 
