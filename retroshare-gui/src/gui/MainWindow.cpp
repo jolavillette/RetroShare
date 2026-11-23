@@ -385,9 +385,46 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
 
 }
 
+/* Shutdown diagnostics (debug/shutdown-step-timings, not for upstream). */
+#include <chrono>
+#include <memory>
+#include "util/rsdebug.h"
+#include "util/rsshutdownprobe.h"
+
 /** Destructor. */
 MainWindow::~MainWindow()
 {
+    /* Shutdown diagnostics: one timed line for this body, then one per page.
+     * The pages are children of the page stack and are destroyed after this
+     * body, by the QWidget part of the destruction; each emits destroyed() at
+     * the end of its own destruction, which dates it. Nothing is reordered. */
+    struct ShutdownMarks
+    {
+        std::chrono::steady_clock::time_point last = std::chrono::steady_clock::now();
+        RsShutdownMem mem = RsShutdownMem::now();
+
+        void line(const std::string& what)
+        {
+            const auto now = std::chrono::steady_clock::now();
+            const RsShutdownMem memNow = RsShutdownMem::now();
+            RsInfo() << "shutdown: " << what << " in "
+                     << std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count()
+                     << " ms" << memNow.since(mem);
+            last = now;
+            mem = memNow;
+        }
+    };
+    auto shutdownMarks = std::make_shared<ShutdownMarks>();
+    for(int i = 0; i < ui->stackPages->count(); ++i)
+    {
+        QWidget* page = ui->stackPages->widget(i);
+        const MainPage* mainPage = dynamic_cast<const MainPage*>(page);
+        const std::string name = mainPage ? mainPage->pageName().toStdString()
+                                          : std::string(page->metaObject()->className());
+        QObject::connect(page, &QObject::destroyed, [shutdownMarks, name]()
+        { shutdownMarks->line("main window page " + name + " destroyed"); });
+    }
+
     Settings->setLastPageInMainWindow(ui->stackPages->currentIndex());
     /* Save listWidget position */
     Settings->setValueToGroup("MainWindow", "SplitterState", ui->splitter->saveState());
@@ -424,6 +461,8 @@ MainWindow::~MainWindow()
 #endif
 
     delete(ui);
+
+    shutdownMarks->line("main window destructor body (status bar items, tray, windows released) done");
 }
 
 /** Initialyse Stacked Page*/

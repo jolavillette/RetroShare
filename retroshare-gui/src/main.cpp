@@ -112,6 +112,33 @@ __declspec(dllexport) __cdecl BOOL _OPENSSL_isservice(void)
 #include "gui/RsGUIEventManager.h"
 #include <unistd.h>
 
+/* Shutdown diagnostics (debug/shutdown-step-timings, not for upstream): the
+ * duration of a GUI shutdown step and, on Windows, its page faults and working
+ * set (see util/rsshutdownprobe.h in libretroshare). */
+#include <chrono>
+#include <cstdlib>
+#include "util/rsshutdownprobe.h"
+
+namespace
+{
+struct GuiShutdownStep
+{
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	RsShutdownMem mem = RsShutdownMem::now();
+
+	/// "N ms" since this step began, then its memory figures
+	std::string elapsed() const
+	{
+		return std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+		                          std::chrono::steady_clock::now() - t0).count())
+		     + " ms" + RsShutdownMem::now().since(mem);
+	}
+};
+
+/// Set when main() returns, read by the exit handler
+GuiShutdownStep sGuiReturnStep;
+}
+
 static void showHelp(const argstream& as)
 {
         RsInfo() << "\n" <<
@@ -779,8 +806,9 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
     /* dive into the endless loop */
     int ti = rshare.exec();
     RsInfo() << "shutdown: GUI event loop left, destroying the main window";
+    GuiShutdownStep windowStep;
     delete w ;
-    RsInfo() << "shutdown: main window destroyed";
+    RsInfo() << "shutdown: main window destroyed in " << windowStep.elapsed();
 
 #ifdef RS_JSONAPI
     JsonApiPage::checkShutdownJsonApi();
@@ -799,11 +827,35 @@ feenableexcept(FE_INVALID | FE_DIVBYZERO);
     RsControl::instance()->rsGlobalShutDown();
     RsInfo() << "shutdown: library stopped, leaving main()";
 
-    delete(soundManager);
-    soundManager = NULL;
+    {
+        GuiShutdownStep s;
+        delete(soundManager);
+        soundManager = NULL;
+        RsInfo() << "shutdown: sound manager deleted in " << s.elapsed();
+    }
 
-    Settings->sync();
-    delete(Settings);
+    {
+        GuiShutdownStep s;
+        Settings->sync();
+        RsInfo() << "shutdown: GUI settings written in " << s.elapsed();
+    }
+    {
+        GuiShutdownStep s;
+        delete(Settings);
+        RsInfo() << "shutdown: GUI settings object deleted in " << s.elapsed();
+    }
+
+    /* What follows the return: the local objects of main(), the RsApplication
+     * (QApplication) above all, are destroyed, then exit() runs the handlers
+     * registered with atexit() last first. This one is registered last, so it
+     * runs first, right after those local objects. The static objects and the
+     * unloading of the DLLs come after it and are not timed. */
+    sGuiReturnStep = GuiShutdownStep();
+    std::atexit([]()
+    {
+        RsInfo() << "shutdown: main() returned, its local objects (RsApplication) destroyed in "
+                 << sGuiReturnStep.elapsed() << "; process exit continues";
+    });
 
     return ti ;
 }
