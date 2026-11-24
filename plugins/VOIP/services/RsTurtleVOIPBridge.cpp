@@ -235,13 +235,14 @@ void RsTurtleVOIPBridge::receiveData(const RsGxsTunnelId& tunnel_id, unsigned ch
     DistantChatPeerId incomingId;
     memcpy(&incomingId, data, headerSize);
 
-    // The header is chosen by the remote peer: only accept a distant chat that
-    // links the same two identities as the tunnel the packet came through, or
-    // any tunnel peer could get its call shown in another correspondent's chat
-    // window.
-    if (!distantChatMatchesTunnel(incomingId, tunnel_id)) {
-        RsWarn() << "DISTANT_VOIP: dropping packet whose distant chat id does not "
-                 << "match tunnel " << tunnel_id.toStdString();
+    // The header is chosen by the remote peer. A distant chat is identified by
+    // the id of the GXS tunnel it runs on (both ends derive it from the same
+    // pair of identities), so the only chat a packet may claim is the one of
+    // the tunnel it came through. Any other id would let a tunnel peer get its
+    // call shown in another correspondent's chat window.
+    if (incomingId != DistantChatPeerId(tunnel_id)) {
+        RsWarn() << "DISTANT_VOIP: dropping packet that claims distant chat "
+                 << incomingId.toStdString() << " on tunnel " << tunnel_id.toStdString();
         free(data);
         return;
     }
@@ -265,19 +266,6 @@ void RsTurtleVOIPBridge::receiveData(const RsGxsTunnelId& tunnel_id, unsigned ch
     }
 
     free(data);
-}
-
-bool RsTurtleVOIPBridge::distantChatMatchesTunnel(const DistantChatPeerId& chat_id, const RsGxsTunnelId& tunnel_id)
-{
-    if (mChats == NULL || mGxsTunnels == NULL) return false;
-
-    DistantChatPeerInfo chatInfo;
-    RsGxsTunnelService::GxsTunnelInfo tunnelInfo;
-    if (!mChats->getDistantChatStatus(chat_id, chatInfo)) return false;
-    if (!mGxsTunnels->getTunnelInfo(tunnel_id, tunnelInfo)) return false;
-
-    return chatInfo.to_id == tunnelInfo.destination_gxs_id
-        && chatInfo.own_id == tunnelInfo.source_gxs_id;
 }
 
 void RsTurtleVOIPBridge::registerVirtualToDistantMapping(const RsPeerId& virtual_id, const DistantChatPeerId& chat_id)
