@@ -80,7 +80,7 @@ ChatWidget::ChatWidget(QWidget *parent)
   , completionPosition(0), newMessages(false), typing(false), peerStatus(RsStatusValue::RS_STATUS_OFFLINE)
   , sendingBlocked(false), useCMark(false)
   , lastStatusSendTime(0)
-  , firstShow(true), inChatCharFormatChanged(false), firstSearch(true)
+  , firstShow(true), inChatCharFormatChanged(false), firstSearch(true), mViewAtBottom(true)
   , lastUpdateCursorPos(0), lastUpdateCursorEnd(0)
   , completer(NULL), imBrowser(NULL), notify(NULL)
   , ui(new Ui::ChatWidget)
@@ -202,6 +202,16 @@ ChatWidget::ChatWidget(QWidget *parent)
 	connect(RsGUIEventManager::getInstance(), SIGNAL(chatFontChanged()), this, SLOT(resetFonts()));
 
 	connect(ui->textBrowser, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(contextMenuTextBrowser(QPoint)));
+
+	// A view at the bottom stays there when its area changes size (a plugin bar
+	// or video view, an info frame showing up), not only when a message is
+	// appended: QTextBrowser::append() follows the bottom only if the view is
+	// still at the bottom, and a smaller area had already pushed it up.
+	QScrollBar *textBrowserScrollBar = ui->textBrowser->verticalScrollBar();
+	connect(textBrowserScrollBar, &QScrollBar::valueChanged, this, [this, textBrowserScrollBar](int value) {
+		mViewAtBottom = (value == textBrowserScrollBar->maximum()); });
+	connect(textBrowserScrollBar, &QScrollBar::rangeChanged, this, [this, textBrowserScrollBar](int, int max) {
+		if (mViewAtBottom) textBrowserScrollBar->setValue(max); });
 
 	//connect(ui->chatTextEdit, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(contextMenu(QPoint)));
 	// reset text and color after removing all characters from the QTextEdit and after calling QTextEdit::clear

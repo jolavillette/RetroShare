@@ -254,6 +254,7 @@ private:
 	bool firstShow;
 	bool inChatCharFormatChanged;
 	bool firstSearch;
+	bool mViewAtBottom;	// the text browser shows its last line
 	QPalette qpSave_leSearch;
 	std::map<QTextCursor,QTextCharFormat> smFoundCursor;
 	int iCharToStartSearch;
