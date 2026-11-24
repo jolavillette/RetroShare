@@ -42,6 +42,10 @@
 #include <retroshare/rschats.h>
 #include <retroshare/rsidentity.h>
 
+#include <QGuiApplication>
+#include <QKeyEvent>
+#include <QScreen>
+
 #define CALL_START ":/images/call-start.png"
 #define CALL_STOP  ":/images/call-stop.png"
 #define CALL_HOLD  ":/images/call-hold.png"
@@ -181,21 +185,28 @@ VOIPChatWidgetHolder::VOIPChatWidgetHolder(ChatWidget *chatWidget, VOIPNotify *n
 	};
 	micMuteButton = makeCallBarButton(NULL, iconMicMute, tr("Mute the microphone")) ;
 	cameraToggleButton = makeCallBarButton(NULL, iconCamera, tr("Turn the camera off")) ;
+	answerNoCameraButton = makeCallBarButton(NULL, QIcon(":/images/phone.png"), tr("Answer without camera")) ;
+	answerNoCameraButton->setCheckable(false) ;
 	audioStartedWithVideo = false ;
+	startWithCameraOff = false ;
+
+	connect(answerNoCameraButton, SIGNAL(clicked()), this , SLOT(answerWithoutCamera()));
 
 	connect(micMuteButton, SIGNAL(clicked()), this , SLOT(toggleMicMute()));
 	connect(cameraToggleButton, SIGNAL(clicked()), this , SLOT(toggleCamera()));
 	connect(audioListenToggleButton, SIGNAL(clicked()), this , SLOT(toggleAudioListen()));
 	connect(audioCaptureToggleButton, SIGNAL(clicked()), this , SLOT(toggleAudioCapture()));
 	connect(videoCaptureToggleButton, SIGNAL(clicked()), this , SLOT(toggleVideoCapture()));
-	connect(hangupButton, SIGNAL(clicked()), this , SLOT(hangupCall()));
+	connect(hangupButton, SIGNAL(clicked()), this , SLOT(hangupOrDecline()));
 	connect(hideChatTextToggleButton, SIGNAL(clicked()), this , SLOT(toggleHideChatText()));
 	connect(fullscreenToggleButton, SIGNAL(clicked()), this , SLOT(toggleFullScreen()));
 
-	// At rest: audio call, video call. In a call: microphone, camera, full
-	// screen, hang-up (see updateCallButtons()).
+	// At rest: audio call, video call. Ringing in: green answer buttons, red
+	// decline. In a call: microphone, camera, full screen, hang-up (see
+	// updateCallButtons()).
 	mChatWidget->addTitleBarWidget(audioCaptureToggleButton) ;
 	mChatWidget->addTitleBarWidget(videoCaptureToggleButton) ;
+	mChatWidget->addTitleBarWidget(answerNoCameraButton) ;
 	mChatWidget->addTitleBarWidget(micMuteButton) ;
 	mChatWidget->addTitleBarWidget(audioListenToggleButton) ;
 	mChatWidget->addTitleBarWidget(cameraToggleButton) ;
@@ -312,7 +323,7 @@ VOIPChatWidgetHolder::VOIPChatWidgetHolder(ChatWidget *chatWidget, VOIPNotify *n
 	connect(audioListenToggleButtonFS, SIGNAL(clicked()), this , SLOT(toggleAudioListenFS()));
 	connect(audioCaptureToggleButtonFS, SIGNAL(clicked()), this , SLOT(toggleAudioCaptureFS()));
 	connect(videoCaptureToggleButtonFS, SIGNAL(clicked()), this , SLOT(toggleVideoCaptureFS()));
-	connect(hangupButtonFS, SIGNAL(clicked()), this , SLOT(hangupCall()));
+	connect(hangupButtonFS, SIGNAL(clicked()), this , SLOT(hangupOrDecline()));
 	connect(fullscreenToggleButtonFS, SIGNAL(clicked()), this , SLOT(toggleFullScreenFS()));
 
 	toolBarFSLayout->setDirection(QBoxLayout::LeftToRight);
@@ -328,9 +339,17 @@ VOIPChatWidgetHolder::VOIPChatWidgetHolder(ChatWidget *chatWidget, VOIPNotify *n
 	toolBarFS->setLayout(toolBarFSLayout);
 
 	fullScreenFrame->setParent(0);
+#if defined(Q_OS_MACOS)
+	// No native full screen on macOS: it puts the window in a Space of its own,
+	// and hiding the window without leaving that Space first left a black
+	// screen. A frameless window over the whole screen is shown and hidden
+	// instead (toggleFullScreen()).
+	fullScreenFrame->setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+#else
 	fullScreenFrame->setWindowFlags(Qt::WindowStaysOnTopHint);
-	fullScreenFrame->setFocusPolicy(Qt::StrongFocus);
 	fullScreenFrame->setWindowState(Qt::WindowFullScreen);
+#endif
+	fullScreenFrame->setFocusPolicy(Qt::StrongFocus);
 	fullScreenFrame->hide();
 	fullScreenFrame->installEventFilter(this);
 
@@ -410,106 +429,36 @@ void VOIPChatWidgetHolder::deleteButtonMap(int flags)
 
 void VOIPChatWidgetHolder::addNewAudioButtonMap(const RsPeerId &peer_id)
 {
-	if (mChatWidget) {
-		recAudioRingTime = 0;
-		timerAudioRingTimeOut();
+	if (!mChatWidget)
+		return;
 
-		QString buttonName = peerName(peer_id);
-		if (buttonName.isEmpty()) buttonName = "VoIP";
-		button_map::iterator it = buttonMapTakeCall.find(QString("a").append(buttonName));
-		if (it == buttonMapTakeCall.end()){
-			mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-			                        , tr("%1 is inviting you to start an audio conversation. Do you want to Accept or Decline the invitation?").arg(buttonName), ChatWidget::MSGTYPE_SYSTEM);
+	// Answered or declined with the buttons at the top of the window, green and
+	// red while it rings. The chat only keeps a line of it.
+	const bool already_ringing = recAudioRingTime >= 0;
+	recAudioRingTime = 0;
+	timerAudioRingTimeOut();
 
-			RSButtonOnText *buttonT = mChatWidget->getNewButtonOnTextBrowser(tr("Accept Audio Call"));
-			buttonT->setToolTip(tr("Activate audio"));
-			buttonT->setStyleSheet(QString("border: 1px solid #199909;")
-			                       .append("font-size: 12pt;  color: white;")
-			                       .append("min-width: 128px; min-height: 24px;")
-			                       .append("border-radius: 6px;")
-			                       .append("padding: 3px;")
-			                       .append("background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 rgba(122, 230, 110, 255)," 
-                                     "stop:0.494318 rgba(36, 191, 16, 255), stop:0.505682 rgba(26, 162, 9, 255), stop:1 rgba(17, 106, 6, 255));")
-			                       );
+	if (!already_ringing)
+		addVoipStatusMessage(tr("%1 is calling you (audio call). Answer or decline with the buttons at the top of the window.").arg(peerName(peer_id)));
 
-			buttonT->updateImage();
-
-			connect(buttonT,SIGNAL(clicked()),this,SLOT(startAudioCapture()));
-			connect(buttonT,SIGNAL(mouseEnter()),this,SLOT(botMouseEnterTake()));
-			connect(buttonT,SIGNAL(mouseLeave()),this,SLOT(botMouseLeaveTake()));
-
-			RSButtonOnText *buttonD = mChatWidget->getNewButtonOnTextBrowser(tr("Decline Audio Call"));
-			buttonD->setToolTip(tr("Refuse audio call"));
-			buttonD->setStyleSheet(QString("border: 1px solid #6a1106;")
-			                       .append("font-size: 12pt;  color: white;")
-			                       .append("min-width: 128px; min-height: 24px;")
-			                       .append("border-radius: 6px;")
-			                       .append("padding: 3px;")
-			                       .append("background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 rgba(230, 124, 110, 255), stop:0.494318 rgba(191, 35, 16, 255), "
-                                     "stop:0.505682 rgba(162, 26, 9, 255), stop:1 rgba(106, 17, 6, 255));")
-			                       );
-
-			buttonD->updateImage();
-
-			connect(buttonD,SIGNAL(clicked()),this,SLOT(declineAudioCall()));
-			connect(buttonD,SIGNAL(mouseEnter()),this,SLOT(botMouseEnterDecline()));
-			connect(buttonD,SIGNAL(mouseLeave()),this,SLOT(botMouseLeaveDecline()));
-
-			buttonMapTakeCall.insert(QString("a").append(buttonName), QPair<RSButtonOnText*, RSButtonOnText*>(buttonT, buttonD));
-		}
-	}
+	updateCallButtons();
 }
 
 void VOIPChatWidgetHolder::addNewVideoButtonMap(const RsPeerId &peer_id)
 {
-	if (mChatWidget) {
-		recVideoRingTime = 0;
-		timerVideoRingTimeOut();
+	if (!mChatWidget)
+		return;
 
-		QString buttonName = peerName(peer_id);
-		if (buttonName.isEmpty()) buttonName = "VoIP";
-		button_map::iterator it = buttonMapTakeCall.find(QString("v").append(buttonName));
-		if (it == buttonMapTakeCall.end()){
-			mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-			                        , tr("%1 is inviting you to start a video conversation. Do you want to Accept or Decline the invitation?").arg(buttonName), ChatWidget::MSGTYPE_SYSTEM);
+	// Answered or declined with the buttons at the top of the window, green and
+	// red while it rings. The chat only keeps a line of it.
+	const bool already_ringing = recVideoRingTime >= 0;
+	recVideoRingTime = 0;
+	timerVideoRingTimeOut();
 
-			RSButtonOnText *buttonT = mChatWidget->getNewButtonOnTextBrowser(tr("Accept Video Call"));
-			buttonT->setToolTip(tr("Activate camera"));
-			buttonT->setStyleSheet(QString("border: 1px solid #199909;")
-			                       .append("font-size: 12pt;  color: white;")
-			                       .append("min-width: 128px; min-height: 24px;")
-			                       .append("border-radius: 6px;")
-			                       .append("padding: 3px;")
-			                       .append("background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 rgba(122, 230, 110, 255)," 
-	                                     "stop:0.494318 rgba(36, 191, 16, 255), stop:0.505682 rgba(26, 162, 9, 255), stop:1 rgba(17, 106, 6, 255));")
-			                       );
+	if (!already_ringing)
+		addVoipStatusMessage(tr("%1 is calling you (video call). Answer or decline with the buttons at the top of the window.").arg(peerName(peer_id)));
 
-			buttonT->updateImage();
-
-			connect(buttonT,SIGNAL(clicked()),this,SLOT(startVideoCapture()));
-			connect(buttonT,SIGNAL(mouseEnter()),this,SLOT(botMouseEnterTake()));
-			connect(buttonT,SIGNAL(mouseLeave()),this,SLOT(botMouseLeaveTake()));
-
-			RSButtonOnText *buttonD = mChatWidget->getNewButtonOnTextBrowser(tr("Decline Video Call"));
-			buttonD->setToolTip(tr("Refuse video call"));
-			buttonD->setStyleSheet(QString("border: 1px solid #6a1106;")
-			                       .append("font-size: 12pt;  color: white;")
-			                       .append("min-width: 128px; min-height: 24px;")
-			                       .append("border-radius: 6px;")
-			                       .append("padding: 3px;")
-			                       .append("background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 rgba(230, 124, 110, 255), stop:0.494318 rgba(191, 35, 16, 255), "
-	                                     "stop:0.505682 rgba(162, 26, 9, 255), stop:1 rgba(106, 17, 6, 255));")
-			                       );
-
-			buttonD->updateImage();
-
-			connect(buttonD,SIGNAL(clicked()),this,SLOT(declineVideoCall()));
-			connect(buttonD,SIGNAL(mouseEnter()),this,SLOT(botMouseEnterDecline()));
-			connect(buttonD,SIGNAL(mouseLeave()),this,SLOT(botMouseLeaveDecline()));
-
-			buttonMapTakeCall.insert(QString("v").append(buttonName), QPair<RSButtonOnText*, RSButtonOnText*>(buttonT, buttonD));
-		}
-	}
+	updateCallButtons();
 }
 
 bool VOIPChatWidgetHolder::eventFilter(QObject *obj, QEvent *event)
@@ -517,6 +466,11 @@ bool VOIPChatWidgetHolder::eventFilter(QObject *obj, QEvent *event)
 	if (obj == fullScreenFrame) {
 		if (event->type() == QEvent::Close || event->type() == QEvent::MouseButtonDblClick) {
 			showNormalView();
+		}
+		// Escape leaves full screen, as everywhere else.
+		if (event->type() == QEvent::KeyPress && static_cast<QKeyEvent*>(event)->key() == Qt::Key_Escape) {
+			showNormalView();
+			return true;
 		}
 		if (event->type() == QEvent::Resize) {
 			replaceFullscreenWidget();
@@ -744,7 +698,8 @@ void VOIPChatWidgetHolder::toggleVideoCapture()
 		//activate video input
 		videoWidget->show();
 		videoProcessor->setMaximumBandwidth(rsVOIP->getVoipVideoMaxBandwidth()) ;	// user setting (wizard / settings page)
-		inputVideoDevice->start(QVideoInputDevice::preferredCamera()) ;
+		if (!startWithCameraOff)
+			inputVideoDevice->start(QVideoInputDevice::preferredCamera()) ;
 		videoCallStarted();
 
 		//send system message
@@ -840,7 +795,18 @@ void VOIPChatWidgetHolder::toggleFullScreen()
 		fullscreenToggleButton->setToolTip(tr("Return to normal view."));
 		inputVideoDevice->setEchoVideoTarget(echoVideoDeviceFS) ;
 		videoProcessor->setDisplayTarget(outputVideoDeviceFS) ;
+#if defined(Q_OS_MACOS)
+		// Cover the screen the chat window is on.
+		QScreen *screen = QGuiApplication::screenAt(mChatWidget->mapToGlobal(mChatWidget->rect().center()));
+		if (screen == NULL)
+			screen = QGuiApplication::primaryScreen();
+		fullScreenFrame->setGeometry(screen->geometry());
 		fullScreenFrame->show();
+		fullScreenFrame->raise();
+		fullScreenFrame->activateWindow();
+#else
+		fullScreenFrame->show();
+#endif
 	} else {
 		mChatWidget->hideChatText(false);
 		fullscreenToggleButton->setToolTip(tr("Fullscreen mode"));
@@ -1043,15 +1009,27 @@ void VOIPChatWidgetHolder::updateCallButtons()
 	const bool audioOn = audioCaptureToggleButton->isChecked() && sendAudioRingTime < 0;
 	const bool videoOn = videoCaptureToggleButton->isChecked() && sendVideoRingTime < 0;
 	const bool inCall = audioOn || videoOn;
+	// Ringing in: the call button of that kind answers (green), the red one
+	// declines. A video call can also be answered without our camera.
+	const bool audioRingingIn = !audioCaptureToggleButton->isChecked() && recAudioRingTime >= 0;
+	const bool videoRingingIn = !videoCaptureToggleButton->isChecked() && recVideoRingTime >= 0;
+	const bool ringingIn = audioRingingIn || videoRingingIn;
 
-	audioCaptureToggleButton->setVisible(!inCall && !ringingOut);
-	videoCaptureToggleButton->setVisible(!videoOn && !ringingOut);
+	const QString green("QToolButton { background-color: #2fa84f; border-radius: 6px; }");
+	audioCaptureToggleButton->setStyleSheet(audioRingingIn ? green : QString());
+	videoCaptureToggleButton->setStyleSheet(videoRingingIn ? green : QString());
+	answerNoCameraButton->setStyleSheet(green);
+
+	audioCaptureToggleButton->setVisible(!inCall && !ringingOut && !videoRingingIn);
+	videoCaptureToggleButton->setVisible(!videoOn && !ringingOut && !audioRingingIn);
+	answerNoCameraButton->setVisible(videoRingingIn);
 	micMuteButton->setVisible(audioOn);
 	audioListenToggleButton->setVisible(false);
 	cameraToggleButton->setVisible(videoOn);
 	hideChatTextToggleButton->setVisible(false);
 	fullscreenToggleButton->setVisible(videoOn);
-	hangupButton->setVisible(inCall || ringingOut);
+	hangupButton->setVisible(inCall || ringingOut || ringingIn);
+	hangupButton->setToolTip((ringingIn && !inCall) ? tr("Decline") : tr("Hangup Call"));
 
 	audioCaptureToggleButtonFS->setVisible(!inCall && !ringingOut);
 	videoCaptureToggleButtonFS->setVisible(!videoOn && !ringingOut);
@@ -1064,10 +1042,12 @@ void VOIPChatWidgetHolder::updateCallButtons()
 
 void VOIPChatWidgetHolder::videoCallStarted()
 {
-	cameraToggleButton->setChecked(false);
-	cameraToggleButtonFS->setChecked(false);
-	cameraToggleButton->setToolTip(tr("Turn the camera off"));
+	// Checked camera button: our camera is off.
+	cameraToggleButton->setChecked(startWithCameraOff);
+	cameraToggleButtonFS->setChecked(startWithCameraOff);
+	cameraToggleButton->setToolTip(startWithCameraOff ? tr("Turn the camera on") : tr("Turn the camera off"));
 	cameraToggleButtonFS->setToolTip(cameraToggleButton->toolTip());
+	startWithCameraOff = false;
 
 	if (audioCaptureToggleButton->isChecked())
 		return;	// already in an audio call: the video was added to it
@@ -1137,6 +1117,28 @@ void VOIPChatWidgetHolder::declineVideoCall()
 {
 	addVoipStatusMessage(tr("You declined the video call."));
 	hangupCallVideo();
+}
+
+void VOIPChatWidgetHolder::hangupOrDecline()
+{
+	const bool inCall = (audioCaptureToggleButton->isChecked() && sendAudioRingTime < 0)
+	                 || (videoCaptureToggleButton->isChecked() && sendVideoRingTime < 0);
+	const bool audioRingingIn = !audioCaptureToggleButton->isChecked() && recAudioRingTime >= 0;
+	const bool videoRingingIn = !videoCaptureToggleButton->isChecked() && recVideoRingTime >= 0;
+
+	if (!inCall && (audioRingingIn || videoRingingIn))
+	{
+		if (audioRingingIn) declineAudioCall();
+		if (videoRingingIn) declineVideoCall();
+		return;
+	}
+	hangupCall();
+}
+
+void VOIPChatWidgetHolder::answerWithoutCamera()
+{
+	startWithCameraOff = true;
+	startVideoCapture();	// answers the video call; videoCallStarted() leaves the camera off
 }
 
 void VOIPChatWidgetHolder::toggleCameraFS()

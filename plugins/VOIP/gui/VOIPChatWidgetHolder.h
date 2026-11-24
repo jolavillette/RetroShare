@@ -76,9 +76,13 @@ private slots:
 	void toggleMicMuteFS();
 	void toggleCamera();
 	void toggleCameraFS();
-	// Decline buttons of an invitation.
+	// Decline an incoming call (red button while it rings).
 	void declineAudioCall();
 	void declineVideoCall();
+	// Red button: declines a call ringing in, else hangs up.
+	void hangupOrDecline();
+	// Answers a video call with our camera off.
+	void answerWithoutCamera();
 	void toggleAudioListen();
 	void toggleAudioListenFS();
 	void toggleAudioCapture();
@@ -190,5 +194,9 @@ private:
 	QToolButton *cameraToggleButton;
 	QToolButton *cameraToggleButtonFS;
 	bool audioStartedWithVideo;
+
+	// Shown while a video call rings in, next to the green video button.
+	QToolButton *answerNoCameraButton;
+	bool startWithCameraOff;
 };
 
