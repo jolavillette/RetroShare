@@ -372,8 +372,7 @@ void VOIPChatWidgetHolder::addNewAudioButtonMap(const RsPeerId &peer_id)
 		recAudioRingTime = 0;
 		timerAudioRingTimeOut();
 
-		QString buttonName = QString::fromUtf8(rsPeers->getPeerName(peer_id).c_str());
-		if (buttonName.isEmpty()) buttonName = QString::fromStdString(peer_id.toStdString().c_str());
+		QString buttonName = peerName(peer_id);
 		if (buttonName.isEmpty()) buttonName = "VoIP";
 		button_map::iterator it = buttonMapTakeCall.find(QString("a").append(buttonName));
 		if (it == buttonMapTakeCall.end()){
@@ -425,8 +424,7 @@ void VOIPChatWidgetHolder::addNewVideoButtonMap(const RsPeerId &peer_id)
 		recVideoRingTime = 0;
 		timerVideoRingTimeOut();
 
-		QString buttonName = QString::fromUtf8(rsPeers->getPeerName(peer_id).c_str());
-		if (buttonName.isEmpty()) buttonName = QString::fromStdString(peer_id.toStdString().c_str());
+		QString buttonName = peerName(peer_id);
 		if (buttonName.isEmpty()) buttonName = "VoIP";
 		button_map::iterator it = buttonMapTakeCall.find(QString("v").append(buttonName));
 		if (it == buttonMapTakeCall.end()){
@@ -743,13 +741,14 @@ void VOIPChatWidgetHolder::toggleVideoCapture()
 	videoCaptureToggleButtonFS->setToolTip(videoCaptureToggleButton->toolTip());
 }
 
-void VOIPChatWidgetHolder::addVideoData(const RsPeerId &peer_id, QByteArray* array)
+void VOIPChatWidgetHolder::addVideoData(const RsPeerId &/*peer_id*/, QByteArray* array)
 {
-	sendVideoRingTime = -2;//Receive Video so Accepted
-	if (!videoCaptureToggleButton->isChecked()) {
-		addNewVideoButtonMap(peer_id);
+	// Only the peer's ring invites us. Video outside a call is what the peer
+	// sent before it saw our hang-up (a tunnel holds many such frames): drop it.
+	if (!videoCaptureToggleButton->isChecked())
 		return;
-	}
+
+	sendVideoRingTime = -2;//Receive Video so Accepted
 
 	RsVOIPDataChunk chunk ;
 	chunk.type = RsVOIPDataChunk::RS_VOIP_DATA_TYPE_VIDEO ;
@@ -912,6 +911,17 @@ void VOIPChatWidgetHolder::addVoipStatusMessage(const QString& text)
 		mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime(), text, ChatWidget::MSGTYPE_SYSTEM);
 }
 
+QString VOIPChatWidgetHolder::peerName(const RsPeerId& peer_id)
+{
+	// The chat window is titled with the friend's name in a direct chat and with
+	// the identity's name in a distant one, where peer_id is a tunnel id that
+	// rsPeers does not know.
+	QString name = mChatWidget ? mChatWidget->getTitle() : QString();
+	if (name.isEmpty() && !peer_id.isNull()) name = QString::fromUtf8(rsPeers->getPeerName(peer_id).c_str());
+	if (name.isEmpty() && !peer_id.isNull()) name = QString::fromStdString(peer_id.toStdString());
+	return name;
+}
+
 void VOIPChatWidgetHolder::showCameraProblem(const QString& msg)
 {
 	addVoipStatusMessage(tr("Cannot use the camera: %1").arg(msg));
@@ -953,11 +963,12 @@ void VOIPChatWidgetHolder::audioInputCheckTimeOut()
 
 void VOIPChatWidgetHolder::addAudioData(const RsPeerId &peer_id, QByteArray* array)
 {
-    sendAudioRingTime = -2;//Receive Audio so Accepted
-    if (!audioCaptureToggleButton->isChecked()) {
-        addNewAudioButtonMap(peer_id);
+    // Only the peer's ring invites us. Sound outside a call is what the peer
+    // sent before it saw our hang-up: drop it.
+    if (!audioCaptureToggleButton->isChecked())
         return;
-    }
+
+    sendAudioRingTime = -2;//Receive Audio so Accepted
 
     if (!outputAudioDevice) {
         outputAudioDevice = AudioDeviceHelper::getPreferedOutputDevice();
@@ -1074,9 +1085,9 @@ void VOIPChatWidgetHolder::ReceivedVoipHangUp(const RsPeerId &peer_id, int flags
 		case RS_VOIP_FLAGS_AUDIO_DATA | RS_VOIP_FLAGS_VIDEO_DATA: {
 			if (mChatWidget) {
 				if (videoCaptureToggleButton->isChecked() || audioCaptureToggleButton->isChecked()) {
-					QString peerName = QString::fromUtf8(rsPeers->getPeerName(peer_id).c_str());
+					QString name = peerName(peer_id);
 					mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-					                        , tr("%1 hang up. Your call is closed.").arg(peerName), ChatWidget::MSGTYPE_SYSTEM);
+					                        , tr("%1 hang up. Your call is closed.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
 				}
 				hangupCall();
 			}
@@ -1085,9 +1096,9 @@ void VOIPChatWidgetHolder::ReceivedVoipHangUp(const RsPeerId &peer_id, int flags
 		case RS_VOIP_FLAGS_AUDIO_DATA: {
 			if (mChatWidget) {
 				if (audioCaptureToggleButton->isChecked()) {
-					QString peerName = QString::fromUtf8(rsPeers->getPeerName(peer_id).c_str());
+					QString name = peerName(peer_id);
 					mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-					                        , tr("%1 hang up. Your audio call is closed.").arg(peerName), ChatWidget::MSGTYPE_SYSTEM);
+					                        , tr("%1 hang up. Your audio call is closed.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
 				}
 				hangupCallAudio();
 			}
@@ -1096,9 +1107,9 @@ void VOIPChatWidgetHolder::ReceivedVoipHangUp(const RsPeerId &peer_id, int flags
 		case RS_VOIP_FLAGS_VIDEO_DATA: {
 			if (mChatWidget) {
 				if (videoCaptureToggleButton->isChecked()) {
-					QString peerName = QString::fromUtf8(rsPeers->getPeerName(peer_id).c_str());
+					QString name = peerName(peer_id);
 					mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-					                        , tr("%1 hang up. Your video call is closed.").arg(peerName), ChatWidget::MSGTYPE_SYSTEM);
+					                        , tr("%1 hang up. Your video call is closed.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
 				}
 				hangupCallVideo();
 			}
@@ -1117,9 +1128,9 @@ void VOIPChatWidgetHolder::ReceivedVoipAccept(const RsPeerId &peer_id, int flags
 		case RS_VOIP_FLAGS_AUDIO_DATA: {
 			if (mChatWidget) {
 				sendAudioRingTime = -2;
-				QString peerName = QString::fromUtf8(rsPeers->getPeerName(peer_id).c_str());
+				QString name = peerName(peer_id);
 				mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-				                        , tr("%1 accepted your audio call.").arg(peerName), ChatWidget::MSGTYPE_SYSTEM);
+				                        , tr("%1 accepted your audio call.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
 				if (audioCaptureToggleButton->isChecked())
 					toggleAudioCapture();
 			}
@@ -1128,9 +1139,9 @@ void VOIPChatWidgetHolder::ReceivedVoipAccept(const RsPeerId &peer_id, int flags
 		case RS_VOIP_FLAGS_VIDEO_DATA: {
 			if (mChatWidget) {
 				sendVideoRingTime = -2;
-				QString peerName = QString::fromUtf8(rsPeers->getPeerName(peer_id).c_str());
+				QString name = peerName(peer_id);
 				mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-				                        , tr("%1 accepted your video call.").arg(peerName), ChatWidget::MSGTYPE_SYSTEM);
+				                        , tr("%1 accepted your video call.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
 				if (videoCaptureToggleButton->isChecked())
 					toggleVideoCapture();
 			}
@@ -1147,6 +1158,8 @@ void VOIPChatWidgetHolder::timerAudioRingTimeOut()
 	//Sending or receiving (-2 connected, -1 reseted, >=0 in progress)
 	if (sendAudioRingTime >= 0) {
 		//Sending
+		if (pbAudioRing->isHidden())	// first tick of this call
+			addVoipStatusMessage(tr("Calling %1, waiting for an answer...").arg(peerName()));
 		++sendAudioRingTime;
 		if (sendAudioRingTime == 100) sendAudioRingTime = 0;
 		pbAudioRing->setValue(sendAudioRingTime);
@@ -1205,6 +1218,8 @@ void VOIPChatWidgetHolder::timerVideoRingTimeOut()
 	//Sending or receiving (-2 connected, -1 reseted, >=0 in progress)
 	if (sendVideoRingTime >= 0) {
 		//Sending
+		if (pbVideoRing->isHidden())	// first tick of this call
+			addVoipStatusMessage(tr("Video call to %1, waiting for an answer...").arg(peerName()));
 		++sendVideoRingTime;
 		if (sendVideoRingTime == 100) sendVideoRingTime = 0;
 		pbVideoRing->setValue(sendVideoRingTime);

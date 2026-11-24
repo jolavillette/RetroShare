@@ -157,6 +157,8 @@ private:
 	// Device problems go to the chat as VoIP status lines, once per call start:
 	// a device that cannot be opened, or opens and delivers nothing.
 	void addVoipStatusMessage(const QString& text);
+	// Name of the correspondent for the call messages.
+	QString peerName(const RsPeerId& peer_id = RsPeerId());
 	void checkAudioDevicesAtCallStart();
 	void showAudioInputProblem(const QString& text);
 
