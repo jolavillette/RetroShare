@@ -423,6 +423,11 @@ VOIPChatWidgetHolder::~VOIPChatWidgetHolder()
 	timerVideoRing->stop();
 	delete(timerVideoRing);
     mTunnelWaitTimer->stop();
+
+    // The chat window is closing: VOIP leaves the distant chat's tunnel, so
+    // that the tunnel closes once the chat has left it too.
+    if (rsTurtleBridge)
+        rsTurtleBridge->releaseChat(mChatWidget->getChatId());
 }
 
 void VOIPChatWidgetHolder::deleteButtonMap(int flags)
@@ -653,9 +658,6 @@ void VOIPChatWidgetHolder::toggleAudioCapture()
 	} else {
         // Abort condition
         mTunnelWaitTimer->stop();
-        if (rsTurtleBridge) {
-             rsTurtleBridge->cancelSearchForChat(mChatWidget->getChatId());
-        }
 		//desactivate buttons
 		audioListenToggleButton->setEnabled(false);
 		audioListenToggleButton->setChecked(false);
@@ -750,9 +752,6 @@ void VOIPChatWidgetHolder::toggleVideoCapture()
 	} else {
         // Abort condition
         mTunnelWaitTimer->stop();
-        if (rsTurtleBridge) {
-             rsTurtleBridge->cancelSearchForChat(mChatWidget->getChatId());
-        }
 		//desactivate buttons
 		hideChatTextToggleButton->setEnabled(false);
 		hideChatTextToggleButton->setChecked(false);

@@ -48,9 +48,10 @@ public:
     // auto-poller) retries.
     RsPeerId getOrCreateTunnelForChat(const ChatId& chatId);
 
-    // Ends VOIP use of the tunnel associated to this chat. The tunnel itself is
-    // shared with the distant chat and stays open for it.
-    void cancelSearchForChat(const ChatId& chatId);
+    // Takes VOIP off the tunnel of this distant chat, when its window closes.
+    // VOIP stays on the tunnel between calls: taking it off when a call ends
+    // could close a tunnel the far end only lists VOIP on yet.
+    void releaseChat(const ChatId& chatId);
 
     // Maps a virtual peer id back to the distant chat it belongs to (used by the
     // GUI to route incoming calls to the right chat window).

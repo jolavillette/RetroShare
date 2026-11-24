@@ -122,49 +122,38 @@ RsPeerId RsTurtleVOIPBridge::getOrCreateTunnelForChat(const ChatId& chatId)
     return RsPeerId(); // GUI auto-poller retries
 }
 
-void RsTurtleVOIPBridge::cancelSearchForChat(const ChatId& chatId)
+void RsTurtleVOIPBridge::releaseChat(const ChatId& chatId)
 {
-    if (!chatId.isDistantChatId() || mChats == NULL || mGxsTunnels == NULL) return;
+    if (!chatId.isDistantChatId() || mGxsTunnels == NULL) return;
 
-    DistantChatPeerInfo info;
-    if (!mChats->getDistantChatStatus(chatId.toDistantChatId(), info)) return;
-
-    RsGxsTunnelId tid;
+    // A distant chat runs on the GXS tunnel of the same id.
+    const RsGxsTunnelId tid(chatId.toDistantChatId());
+    const RsPeerId vp(tid);
+    bool used = false;
     {
         RsStackMutex lock(mMutex);
 
-        std::map<RsGxsId, RsGxsTunnelId>::iterator it = mTunnelByDest.find(info.to_id);
-        if (it == mTunnelByDest.end()) return;
+        used = mReadyTunnels.erase(tid) > 0;
+        used = (mVirtualToDistantMap.erase(vp) > 0) || used;
 
-        tid = it->second;
-        mReadyTunnels.erase(tid);
-        mTunnelByDest.erase(it);
+        for (std::map<RsGxsId, RsGxsTunnelId>::iterator it = mTunnelByDest.begin(); it != mTunnelByDest.end(); )
+            if (it->second == tid) { it = mTunnelByDest.erase(it); used = true; } else ++it;
     }
 
-    // The VOIP rides on the distant chat tunnel (same identity pair, same tunnel
-    // id). gxstunnel really closes a tunnel, and tells the peer, once no client
-    // service is left on it. The side that opened the tunnel lists the chat from
-    // the start, so dropping VOIP there leaves the chat tunnel alone. The side the
-    // tunnel was opened to only lists the services it received data from: before
-    // any text message its list is just VOIP, and closing VOIP would close the
-    // chat on both ends ("not reachable" after a hang-up). There, keep the tunnel:
-    // its lifetime is managed by the opener anyway.
-    // NB: GxsTunnelInfo::is_client_side is true on the side the tunnel was opened
-    // TO (turtle DIRECTION_CLIENT), despite its comment in rsgxstunnel.h.
+    // VOIP is listed on the tunnel once it asked for it or received data from
+    // it. gxstunnel closes the tunnel, and tells the peer, when the last
+    // service leaves it: left there, VOIP would keep alive a tunnel the chat
+    // gave up, and the peer would never learn that the chat was closed.
+    if (!used) return;
+
     // Called off the bridge mutex, like the other gxstunnel calls in this file.
     RsGxsTunnelService::GxsTunnelInfo gti;
     if (!mGxsTunnels->getTunnelInfo(tid, gti)) {
-        RsDbg() << "DISTANT_VOIP: Tunnel " << tid.toStdString() << " already gone, nothing to close.";
+        RsDbg() << "DISTANT_VOIP: Tunnel " << tid.toStdString() << " already gone, nothing to release.";
         return;
     }
 
-    if (gti.is_client_side) {
-        RsDbg() << "DISTANT_VOIP: Call ended, tunnel " << tid.toStdString()
-                << " was opened by the peer: left to the distant chat.";
-        return;
-    }
-
-    RsDbg() << "DISTANT_VOIP: Call ended, releasing VOIP on tunnel " << tid.toStdString();
+    RsDbg() << "DISTANT_VOIP: Chat window closed, releasing VOIP on tunnel " << tid.toStdString();
     mGxsTunnels->closeExistingTunnel(tid, VOIP_GXS_TUNNEL_SERVICE_ID);
 }
 
