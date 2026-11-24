@@ -203,7 +203,10 @@ VOIPChatWidgetHolder::VOIPChatWidgetHolder(ChatWidget *chatWidget, VOIPNotify *n
 
 	// At rest: audio call, video call. Ringing in: green answer buttons, red
 	// decline. In a call: microphone, camera, full screen, hang-up (see
-	// updateCallButtons()).
+	// updateCallButtons()). A gap keeps them apart from the chat's own buttons.
+	QWidget *titleBarGap = new QWidget ;
+	titleBarGap->setFixedWidth(S) ;
+	mChatWidget->addTitleBarWidget(titleBarGap) ;
 	mChatWidget->addTitleBarWidget(audioCaptureToggleButton) ;
 	mChatWidget->addTitleBarWidget(videoCaptureToggleButton) ;
 	mChatWidget->addTitleBarWidget(answerNoCameraButton) ;
