@@ -157,6 +157,34 @@ VOIPChatWidgetHolder::VOIPChatWidgetHolder(ChatWidget *chatWidget, VOIPNotify *n
 	fullscreenToggleButton->setToolTip(tr("Fullscreen mode"));
 	fullscreenToggleButton->setEnabled(false) ;
 
+	QIcon iconMicMute ;
+	iconMicMute.addPixmap(QPixmap(":/images/microphone.png")) ;
+	iconMicMute.addPixmap(QPixmap(":/images/microphone_mute.png"),QIcon::Normal,QIcon::On) ;
+	iconMicMute.addPixmap(QPixmap(":/images/microphone_mute.png"),QIcon::Active,QIcon::On) ;
+
+	QIcon iconCamera ;
+	iconCamera.addPixmap(QPixmap(":/images/filmcam.png")) ;
+	iconCamera.addPixmap(QPixmap(":/images/filmcam-off.png"),QIcon::Normal,QIcon::On) ;
+	iconCamera.addPixmap(QPixmap(":/images/filmcam-off.png"),QIcon::Active,QIcon::On) ;
+
+	auto makeCallBarButton = [&](QWidget *parent, const QIcon& icon, const QString& tip) {
+		QToolButton *b = new QToolButton(parent) ;
+		b->setIcon(icon) ;
+		b->setIconSize(iconSize) ;
+		b->setMinimumSize(buttonSize) ;
+		b->setMaximumSize(buttonSize) ;
+		b->setCheckable(true) ;
+		b->setAutoRaise(true) ;
+		b->setText(QString()) ;
+		b->setToolTip(tip) ;
+		return b ;
+	};
+	micMuteButton = makeCallBarButton(NULL, iconMicMute, tr("Mute the microphone")) ;
+	cameraToggleButton = makeCallBarButton(NULL, iconCamera, tr("Turn the camera off")) ;
+	audioStartedWithVideo = false ;
+
+	connect(micMuteButton, SIGNAL(clicked()), this , SLOT(toggleMicMute()));
+	connect(cameraToggleButton, SIGNAL(clicked()), this , SLOT(toggleCamera()));
 	connect(audioListenToggleButton, SIGNAL(clicked()), this , SLOT(toggleAudioListen()));
 	connect(audioCaptureToggleButton, SIGNAL(clicked()), this , SLOT(toggleAudioCapture()));
 	connect(videoCaptureToggleButton, SIGNAL(clicked()), this , SLOT(toggleVideoCapture()));
@@ -164,12 +192,16 @@ VOIPChatWidgetHolder::VOIPChatWidgetHolder(ChatWidget *chatWidget, VOIPNotify *n
 	connect(hideChatTextToggleButton, SIGNAL(clicked()), this , SLOT(toggleHideChatText()));
 	connect(fullscreenToggleButton, SIGNAL(clicked()), this , SLOT(toggleFullScreen()));
 
-	mChatWidget->addTitleBarWidget(audioListenToggleButton) ;
+	// At rest: audio call, video call. In a call: microphone, camera, full
+	// screen, hang-up (see updateCallButtons()).
 	mChatWidget->addTitleBarWidget(audioCaptureToggleButton) ;
 	mChatWidget->addTitleBarWidget(videoCaptureToggleButton) ;
-	mChatWidget->addTitleBarWidget(hangupButton) ;
+	mChatWidget->addTitleBarWidget(micMuteButton) ;
+	mChatWidget->addTitleBarWidget(audioListenToggleButton) ;
+	mChatWidget->addTitleBarWidget(cameraToggleButton) ;
 	mChatWidget->addTitleBarWidget(hideChatTextToggleButton) ;
 	mChatWidget->addTitleBarWidget(fullscreenToggleButton) ;
+	mChatWidget->addTitleBarWidget(hangupButton) ;
 
 	outputAudioProcessor = NULL ;
 	outputAudioDevice = NULL ;
@@ -272,6 +304,11 @@ VOIPChatWidgetHolder::VOIPChatWidgetHolder(ChatWidget *chatWidget, VOIPNotify *n
 	fullscreenToggleButtonFS->setToolTip(tr("Fullscreen mode"));
 	fullscreenToggleButtonFS->setEnabled(false);
 
+	micMuteButtonFS = makeCallBarButton(fullScreenFrame, iconMicMute, tr("Mute the microphone")) ;
+	cameraToggleButtonFS = makeCallBarButton(fullScreenFrame, iconCamera, tr("Turn the camera off")) ;
+	connect(micMuteButtonFS, SIGNAL(clicked()), this , SLOT(toggleMicMuteFS()));
+	connect(cameraToggleButtonFS, SIGNAL(clicked()), this , SLOT(toggleCameraFS()));
+
 	connect(audioListenToggleButtonFS, SIGNAL(clicked()), this , SLOT(toggleAudioListenFS()));
 	connect(audioCaptureToggleButtonFS, SIGNAL(clicked()), this , SLOT(toggleAudioCaptureFS()));
 	connect(videoCaptureToggleButtonFS, SIGNAL(clicked()), this , SLOT(toggleVideoCaptureFS()));
@@ -281,11 +318,13 @@ VOIPChatWidgetHolder::VOIPChatWidgetHolder(ChatWidget *chatWidget, VOIPNotify *n
 	toolBarFSLayout->setDirection(QBoxLayout::LeftToRight);
 	toolBarFSLayout->setSpacing(2);
 	toolBarFSLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
-	toolBarFSLayout->addWidget(audioListenToggleButtonFS);
 	toolBarFSLayout->addWidget(audioCaptureToggleButtonFS);
 	toolBarFSLayout->addWidget(videoCaptureToggleButtonFS);
-	toolBarFSLayout->addWidget(hangupButtonFS);
+	toolBarFSLayout->addWidget(micMuteButtonFS);
+	toolBarFSLayout->addWidget(audioListenToggleButtonFS);
+	toolBarFSLayout->addWidget(cameraToggleButtonFS);
 	toolBarFSLayout->addWidget(fullscreenToggleButtonFS);
+	toolBarFSLayout->addWidget(hangupButtonFS);
 	toolBarFS->setLayout(toolBarFSLayout);
 
 	fullScreenFrame->setParent(0);
@@ -319,6 +358,7 @@ VOIPChatWidgetHolder::VOIPChatWidgetHolder(ChatWidget *chatWidget, VOIPNotify *n
 	sendVideoRingTime = -1;
 	recAudioRingTime = -1;
 	recVideoRingTime = -1;
+	updateCallButtons();
 
 	timerAudioRing = new QTimer(this);
 	timerAudioRing->setInterval(300);
@@ -411,7 +451,7 @@ void VOIPChatWidgetHolder::addNewAudioButtonMap(const RsPeerId &peer_id)
 
 			buttonD->updateImage();
 
-			connect(buttonD,SIGNAL(clicked()),this,SLOT(hangupCallAudio()));
+			connect(buttonD,SIGNAL(clicked()),this,SLOT(declineAudioCall()));
 			connect(buttonD,SIGNAL(mouseEnter()),this,SLOT(botMouseEnterDecline()));
 			connect(buttonD,SIGNAL(mouseLeave()),this,SLOT(botMouseLeaveDecline()));
 
@@ -463,7 +503,7 @@ void VOIPChatWidgetHolder::addNewVideoButtonMap(const RsPeerId &peer_id)
 
 			buttonD->updateImage();
 
-			connect(buttonD,SIGNAL(clicked()),this,SLOT(hangupCallVideo()));
+			connect(buttonD,SIGNAL(clicked()),this,SLOT(declineVideoCall()));
 			connect(buttonD,SIGNAL(mouseEnter()),this,SLOT(botMouseEnterDecline()));
 			connect(buttonD,SIGNAL(mouseLeave()),this,SLOT(botMouseLeaveDecline()));
 
@@ -513,6 +553,7 @@ void VOIPChatWidgetHolder::hangupCallAudio()
 		sendAudioRingTime = -1;
 		recAudioRingTime = -1;
 	}
+	updateCallButtons();
 }
 
 void VOIPChatWidgetHolder::hangupCallVideo()
@@ -542,6 +583,7 @@ void VOIPChatWidgetHolder::hangupCallVideo()
 		sendVideoRingTime = -1;
 		recVideoRingTime = -1;
 	}
+	updateCallButtons();
 }
 
 void VOIPChatWidgetHolder::toggleAudioListenFS()
@@ -552,10 +594,14 @@ void VOIPChatWidgetHolder::toggleAudioListenFS()
 
 void VOIPChatWidgetHolder::toggleAudioListen()
 {
+    // Checked: the speakers play the peer.
+    if (outputAudioDevice)
+        outputAudioDevice->setVolume(audioListenToggleButton->isChecked() ? 1.0 : 0.0);
+
     if (audioListenToggleButton->isChecked()) {
-        audioListenToggleButton->setToolTip(tr("Mute yourself"));
+        audioListenToggleButton->setToolTip(tr("Mute the speakers"));
     } else {
-        audioListenToggleButton->setToolTip(tr("Unmute yourself"));
+        audioListenToggleButton->setToolTip(tr("Unmute the speakers"));
         //audioListenToggleButton->setChecked(false);
         /*if (outputAudioDevice) {
             outputAudioDevice->stop();
@@ -655,6 +701,7 @@ void VOIPChatWidgetHolder::toggleAudioCapture()
 	}
 	audioCaptureToggleButtonFS->setChecked(audioCaptureToggleButton->isChecked());
 	audioCaptureToggleButtonFS->setToolTip(audioCaptureToggleButton->toolTip());
+	updateCallButtons();
 }
 
 void VOIPChatWidgetHolder::startVideoCapture()
@@ -698,6 +745,7 @@ void VOIPChatWidgetHolder::toggleVideoCapture()
 		videoWidget->show();
 		videoProcessor->setMaximumBandwidth(rsVOIP->getVoipVideoMaxBandwidth()) ;	// user setting (wizard / settings page)
 		inputVideoDevice->start(QVideoInputDevice::preferredCamera()) ;
+		videoCallStarted();
 
 		//send system message
 		if (mChatWidget)
@@ -726,6 +774,7 @@ void VOIPChatWidgetHolder::toggleVideoCapture()
 			inputVideoDevice->stop() ;
 			outputVideoDevice->showFrameOff();
 			videoWidget->hide();
+			videoCallEnded();
 
 			//send system message
 			if (mChatWidget)
@@ -741,6 +790,7 @@ void VOIPChatWidgetHolder::toggleVideoCapture()
 	}
 	videoCaptureToggleButtonFS->setChecked(videoCaptureToggleButton->isChecked());
 	videoCaptureToggleButtonFS->setToolTip(videoCaptureToggleButton->toolTip());
+	updateCallButtons();
 }
 
 void VOIPChatWidgetHolder::addVideoData(const RsPeerId &/*peer_id*/, QByteArray* array)
@@ -955,6 +1005,10 @@ void VOIPChatWidgetHolder::checkAudioDevicesAtCallStart()
 {
 	audioInputProblemShown = false;
 	audioOutputProblemShown = false;	// the speakers open with the first sound received
+	micMuteButton->setChecked(false);
+	micMuteButtonFS->setChecked(false);
+	micMuteButton->setToolTip(tr("Mute the microphone"));
+	micMuteButtonFS->setToolTip(micMuteButton->toolTip());
 
 	if (inputAudioDevice->state() == QAudio::StoppedState && inputAudioDevice->error() != QAudio::NoError)
 	{
@@ -969,11 +1023,126 @@ void VOIPChatWidgetHolder::audioInputCheckTimeOut()
 {
 	// A microphone held by another application, or to which the system refuses
 	// access, can open without any error and still deliver nothing.
-	if (inputAudioDevice == NULL || inputAudioProcessor == NULL || !audioCaptureToggleButton->isChecked())
+	if (inputAudioDevice == NULL || inputAudioProcessor == NULL || !audioCaptureToggleButton->isChecked()
+	        || micMuteButton->isChecked())
 		return;
 
 	if (inputAudioProcessor->bytesReceived() == audioInputBytesAtStart)
 		showAudioInputProblem(tr("The microphone sends no sound. Another application may be using it, or the system may refuse access to it."));
+}
+
+void VOIPChatWidgetHolder::updateCallButtons()
+{
+	// Ringing out: only the hang-up button, which cancels the call. Once the
+	// call is up: microphone and camera on/off, full screen for a video call,
+	// hang-up -- what every chat application offers. The call buttons hold the
+	// call state and stay checked while hidden; the video call button stays
+	// offered during an audio-only call. The speakers and chat-text buttons are
+	// left out.
+	const bool ringingOut = sendAudioRingTime >= 0 || sendVideoRingTime >= 0;
+	const bool audioOn = audioCaptureToggleButton->isChecked() && sendAudioRingTime < 0;
+	const bool videoOn = videoCaptureToggleButton->isChecked() && sendVideoRingTime < 0;
+	const bool inCall = audioOn || videoOn;
+
+	audioCaptureToggleButton->setVisible(!inCall && !ringingOut);
+	videoCaptureToggleButton->setVisible(!videoOn && !ringingOut);
+	micMuteButton->setVisible(audioOn);
+	audioListenToggleButton->setVisible(false);
+	cameraToggleButton->setVisible(videoOn);
+	hideChatTextToggleButton->setVisible(false);
+	fullscreenToggleButton->setVisible(videoOn);
+	hangupButton->setVisible(inCall || ringingOut);
+
+	audioCaptureToggleButtonFS->setVisible(!inCall && !ringingOut);
+	videoCaptureToggleButtonFS->setVisible(!videoOn && !ringingOut);
+	micMuteButtonFS->setVisible(audioOn);
+	audioListenToggleButtonFS->setVisible(false);
+	cameraToggleButtonFS->setVisible(videoOn);
+	fullscreenToggleButtonFS->setVisible(videoOn);
+	hangupButtonFS->setVisible(inCall || ringingOut);
+}
+
+void VOIPChatWidgetHolder::videoCallStarted()
+{
+	cameraToggleButton->setChecked(false);
+	cameraToggleButtonFS->setChecked(false);
+	cameraToggleButton->setToolTip(tr("Turn the camera off"));
+	cameraToggleButtonFS->setToolTip(cameraToggleButton->toolTip());
+
+	if (audioCaptureToggleButton->isChecked())
+		return;	// already in an audio call: the video was added to it
+
+	// Both ends start their sound when the video call starts; the answer to the
+	// video ring stands for the audio one.
+	audioStartedWithVideo = true;
+	audioCaptureToggleButton->setChecked(true);
+	sendAudioRingTime = -2;
+	toggleAudioCapture();
+}
+
+void VOIPChatWidgetHolder::videoCallEnded()
+{
+	if (!audioStartedWithVideo)
+		return;
+
+	audioStartedWithVideo = false;
+	if (audioCaptureToggleButton->isChecked())
+	{
+		audioCaptureToggleButton->setChecked(false);
+		toggleAudioCapture();
+	}
+}
+
+void VOIPChatWidgetHolder::toggleMicMute()
+{
+	// The call goes on: the microphone stops delivering, so nothing is sent.
+	if (inputAudioDevice)
+	{
+		if (micMuteButton->isChecked())
+			inputAudioDevice->suspend();
+		else
+			inputAudioDevice->resume();
+	}
+	micMuteButton->setToolTip(micMuteButton->isChecked() ? tr("Unmute the microphone") : tr("Mute the microphone"));
+	micMuteButtonFS->setChecked(micMuteButton->isChecked());
+	micMuteButtonFS->setToolTip(micMuteButton->toolTip());
+}
+
+void VOIPChatWidgetHolder::toggleMicMuteFS()
+{
+	micMuteButton->setChecked(micMuteButtonFS->isChecked());
+	toggleMicMute();
+}
+
+void VOIPChatWidgetHolder::toggleCamera()
+{
+	// The call goes on: the peer's picture still shows, ours stops.
+	if (cameraToggleButton->isChecked())
+		inputVideoDevice->stop();
+	else
+		inputVideoDevice->start(QVideoInputDevice::preferredCamera());
+
+	cameraToggleButton->setToolTip(cameraToggleButton->isChecked() ? tr("Turn the camera on") : tr("Turn the camera off"));
+	cameraToggleButtonFS->setChecked(cameraToggleButton->isChecked());
+	cameraToggleButtonFS->setToolTip(cameraToggleButton->toolTip());
+}
+
+void VOIPChatWidgetHolder::declineAudioCall()
+{
+	addVoipStatusMessage(tr("You declined the audio call."));
+	hangupCallAudio();
+}
+
+void VOIPChatWidgetHolder::declineVideoCall()
+{
+	addVoipStatusMessage(tr("You declined the video call."));
+	hangupCallVideo();
+}
+
+void VOIPChatWidgetHolder::toggleCameraFS()
+{
+	cameraToggleButton->setChecked(cameraToggleButtonFS->isChecked());
+	toggleCamera();
 }
 
 void VOIPChatWidgetHolder::addAudioData(const RsPeerId &peer_id, QByteArray* array)
@@ -997,6 +1166,7 @@ void VOIPChatWidgetHolder::addAudioData(const RsPeerId &peer_id, QByteArray* arr
         }
         outputAudioProcessor->open(QIODevice::ReadOnly | QIODevice::Unbuffered);
         outputAudioDevice->start(outputAudioProcessor);
+        outputAudioDevice->setVolume(audioListenToggleButton->isChecked() ? 1.0 : 0.0);
     }
 
     if (outputAudioDevice && outputAudioDevice->error() != QAudio::NoError) {
@@ -1099,10 +1269,15 @@ void VOIPChatWidgetHolder::ReceivedVoipHangUp(const RsPeerId &peer_id, int flags
 	switch(flags){
 		case RS_VOIP_FLAGS_AUDIO_DATA | RS_VOIP_FLAGS_VIDEO_DATA: {
 			if (mChatWidget) {
+				if (!videoCaptureToggleButton->isChecked() && !audioCaptureToggleButton->isChecked()
+				        && (recAudioRingTime != -1 || recVideoRingTime != -1))
+					addVoipStatusMessage(tr("%1 cancelled the call.").arg(peerName(peer_id)));
 				if (videoCaptureToggleButton->isChecked() || audioCaptureToggleButton->isChecked()) {
 					QString name = peerName(peer_id);
 					mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-					                        , tr("%1 hang up. Your call is closed.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
+					                        , (sendAudioRingTime >= 0 || sendVideoRingTime >= 0)
+					                          ? tr("%1 declined your call.").arg(name)
+					                          : tr("%1 hang up. Your call is closed.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
 				}
 				hangupCall();
 			}
@@ -1110,10 +1285,15 @@ void VOIPChatWidgetHolder::ReceivedVoipHangUp(const RsPeerId &peer_id, int flags
 		break;
 		case RS_VOIP_FLAGS_AUDIO_DATA: {
 			if (mChatWidget) {
-				if (audioCaptureToggleButton->isChecked()) {
+				if (!audioCaptureToggleButton->isChecked() && recAudioRingTime != -1)
+					addVoipStatusMessage(tr("%1 cancelled the audio call.").arg(peerName(peer_id)));
+				// The sound of a video call ends with it: the video hang-up says so.
+				if (audioCaptureToggleButton->isChecked() && !audioStartedWithVideo) {
 					QString name = peerName(peer_id);
 					mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-					                        , tr("%1 hang up. Your audio call is closed.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
+					                        , (sendAudioRingTime >= 0)
+					                          ? tr("%1 declined your audio call.").arg(name)
+					                          : tr("%1 hang up. Your audio call is closed.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
 				}
 				hangupCallAudio();
 			}
@@ -1121,10 +1301,14 @@ void VOIPChatWidgetHolder::ReceivedVoipHangUp(const RsPeerId &peer_id, int flags
 		break;
 		case RS_VOIP_FLAGS_VIDEO_DATA: {
 			if (mChatWidget) {
+				if (!videoCaptureToggleButton->isChecked() && recVideoRingTime != -1)
+					addVoipStatusMessage(tr("%1 cancelled the video call.").arg(peerName(peer_id)));
 				if (videoCaptureToggleButton->isChecked()) {
 					QString name = peerName(peer_id);
 					mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-					                        , tr("%1 hang up. Your video call is closed.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
+					                        , (sendVideoRingTime >= 0)
+					                          ? tr("%1 declined your video call.").arg(name)
+					                          : tr("%1 hang up. Your video call is closed.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
 				}
 				hangupCallVideo();
 			}
@@ -1176,8 +1360,7 @@ void VOIPChatWidgetHolder::timerAudioRingTimeOut()
 		if (pbAudioRing->isHidden())	// first tick of this call
 		{
 			addVoipStatusMessage(tr("Calling %1, waiting for an answer...").arg(peerName()));
-			hangupButton->show();	// cancels the call
-			hangupButtonFS->show();
+			updateCallButtons();	// the hang-up button cancels the call
 		}
 		++sendAudioRingTime;
 		if (sendAudioRingTime == 100) sendAudioRingTime = 0;
@@ -1226,6 +1409,7 @@ void VOIPChatWidgetHolder::timerAudioRingTimeOut()
 	} else {
 		//Nothing to do, reset stat
 		pbAudioRing->setHidden(true);
+		updateCallButtons();
 		pbAudioRing->setValue(0);
 		pbAudioRing->setToolTip("");
 		audioCaptureToggleButton->setGraphicsEffect(0);
@@ -1240,8 +1424,7 @@ void VOIPChatWidgetHolder::timerVideoRingTimeOut()
 		if (pbVideoRing->isHidden())	// first tick of this call
 		{
 			addVoipStatusMessage(tr("Video call to %1, waiting for an answer...").arg(peerName()));
-			hangupButton->show();	// cancels the call
-			hangupButtonFS->show();
+			updateCallButtons();	// the hang-up button cancels the call
 		}
 		++sendVideoRingTime;
 		if (sendVideoRingTime == 100) sendVideoRingTime = 0;
@@ -1290,6 +1473,7 @@ void VOIPChatWidgetHolder::timerVideoRingTimeOut()
 	} else {
 		//Nothing to do, reset stat
 		pbVideoRing->setHidden(true);
+		updateCallButtons();
 		pbVideoRing->setValue(0);
 		pbVideoRing->setToolTip("");
 		videoCaptureToggleButton->setGraphicsEffect(0);

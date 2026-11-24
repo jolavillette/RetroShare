@@ -72,6 +72,13 @@ public slots:
 private slots:
 	void showCameraProblem(const QString& msg);
 	void audioInputCheckTimeOut();
+	void toggleMicMute();
+	void toggleMicMuteFS();
+	void toggleCamera();
+	void toggleCameraFS();
+	// Decline buttons of an invitation.
+	void declineAudioCall();
+	void declineVideoCall();
 	void toggleAudioListen();
 	void toggleAudioListenFS();
 	void toggleAudioCapture();
@@ -166,5 +173,22 @@ private:
 	qint64 audioInputBytesAtStart;
 	bool audioInputProblemShown;
 	bool audioOutputProblemShown;
+
+	// At rest the window shows the two call buttons; while a call rings or
+	// runs, a call bar replaces them (microphone, camera, full screen,
+	// hang-up). Shows the buttons of the current state.
+	void updateCallButtons();
+	// A video call carries sound: its microphone and speakers start and stop
+	// with it, without an audio ring of their own.
+	void videoCallStarted();
+	void videoCallEnded();
+
+	// Call bar: mute the microphone, turn the camera off, both local, the call
+	// goes on.
+	QToolButton *micMuteButton;
+	QToolButton *micMuteButtonFS;
+	QToolButton *cameraToggleButton;
+	QToolButton *cameraToggleButtonFS;
+	bool audioStartedWithVideo;
 };
 
