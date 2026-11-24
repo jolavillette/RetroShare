@@ -517,7 +517,7 @@ void VOIPChatWidgetHolder::hangupCallAudio()
 	if (!atLeastOneChecked) {
 		//Decline button ,Friend hang up or chat close
 		if (recAudioRingTime != -1) {
-			rsVOIP->sendVoipHangUpCall(mChatWidget->getChatId().toPeerId(), RS_VOIP_FLAGS_AUDIO_DATA);
+			rsVOIP->sendVoipHangUpCall(getEffectivePeerId(false), RS_VOIP_FLAGS_AUDIO_DATA);
 			deleteButtonMap(RS_VOIP_FLAGS_AUDIO_DATA);
 		}
 		sendAudioRingTime = -1;
@@ -547,7 +547,7 @@ void VOIPChatWidgetHolder::hangupCallVideo()
 	if (!atLeastOneChecked) {
 		//Decline button ,Friend hang up or chat close
 		if (recVideoRingTime != -1) {
-			rsVOIP->sendVoipHangUpCall(mChatWidget->getChatId().toPeerId(), RS_VOIP_FLAGS_VIDEO_DATA);
+			rsVOIP->sendVoipHangUpCall(getEffectivePeerId(false), RS_VOIP_FLAGS_VIDEO_DATA);
 			deleteButtonMap(RS_VOIP_FLAGS_VIDEO_DATA);
 		}
 		sendVideoRingTime = -1;
@@ -1479,7 +1479,7 @@ void VOIPChatWidgetHolder::timerAudioRingTimeOut()
 			lastTimePlayOccurs = time(NULL) + 1;
 		}
 
-		if (mVOIPNotify) mVOIPNotify->notifyReceivedVoipAudioCall(mChatWidget->getChatId().toPeerId());
+		if (mVOIPNotify) mVOIPNotify->notifyReceivedVoipAudioCall(notifyPeerId());
 
 		timerAudioRing->start();
 	} else {
@@ -1559,7 +1559,7 @@ void VOIPChatWidgetHolder::timerVideoRingTimeOut()
 			lastTimePlayOccurs = time(NULL) + 1;
 		}
 
-		if (mVOIPNotify) mVOIPNotify->notifyReceivedVoipVideoCall(mChatWidget->getChatId().toPeerId());
+		if (mVOIPNotify) mVOIPNotify->notifyReceivedVoipVideoCall(notifyPeerId());
 
 		timerVideoRing->start();
 	} else {
@@ -1599,6 +1599,14 @@ RsPeerId VOIPChatWidgetHolder::getEffectivePeerId(bool /*allowPopup*/)
     }
     
     return res;
+}
+
+RsPeerId VOIPChatWidgetHolder::notifyPeerId()
+{
+    // A distant chat is identified by its tunnel id, which is also the virtual
+    // peer id the VOIP service and VOIPGUIHandler use for it.
+    const ChatId cid = mChatWidget->getChatId();
+    return cid.isDistantChatId() ? RsPeerId(cid.toDistantChatId()) : cid.toPeerId();
 }
 
 void VOIPChatWidgetHolder::checkTunnelAndAutoCall()

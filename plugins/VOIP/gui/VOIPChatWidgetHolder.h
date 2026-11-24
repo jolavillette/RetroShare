@@ -107,6 +107,10 @@ private slots:
 
 private:
 	RsPeerId getEffectivePeerId(bool allowPopup = false);
+	// Id the VOIP notifications know the correspondent by, without any tunnel
+	// lookup: the friend in a direct chat, the tunnel (virtual peer) in a
+	// distant one.
+	RsPeerId notifyPeerId();
 	void deleteButtonMap(int flags = RS_VOIP_FLAGS_AUDIO_DATA | RS_VOIP_FLAGS_VIDEO_DATA);
 	void addNewVideoButtonMap(const RsPeerId &peer_id);
 	void addNewAudioButtonMap(const RsPeerId &peer_id);
