@@ -54,6 +54,9 @@
 // reported.
 static const int AUDIO_INPUT_CHECK_DELAY_MS = 5000 ;
 
+// An unanswered call stops ringing after this long.
+static const int CALL_RING_TIMEOUT_MS = 60000 ;
+
 
 VOIPChatWidgetHolder::VOIPChatWidgetHolder(ChatWidget *chatWidget, VOIPNotify *notify)
   : QObject(), ChatWidgetHolder(chatWidget), mVOIPNotify(notify)
@@ -195,8 +198,8 @@ VOIPChatWidgetHolder::VOIPChatWidgetHolder(ChatWidget *chatWidget, VOIPNotify *n
 	connect(micMuteButton, SIGNAL(clicked()), this , SLOT(toggleMicMute()));
 	connect(cameraToggleButton, SIGNAL(clicked()), this , SLOT(toggleCamera()));
 	connect(audioListenToggleButton, SIGNAL(clicked()), this , SLOT(toggleAudioListen()));
-	connect(audioCaptureToggleButton, SIGNAL(clicked()), this , SLOT(toggleAudioCapture()));
-	connect(videoCaptureToggleButton, SIGNAL(clicked()), this , SLOT(toggleVideoCapture()));
+	connect(audioCaptureToggleButton, SIGNAL(clicked()), this , SLOT(audioCallButtonClicked()));
+	connect(videoCaptureToggleButton, SIGNAL(clicked()), this , SLOT(videoCallButtonClicked()));
 	connect(hangupButton, SIGNAL(clicked()), this , SLOT(hangupOrDecline()));
 	connect(hideChatTextToggleButton, SIGNAL(clicked()), this , SLOT(toggleHideChatText()));
 	connect(fullscreenToggleButton, SIGNAL(clicked()), this , SLOT(toggleFullScreen()));
@@ -570,6 +573,7 @@ void VOIPChatWidgetHolder::toggleAudioListen()
 
 void VOIPChatWidgetHolder::startAudioCapture()
 {
+	addVoipStatusMessage(tr("You answered the audio call."));
 	recAudioRingTime = -2;
 	audioCaptureToggleButton->setChecked(true);
 	toggleAudioCapture();
@@ -620,9 +624,6 @@ void VOIPChatWidgetHolder::toggleAudioCapture()
 		inputAudioDevice->start(inputAudioProcessor);
 		checkAudioDevicesAtCallStart();
 
-		//send system message
-		if (mChatWidget)
-			mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime(), tr("Outgoing Call is started..."), ChatWidget::MSGTYPE_SYSTEM);
 
 		deleteButtonMap(RS_VOIP_FLAGS_AUDIO_DATA);
 	} else {
@@ -644,10 +645,6 @@ void VOIPChatWidgetHolder::toggleAudioCapture()
 				inputAudioDevice->stop();
 			}
 
-			//send system message
-			if (mChatWidget)
-				mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-				                        , tr("Outgoing Audio Call stopped."), ChatWidget::MSGTYPE_SYSTEM);
 
 			rsVOIP->sendVoipHangUpCall(mChatWidget->getChatId().toPeerId(), RS_VOIP_FLAGS_AUDIO_DATA);
 		}
@@ -663,6 +660,8 @@ void VOIPChatWidgetHolder::toggleAudioCapture()
 
 void VOIPChatWidgetHolder::startVideoCapture()
 {
+	addVoipStatusMessage(startWithCameraOff ? tr("You answered the video call, with your camera off.")
+	                                        : tr("You answered the video call."));
 	recVideoRingTime = -2;
 	videoCaptureToggleButton->setChecked(true);
 	toggleVideoCapture();
@@ -705,10 +704,6 @@ void VOIPChatWidgetHolder::toggleVideoCapture()
 			inputVideoDevice->start(QVideoInputDevice::preferredCamera()) ;
 		videoCallStarted();
 
-		//send system message
-		if (mChatWidget)
-			mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-			                        , tr("You're now sending video..."), ChatWidget::MSGTYPE_SYSTEM);
 
 		deleteButtonMap(RS_VOIP_FLAGS_VIDEO_DATA);
 	} else {
@@ -734,10 +729,6 @@ void VOIPChatWidgetHolder::toggleVideoCapture()
 			videoWidget->hide();
 			videoCallEnded();
 
-			//send system message
-			if (mChatWidget)
-				mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-				                        , tr("Video call stopped"), ChatWidget::MSGTYPE_SYSTEM);
 
 			rsVOIP->sendVoipHangUpCall(mChatWidget->getChatId().toPeerId(), RS_VOIP_FLAGS_VIDEO_DATA);
 		}
@@ -1135,7 +1126,25 @@ void VOIPChatWidgetHolder::hangupOrDecline()
 		if (videoRingingIn) declineVideoCall();
 		return;
 	}
+	addVoipStatusMessage(inCall ? tr("You ended the call.") : tr("You cancelled the call."));
 	hangupCall();
+}
+
+void VOIPChatWidgetHolder::audioCallButtonClicked()
+{
+	// Clicking has already checked the button.
+	if (audioCaptureToggleButton->isChecked() && recAudioRingTime >= 0)
+		startAudioCapture();	// it rang in: answer
+	else
+		toggleAudioCapture();
+}
+
+void VOIPChatWidgetHolder::videoCallButtonClicked()
+{
+	if (videoCaptureToggleButton->isChecked() && recVideoRingTime >= 0)
+		startVideoCapture();	// it rang in: answer
+	else
+		toggleVideoCapture();
 }
 
 void VOIPChatWidgetHolder::answerWithoutCamera()
@@ -1276,14 +1285,11 @@ void VOIPChatWidgetHolder::ReceivedVoipHangUp(const RsPeerId &peer_id, int flags
 			if (mChatWidget) {
 				if (!videoCaptureToggleButton->isChecked() && !audioCaptureToggleButton->isChecked()
 				        && (recAudioRingTime != -1 || recVideoRingTime != -1))
-					addVoipStatusMessage(tr("%1 cancelled the call.").arg(peerName(peer_id)));
-				if (videoCaptureToggleButton->isChecked() || audioCaptureToggleButton->isChecked()) {
-					QString name = peerName(peer_id);
-					mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-					                        , (sendAudioRingTime >= 0 || sendVideoRingTime >= 0)
-					                          ? tr("%1 declined your call.").arg(name)
-					                          : tr("%1 hang up. Your call is closed.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
-				}
+					addVoipStatusMessage(tr("Missed call from %1.").arg(peerName(peer_id)));
+				if (videoCaptureToggleButton->isChecked() || audioCaptureToggleButton->isChecked())
+					addVoipStatusMessage((sendAudioRingTime >= 0 || sendVideoRingTime >= 0)
+					                     ? tr("%1 declined your call.").arg(peerName(peer_id))
+					                     : tr("%1 ended the call.").arg(peerName(peer_id)));
 				hangupCall();
 			}
 		}
@@ -1291,15 +1297,12 @@ void VOIPChatWidgetHolder::ReceivedVoipHangUp(const RsPeerId &peer_id, int flags
 		case RS_VOIP_FLAGS_AUDIO_DATA: {
 			if (mChatWidget) {
 				if (!audioCaptureToggleButton->isChecked() && recAudioRingTime != -1)
-					addVoipStatusMessage(tr("%1 cancelled the audio call.").arg(peerName(peer_id)));
+					addVoipStatusMessage(tr("Missed call from %1.").arg(peerName(peer_id)));
 				// The sound of a video call ends with it: the video hang-up says so.
-				if (audioCaptureToggleButton->isChecked() && !audioStartedWithVideo) {
-					QString name = peerName(peer_id);
-					mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-					                        , (sendAudioRingTime >= 0)
-					                          ? tr("%1 declined your audio call.").arg(name)
-					                          : tr("%1 hang up. Your audio call is closed.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
-				}
+				if (audioCaptureToggleButton->isChecked() && !audioStartedWithVideo)
+					addVoipStatusMessage((sendAudioRingTime >= 0)
+					                     ? tr("%1 declined your audio call.").arg(peerName(peer_id))
+					                     : tr("%1 ended the call.").arg(peerName(peer_id)));
 				hangupCallAudio();
 			}
 		}
@@ -1307,14 +1310,11 @@ void VOIPChatWidgetHolder::ReceivedVoipHangUp(const RsPeerId &peer_id, int flags
 		case RS_VOIP_FLAGS_VIDEO_DATA: {
 			if (mChatWidget) {
 				if (!videoCaptureToggleButton->isChecked() && recVideoRingTime != -1)
-					addVoipStatusMessage(tr("%1 cancelled the video call.").arg(peerName(peer_id)));
-				if (videoCaptureToggleButton->isChecked()) {
-					QString name = peerName(peer_id);
-					mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-					                        , (sendVideoRingTime >= 0)
-					                          ? tr("%1 declined your video call.").arg(name)
-					                          : tr("%1 hang up. Your video call is closed.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
-				}
+					addVoipStatusMessage(tr("Missed call from %1.").arg(peerName(peer_id)));
+				if (videoCaptureToggleButton->isChecked())
+					addVoipStatusMessage((sendVideoRingTime >= 0)
+					                     ? tr("%1 declined your video call.").arg(peerName(peer_id))
+					                     : tr("%1 ended the call.").arg(peerName(peer_id)));
 				hangupCallVideo();
 			}
 		}
@@ -1334,7 +1334,7 @@ void VOIPChatWidgetHolder::ReceivedVoipAccept(const RsPeerId &peer_id, int flags
 				sendAudioRingTime = -2;
 				QString name = peerName(peer_id);
 				mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-				                        , tr("%1 accepted your audio call.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
+				                        , tr("%1 answered your audio call.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
 				if (audioCaptureToggleButton->isChecked())
 					toggleAudioCapture();
 			}
@@ -1345,7 +1345,7 @@ void VOIPChatWidgetHolder::ReceivedVoipAccept(const RsPeerId &peer_id, int flags
 				sendVideoRingTime = -2;
 				QString name = peerName(peer_id);
 				mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime()
-				                        , tr("%1 accepted your video call.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
+				                        , tr("%1 answered your video call.").arg(name), ChatWidget::MSGTYPE_SYSTEM);
 				if (videoCaptureToggleButton->isChecked())
 					toggleVideoCapture();
 			}
@@ -1364,8 +1364,15 @@ void VOIPChatWidgetHolder::timerAudioRingTimeOut()
 		//Sending
 		if (pbAudioRing->isHidden())	// first tick of this call
 		{
-			addVoipStatusMessage(tr("Calling %1, waiting for an answer...").arg(peerName()));
+			ringClock.start();
+			addVoipStatusMessage(tr("Audio call to %1, waiting for an answer...").arg(peerName()));
 			updateCallButtons();	// the hang-up button cancels the call
+		}
+		if (ringClock.isValid() && ringClock.elapsed() > CALL_RING_TIMEOUT_MS)
+		{
+			addVoipStatusMessage(tr("%1 did not answer.").arg(peerName()));
+			hangupCallAudio();	// the peer reads it as a missed call
+			return;
 		}
 		++sendAudioRingTime;
 		if (sendAudioRingTime == 100) sendAudioRingTime = 0;
@@ -1381,6 +1388,15 @@ void VOIPChatWidgetHolder::timerAudioRingTimeOut()
 		timerAudioRing->start();
 	} else if(recAudioRingTime >= 0) {
 		//Receiving
+		if (pbAudioRing->isHidden())	// first tick of this call (the counter wraps every 30 s)
+			ringClock.start();
+		else if (ringClock.isValid() && ringClock.elapsed() > CALL_RING_TIMEOUT_MS + 10000)
+		{
+			// The caller gives up first; it may be gone without a word.
+			addVoipStatusMessage(tr("Missed call from %1.").arg(peerName()));
+			hangupCallAudio();
+			return;
+		}
 		++recAudioRingTime;
 		if (recAudioRingTime == 100) recAudioRingTime = 0;
 		pbAudioRing->setValue(recAudioRingTime);
@@ -1428,8 +1444,15 @@ void VOIPChatWidgetHolder::timerVideoRingTimeOut()
 		//Sending
 		if (pbVideoRing->isHidden())	// first tick of this call
 		{
+			ringClock.start();
 			addVoipStatusMessage(tr("Video call to %1, waiting for an answer...").arg(peerName()));
 			updateCallButtons();	// the hang-up button cancels the call
+		}
+		if (ringClock.isValid() && ringClock.elapsed() > CALL_RING_TIMEOUT_MS)
+		{
+			addVoipStatusMessage(tr("%1 did not answer.").arg(peerName()));
+			hangupCallVideo();	// the peer reads it as a missed call
+			return;
 		}
 		++sendVideoRingTime;
 		if (sendVideoRingTime == 100) sendVideoRingTime = 0;
@@ -1445,6 +1468,15 @@ void VOIPChatWidgetHolder::timerVideoRingTimeOut()
 		timerVideoRing->start();
 	} else if(recVideoRingTime >= 0) {
 		//Receiving
+		if (pbVideoRing->isHidden())	// first tick of this call (the counter wraps every 30 s)
+			ringClock.start();
+		else if (ringClock.isValid() && ringClock.elapsed() > CALL_RING_TIMEOUT_MS + 10000)
+		{
+			// The caller gives up first; it may be gone without a word.
+			addVoipStatusMessage(tr("Missed call from %1.").arg(peerName()));
+			hangupCallVideo();
+			return;
+		}
 		++recVideoRingTime;
 		if (recVideoRingTime == 100) recVideoRingTime = 0;
 		pbVideoRing->setValue(recVideoRingTime);

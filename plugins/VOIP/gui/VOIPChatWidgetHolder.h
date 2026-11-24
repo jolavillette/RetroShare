@@ -24,6 +24,7 @@
 #include <QGraphicsEffect>
 #include <QProgressBar>
 #include <QTimer>
+#include <QElapsedTimer>
 //VOIP
 #include "gui/qtmultimedia_compat.h"
 #include "gui/VOIPNotify.h"
@@ -83,6 +84,9 @@ private slots:
 	void hangupOrDecline();
 	// Answers a video call with our camera off.
 	void answerWithoutCamera();
+	// Call buttons: start a call, or answer one that rings in.
+	void audioCallButtonClicked();
+	void videoCallButtonClicked();
 	void toggleAudioListen();
 	void toggleAudioListenFS();
 	void toggleAudioCapture();
@@ -198,5 +202,8 @@ private:
 	// Shown while a video call rings in, next to the green video button.
 	QToolButton *answerNoCameraButton;
 	bool startWithCameraOff;
+
+	// A call rings at most this long, in or out (see the ring timers).
+	QElapsedTimer ringClock;
 };
 
