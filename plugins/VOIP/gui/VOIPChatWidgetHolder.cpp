@@ -39,6 +39,8 @@
 //libretroshare
 #include <retroshare/rsstatus.h>
 #include <retroshare/rspeers.h>
+#include <retroshare/rschats.h>
+#include <retroshare/rsidentity.h>
 
 #define CALL_START ":/images/call-start.png"
 #define CALL_STOP  ":/images/call-stop.png"
@@ -913,11 +915,24 @@ void VOIPChatWidgetHolder::addVoipStatusMessage(const QString& text)
 
 QString VOIPChatWidgetHolder::peerName(const RsPeerId& peer_id)
 {
-	// The chat window is titled with the friend's name in a direct chat and with
-	// the identity's name in a distant one, where peer_id is a tunnel id that
-	// rsPeers does not know.
-	QString name = mChatWidget ? mChatWidget->getTitle() : QString();
-	if (name.isEmpty() && !peer_id.isNull()) name = QString::fromUtf8(rsPeers->getPeerName(peer_id).c_str());
+	// In a distant chat the correspondent is an identity and peer_id a tunnel id
+	// that rsPeers does not know. Its name is looked up now: the window title is
+	// set when the window opens, to the identity id if the name was not loaded.
+	if (mChatWidget && mChatWidget->getChatId().isDistantChatId())
+	{
+		DistantChatPeerInfo info;
+		RsIdentityDetails details;
+
+		if (rsChats->getDistantChatStatus(mChatWidget->getChatId().toDistantChatId(), info)
+		        && rsIdentity->getIdDetails(info.to_id, details) && !details.mNickname.empty())
+			return QString::fromUtf8(details.mNickname.c_str());
+
+		return mChatWidget->getTitle();
+	}
+
+	QString name;
+	if (!peer_id.isNull()) name = QString::fromUtf8(rsPeers->getPeerName(peer_id).c_str());
+	if (name.isEmpty() && mChatWidget) name = mChatWidget->getTitle();
 	if (name.isEmpty() && !peer_id.isNull()) name = QString::fromStdString(peer_id.toStdString());
 	return name;
 }
@@ -1159,7 +1174,11 @@ void VOIPChatWidgetHolder::timerAudioRingTimeOut()
 	if (sendAudioRingTime >= 0) {
 		//Sending
 		if (pbAudioRing->isHidden())	// first tick of this call
+		{
 			addVoipStatusMessage(tr("Calling %1, waiting for an answer...").arg(peerName()));
+			hangupButton->show();	// cancels the call
+			hangupButtonFS->show();
+		}
 		++sendAudioRingTime;
 		if (sendAudioRingTime == 100) sendAudioRingTime = 0;
 		pbAudioRing->setValue(sendAudioRingTime);
@@ -1219,7 +1238,11 @@ void VOIPChatWidgetHolder::timerVideoRingTimeOut()
 	if (sendVideoRingTime >= 0) {
 		//Sending
 		if (pbVideoRing->isHidden())	// first tick of this call
+		{
 			addVoipStatusMessage(tr("Video call to %1, waiting for an answer...").arg(peerName()));
+			hangupButton->show();	// cancels the call
+			hangupButtonFS->show();
+		}
 		++sendVideoRingTime;
 		if (sendVideoRingTime == 100) sendVideoRingTime = 0;
 		pbVideoRing->setValue(sendVideoRingTime);
