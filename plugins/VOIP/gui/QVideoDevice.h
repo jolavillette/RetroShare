@@ -44,6 +44,7 @@
 #include "gui/VideoProcessor.h"
 
 class VideoEncoder ;
+class QTimer ;
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0) && defined(Q_OS_MACOS)
 class MacCameraCapture ;
 #endif
@@ -167,12 +168,20 @@ protected slots:
 	signals:
 		void networkPacketReady() ;
         void cameraCaptureInfo(CameraStatus status,QCamera::Error qt_cam_err_code);
-        // Human readable camera problem (camera not found, cannot start...)
+        // Human readable camera problem (camera not found, cannot start, no
+        // picture...). Emitted at most once per start().
         void cameraErrorString(QString);
 
 	private:
         // Common tail of the capture path: encode the image and echo it locally.
         void processImage(const QImage& image) ;
+
+        // Emits cameraErrorString() unless a problem was already reported since
+        // start(): one failure often comes through several paths.
+        void reportCameraError(const QString& msg) ;
+        // Started with the camera: a camera that starts but sends no picture
+        // (held by another application, for one) reports no error of its own.
+        void startNoFrameWatch() ;
 
 		VideoProcessor *_video_processor ;
         QCamera *_capture_device;
@@ -204,6 +213,8 @@ protected slots:
 
 		QVideoOutputDevice *_echo_output_device ;
         uint32_t _frames_received ;
+        bool _camera_error_reported ;
+        QTimer *_no_frame_timer ;
 
 		std::list<RsVOIPDataChunk> _out_queue ;
 };

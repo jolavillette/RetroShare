@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <iostream>
 
 #include <QIODevice>
@@ -65,6 +66,10 @@ namespace QtSpeex {
 		bool hasPendingPackets();
                 QByteArray getNetworkPacket();
 
+                // Bytes the audio input device has written since this processor
+                // was created: tells a silent microphone from a dead one.
+                qint64 bytesReceived() const { return iBytesReceived; }
+
                 int iMaxBitRate;
                 int iRealTimeBitrate;
                 bool bPreviousVoice;
@@ -98,6 +103,9 @@ namespace QtSpeex {
 
                 QByteArray inputBuffer;
                 QList<QByteArray> outputNetworkBuffer;
+
+                // writeData() may run on the audio thread.
+                std::atomic<qint64> iBytesReceived;
         };
 
 

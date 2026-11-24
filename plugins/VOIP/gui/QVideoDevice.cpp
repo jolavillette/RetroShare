@@ -53,6 +53,10 @@
 // with it; Qt6 uses it to sample the continuous frame stream of the camera.
 static const int VIDEO_GRAB_PERIOD_MS = 50 ;	// 20 images per second.
 
+// A started camera that has sent no picture after this long is reported. Some
+// cameras need a few seconds to start, and a slow machine adds to it.
+static const int CAMERA_NO_FRAME_DELAY_MS = 10000 ;
+
 QVideoInputDevice::QVideoInputDevice(QWidget *parent)
   :QObject(parent)
 {
@@ -60,6 +64,19 @@ QVideoInputDevice::QVideoInputDevice(QWidget *parent)
 	_video_processor = NULL ;
 	_echo_output_device = NULL ;
 	_frames_received = 0 ;
+	_camera_error_reported = false ;
+
+	// Connected once: start() can fail before it reaches the capture setup.
+	QObject::connect(this,SIGNAL(cameraCaptureInfo(CameraStatus,QCamera::Error)),this,SLOT(errorHandling(CameraStatus,QCamera::Error)));
+
+	_no_frame_timer = new QTimer(this) ;
+	_no_frame_timer->setSingleShot(true) ;
+	_no_frame_timer->setInterval(CAMERA_NO_FRAME_DELAY_MS) ;
+	QObject::connect(_no_frame_timer, &QTimer::timeout, this, [this]()
+	{
+		if(!stopped() && _frames_received == 0)
+			reportCameraError(tr("The camera sends no picture. Another application may be using it.")) ;
+	});
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 	_capture_session = NULL ;
 	_video_sink = NULL ;
@@ -98,6 +115,7 @@ void QVideoInputDevice::stop()
     _current_camera_description.clear();
     _frame_throttle.invalidate() ;
     _frames_received = 0 ;
+    _no_frame_timer->stop() ;
 
 #if defined(Q_OS_MACOS)
     // Keep the AVFoundation object around (cheap) so it can be restarted.
@@ -140,6 +158,7 @@ void QVideoInputDevice::start(const QString& description)
 	// make sure everything is re-initialised
 	//
 	stop() ;
+	_camera_error_reported = false ;
 
 #if defined(Q_OS_MACOS)
     // Qt6's QPermission API never contacts the OS for the camera on macOS
@@ -163,7 +182,10 @@ void QVideoInputDevice::start(const QString& description)
                 self->start(description) ;	// re-enter, now authorized
             }
             else
+            {
                 std::cerr << "VOIP: [mac] camera access not granted, no video." << std::endl;
+                self->reportCameraError(tr("Access to the camera is refused. Allow it in the privacy settings of the system."));
+            }
         });
         return;
     }
@@ -177,12 +199,13 @@ void QVideoInputDevice::start(const QString& description)
 
     _current_camera_description = description;
 
-    QObject::connect(this,SIGNAL(cameraCaptureInfo(CameraStatus,QCamera::Error)),this,SLOT(errorHandling(CameraStatus,QCamera::Error)));
-
     const bool prefer_wide = rsVOIP != NULL && rsVOIP->getVoipVideoWideMode() == RsVOIP::VideoWideNative ;
 
     if(_mac_capture->start(description, prefer_wide, [this](const QImage& image){ handleMacFrame(image); }))
+    {
         emit cameraCaptureInfo(CAMERA_IS_READY, QCamera::NoError);
+        startNoFrameWatch() ;
+    }
     else
         emit cameraCaptureInfo(CANNOT_INITIALIZE_CAMERA, QCamera::NoError);
 
@@ -206,7 +229,10 @@ void QVideoInputDevice::start(const QString& description)
                     start(description) ;	// re-enter, now authorized
                 }
                 else
+                {
                     std::cerr << "VOIP: camera permission not granted, no video." << std::endl;
+                    reportCameraError(tr("Access to the camera is refused. Allow it in the privacy settings of the system."));
+                }
             });
         return;
     }
@@ -228,7 +254,7 @@ void QVideoInputDevice::start(const QString& description)
     if(caminfo.isNull())
     {
         std::cerr << "No video camera available in this system!" << std::endl;
-        emit cameraErrorString(tr("No camera found on this system."));
+        reportCameraError(tr("No camera found on this system."));
         return ;
     }
     _current_camera_description = caminfo.description();
@@ -313,14 +339,13 @@ void QVideoInputDevice::start(const QString& description)
         [this](QCamera::Error err, const QString& msg)
         {
             std::cerr << "VOIP: camera error " << (int)err << ": " << msg.toStdString() << std::endl;
-            emit cameraErrorString(msg.isEmpty() ? tr("Camera error %1").arg((int)err) : msg);
+            reportCameraError(msg.isEmpty() ? tr("Camera error %1").arg((int)err) : msg);
         });
-
-    QObject::connect(this,SIGNAL(cameraCaptureInfo(CameraStatus,QCamera::Error)),this,SLOT(errorHandling(CameraStatus,QCamera::Error)));
 
     emit cameraCaptureInfo(CAMERA_IS_READY,QCamera::NoError);
 
     _capture_device->start();
+    startNoFrameWatch() ;
 #endif // Q_OS_MACOS
 }
 
@@ -500,6 +525,7 @@ void QVideoInputDevice::stop()
 {
     _capture_device_info = QCameraInfo();
     _frames_received = 0 ;
+    _no_frame_timer->stop() ;
 
     if(_grabber != NULL)
         _grabber->disconnect(this) ;	// no more frames to us from now on
@@ -537,6 +563,7 @@ void QVideoInputDevice::start(const QString& description)
 	// make sure everything is re-initialised
 	//
 	stop() ;
+	_camera_error_reported = false ;
 
     QCameraInfo caminfo ;
 
@@ -560,7 +587,7 @@ void QVideoInputDevice::start(const QString& description)
     if(caminfo.isNull())
     {
         std::cerr << "No video camera available in this system!" << std::endl;
-        emit cameraErrorString(tr("No camera found on this system."));
+        reportCameraError(tr("No camera found on this system."));
         return ;
     }
     _capture_device_info = caminfo;
@@ -569,7 +596,7 @@ void QVideoInputDevice::start(const QString& description)
     if(_capture_device->error() != QCamera::NoError)
     {
         QCamera::Error err = _capture_device->error() ;
-        emit cameraErrorString(_capture_device->errorString());
+        reportCameraError(_capture_device->errorString());
         stop() ;
         emit cameraCaptureInfo(CANNOT_INITIALIZE_CAMERA,err);
         std::cerr << "Cannot initialise camera. Something's wrong." << std::endl;
@@ -577,7 +604,6 @@ void QVideoInputDevice::start(const QString& description)
     }
 
     QObject::connect(_capture_device,SIGNAL(error(QCamera::Error)),this,SLOT(cameraError(QCamera::Error)));
-    QObject::connect(this,SIGNAL(cameraCaptureInfo(CameraStatus,QCamera::Error)),this,SLOT(errorHandling(CameraStatus,QCamera::Error)),Qt::UniqueConnection);
 
     _grabber = new VideoFrameGrabber ;
     QObject::connect(_grabber,SIGNAL(frameAvailable(QImage)),this,SLOT(grabImage(QImage)),Qt::QueuedConnection);
@@ -618,13 +644,14 @@ void QVideoInputDevice::start(const QString& description)
     if(_capture_device->error() != QCamera::NoError)
     {
         QCamera::Error err = _capture_device->error() ;
-        emit cameraErrorString(_capture_device->errorString());
+        reportCameraError(_capture_device->errorString());
         stop() ;
         emit cameraCaptureInfo(CANNOT_INITIALIZE_CAMERA,err);
         return ;
     }
 
     emit cameraCaptureInfo(CAMERA_IS_READY,QCamera::NoError);
+    startNoFrameWatch() ;
 }
 
 void QVideoInputDevice::grabImage(const QImage& image)
@@ -643,7 +670,7 @@ void QVideoInputDevice::cameraError(QCamera::Error error)
     QString s = _capture_device ? _capture_device->errorString() : QString() ;
     std::cerr << "VOIP: camera error " << (int)error << ": " << s.toStdString() << std::endl;
 
-    emit cameraErrorString(s.isEmpty() ? tr("Camera error %1").arg((int)error) : s);
+    reportCameraError(s.isEmpty() ? tr("Camera error %1").arg((int)error) : s);
     emit cameraCaptureInfo(CANNOT_INITIALIZE_CAMERA,error);
 }
 
@@ -659,7 +686,26 @@ void QVideoInputDevice::errorHandling(CameraStatus status,QCamera::Error error)
     if(status == CANNOT_INITIALIZE_CAMERA)
     {
         std::cerr << "Cannot initialize camera. Make sure the QtMultimedia camera backend is installed (package libqt5multimedia5-plugins on Qt5), as this is a common cause for camera not being found." << std::endl;
+        reportCameraError(tr("The camera could not be started."));
     }
+}
+
+void QVideoInputDevice::reportCameraError(const QString& msg)
+{
+    if(_camera_error_reported)
+        return ;
+
+    _camera_error_reported = true ;
+    _no_frame_timer->stop() ;
+    std::cerr << "VOIP: camera problem reported: " << msg.toStdString() << std::endl;
+
+    emit cameraErrorString(msg) ;
+}
+
+void QVideoInputDevice::startNoFrameWatch()
+{
+    if(!_camera_error_reported)
+        _no_frame_timer->start() ;
 }
 
 void QVideoInputDevice::processImage(const QImage& image)

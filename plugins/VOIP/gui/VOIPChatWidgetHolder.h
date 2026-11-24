@@ -70,6 +70,8 @@ public slots:
 	void hangupCallVideo() ;
 
 private slots:
+	void showCameraProblem(const QString& msg);
+	void audioInputCheckTimeOut();
 	void toggleAudioListen();
 	void toggleAudioListenFS();
 	void toggleAudioCapture();
@@ -150,5 +152,17 @@ protected:
 	int lastTimePlayOccurs;
 
 	VOIPNotify *mVOIPNotify;
+
+private:
+	// Device problems go to the chat as VoIP status lines, once per call start:
+	// a device that cannot be opened, or opens and delivers nothing.
+	void addVoipStatusMessage(const QString& text);
+	void checkAudioDevicesAtCallStart();
+	void showAudioInputProblem(const QString& text);
+
+	QTimer *timerAudioInputCheck;
+	qint64 audioInputBytesAtStart;
+	bool audioInputProblemShown;
+	bool audioOutputProblemShown;
 };
 

@@ -44,6 +44,10 @@
 #define CALL_STOP  ":/images/call-stop.png"
 #define CALL_HOLD  ":/images/call-hold.png"
 
+// A microphone that has delivered nothing this long after the call started is
+// reported.
+static const int AUDIO_INPUT_CHECK_DELAY_MS = 5000 ;
+
 
 VOIPChatWidgetHolder::VOIPChatWidgetHolder(ChatWidget *chatWidget, VOIPNotify *notify)
   : QObject(), ChatWidgetHolder(chatWidget), mVOIPNotify(notify)
@@ -171,6 +175,15 @@ VOIPChatWidgetHolder::VOIPChatWidgetHolder(ChatWidget *chatWidget, VOIPNotify *n
 	inputAudioDevice = NULL ;
 
 	inputVideoDevice = new QVideoInputDevice(mChatWidget) ; // not started yet ;-)
+	connect(inputVideoDevice, SIGNAL(cameraErrorString(QString)), this, SLOT(showCameraProblem(QString))) ;
+
+	audioInputBytesAtStart = 0 ;
+	audioInputProblemShown = false ;
+	audioOutputProblemShown = false ;
+	timerAudioInputCheck = new QTimer(this) ;
+	timerAudioInputCheck->setInterval(AUDIO_INPUT_CHECK_DELAY_MS) ;
+	timerAudioInputCheck->setSingleShot(true) ;
+	connect(timerAudioInputCheck, SIGNAL(timeout()), this, SLOT(audioInputCheckTimeOut())) ;
 	videoProcessor = new VideoProcessor ;
 
 	// Make a widget with two video devices, one for echo, and one for the talking peer.
@@ -602,6 +615,7 @@ void VOIPChatWidgetHolder::toggleAudioCapture()
 		}
 		connect(inputAudioProcessor, SIGNAL(networkPacketReady()), this, SLOT(sendAudioData()));
 		inputAudioDevice->start(inputAudioProcessor);
+		checkAudioDevicesAtCallStart();
 
 		//send system message
 		if (mChatWidget)
@@ -892,6 +906,51 @@ void VOIPChatWidgetHolder::setAcceptedBandwidth(uint32_t bytes_per_sec)
 	          << rsVOIP->getVoipVideoMaxBandwidth() << " B/s)" << std::endl;
 }
 
+void VOIPChatWidgetHolder::addVoipStatusMessage(const QString& text)
+{
+	if (mChatWidget)
+		mChatWidget->addChatMsg(true, tr("VoIP Status"), QDateTime::currentDateTime(), QDateTime::currentDateTime(), text, ChatWidget::MSGTYPE_SYSTEM);
+}
+
+void VOIPChatWidgetHolder::showCameraProblem(const QString& msg)
+{
+	addVoipStatusMessage(tr("Cannot use the camera: %1").arg(msg));
+}
+
+void VOIPChatWidgetHolder::showAudioInputProblem(const QString& text)
+{
+	if (audioInputProblemShown)
+		return;
+
+	audioInputProblemShown = true;
+	addVoipStatusMessage(text);
+}
+
+void VOIPChatWidgetHolder::checkAudioDevicesAtCallStart()
+{
+	audioInputProblemShown = false;
+	audioOutputProblemShown = false;	// the speakers open with the first sound received
+
+	if (inputAudioDevice->state() == QAudio::StoppedState && inputAudioDevice->error() != QAudio::NoError)
+	{
+		showAudioInputProblem(tr("Cannot open the microphone. Check the audio input device in the VOIP settings."));
+		return;
+	}
+	audioInputBytesAtStart = inputAudioProcessor->bytesReceived();
+	timerAudioInputCheck->start();
+}
+
+void VOIPChatWidgetHolder::audioInputCheckTimeOut()
+{
+	// A microphone held by another application, or to which the system refuses
+	// access, can open without any error and still deliver nothing.
+	if (inputAudioDevice == NULL || inputAudioProcessor == NULL || !audioCaptureToggleButton->isChecked())
+		return;
+
+	if (inputAudioProcessor->bytesReceived() == audioInputBytesAtStart)
+		showAudioInputProblem(tr("The microphone sends no sound. Another application may be using it, or the system may refuse access to it."));
+}
+
 void VOIPChatWidgetHolder::addAudioData(const RsPeerId &peer_id, QByteArray* array)
 {
     sendAudioRingTime = -2;//Receive Audio so Accepted
@@ -921,6 +980,13 @@ void VOIPChatWidgetHolder::addAudioData(const RsPeerId &peer_id, QByteArray* arr
         if (outputAudioDevice->error() == QAudio::UnderrunError)
             outputAudioDevice->setBufferSize(20);
         outputAudioDevice->start(outputAudioProcessor);
+    }
+
+    if (outputAudioDevice && !audioOutputProblemShown
+            && outputAudioDevice->state() == QAudio::StoppedState && outputAudioDevice->error() != QAudio::NoError)
+    {
+        audioOutputProblemShown = true;
+        addVoipStatusMessage(tr("Cannot open the speakers or headphones. Check the audio output device in the VOIP settings."));
     }
     outputAudioProcessor->putNetworkPacket(QString::fromStdString(peer_id.toStdString()), *array);
 

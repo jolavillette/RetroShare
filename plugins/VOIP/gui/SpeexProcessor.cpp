@@ -50,7 +50,8 @@ SpeexInputProcessor::SpeexInputProcessor(QObject *parent) : QIODevice(parent),
     bResetProcessor(true),
     preprocessor(0),
     echo_state(0),
-    inputBuffer()
+    inputBuffer(),
+    iBytesReceived(0)
 {
         enc_bits = new SpeexBits;
         speex_bits_init(enc_bits);
@@ -146,6 +147,7 @@ qint64 SpeexInputProcessor::writeData(const char *data, qint64 maxSize) {
         float sum;
         short max;
 
+        iBytesReceived += maxSize;
         inputBuffer += QByteArray(data, maxSize);
 
         while((size_t)inputBuffer.size() > FRAME_SIZE * sizeof(qint16)) {
