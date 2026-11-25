@@ -55,10 +55,16 @@ public slots:
 	void updateAutoLogin()        ;
 	void updateRunRSOnBoot()      ;
 	void updateRegisterRSProtocol();
+	void toggleGxsDatabaseCompaction();
 
 private:
+	void updateGxsDatabaseCompaction();
+
 	/** Qt Designer generated object */
 	Ui::GeneralPage ui;
+
+	QLabel *mDbCompactionLabel;
+	QPushButton *mDbCompactionButton;
 };
 
 #endif

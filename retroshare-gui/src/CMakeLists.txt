@@ -84,6 +84,7 @@ list(
 	src/util/printpreview.cpp 
 	src/util/log.cpp 
 	src/util/misc.cpp 
+	src/util/qrcodegen/qrcodegen.cpp
 	src/util/HandleRichText.cpp 
 	src/util/ObjectPainter.cpp 
 	src/util/RsFile.cpp 
@@ -146,6 +147,7 @@ list(
 	src/gui/common/RSTextEdit.cpp 
 	src/gui/common/RSPlainTextEdit.cpp 
 	src/gui/common/RSTreeWidget.cpp 
+	src/gui/common/QrCodeDialog.cpp
 	src/gui/common/RSTreeWidgetItem.cpp 
 	src/gui/common/RSFeedWidget.cpp 
 	src/gui/common/RSTabWidget.cpp 
@@ -236,7 +238,6 @@ list(
 
 	src/gui/elastic/graphwidget.cpp 
 	src/gui/elastic/edge.cpp 
-	src/gui/elastic/arrow.cpp 
 	src/gui/elastic/elnode.cpp 
 
 	src/gui/feeds/BoardsCommentsItem.cpp 
@@ -513,6 +514,7 @@ list(
 	src/util/printpreview.h 
 	src/util/log.h 
 	src/util/misc.h 
+	src/util/qrcodegen/qrcodegen.hpp
 	src/util/HandleRichText.h 
 	src/util/FontSizeHandler.h 
 	src/util/ObjectPainter.h 
@@ -613,6 +615,7 @@ list(
 	src/gui/common/RSTextEdit.h 
 	src/gui/common/RSPlainTextEdit.h 
 	src/gui/common/RSTreeWidget.h 
+	src/gui/common/QrCodeDialog.h
 	src/gui/common/RSTreeWidgetItem.h 
 	src/gui/common/RSFeedWidget.h 
 	src/gui/common/RSTabWidget.h 
@@ -670,7 +673,6 @@ list(
 
 	src/gui/elastic/graphwidget.h 
 	src/gui/elastic/edge.h 
-	src/gui/elastic/arrow.h 
 	src/gui/elastic/elnode.h 
 
 	src/gui/feeds/BoardsCommentsItem.h 
@@ -945,21 +947,22 @@ if(RS_GXSPHOTOSHARE)
 endif(RS_GXSPHOTOSHARE)
 
 if(RS_GXSWIKIPOS)
-	target_compile_definitions(
-		${PROJECT_NAME} PUBLIC RS_USE_WIKI 
-		)
-
-	target_include_directories(${PROJECT_NAME} PUBLIC ../../supportlibs/pegmarkdown)
+	# NOTE: the retroshare-gui target is created by the parent CMakeLists.txt
+	# (add_executable) only AFTER this file is include()d, so target_* commands
+	# do not work here. add_definitions() is directory-scoped and applies to the
+	# target created later in this same scope. RS_USE_WIKI is also provided
+	# PUBLIC by libretroshare, but we set it explicitly for clarity. The
+	# pegmarkdown include path comes from linking the pegmarkdown target in the
+	# parent CMakeLists.txt.
+	add_definitions(-DRS_USE_WIKI)
 
 	list(
 		APPEND RS_IMPLEMENTATION_HEADERS
 		src/gui/WikiPoos/WikiDialog.h 
 		src/gui/WikiPoos/WikiAddDialog.h 
-		src/gui/WikiPoos/WikiEditDialog.h 
-		src/gui/gxs/WikiGroupDialog.h 
-		src/gui/gxs/RsGxsUpdateBroadcastBase.h 
-		src/gui/gxs/RsGxsUpdateBroadcastWidget.h 
-		src/gui/gxs/RsGxsUpdateBroadcastPage.h 
+		src/gui/WikiPoos/WikiEditDialog.h
+		src/gui/WikiPoos/WikiUserNotify.h
+		src/gui/gxs/WikiGroupDialog.h
 		)
 
 	list(
@@ -973,11 +976,9 @@ if(RS_GXSWIKIPOS)
 		APPEND RS_GUI_SOURCES
 		src/gui/WikiPoos/WikiDialog.cpp 
 		src/gui/WikiPoos/WikiAddDialog.cpp 
-		src/gui/WikiPoos/WikiEditDialog.cpp 
-		src/gui/gxs/WikiGroupDialog.cpp 
-		src/gui/gxs/RsGxsUpdateBroadcastBase.cpp 
-		src/gui/gxs/RsGxsUpdateBroadcastWidget.cpp 
-		src/gui/gxs/RsGxsUpdateBroadcastPage.cpp 
+		src/gui/WikiPoos/WikiEditDialog.cpp
+		src/gui/WikiPoos/WikiUserNotify.cpp
+		src/gui/gxs/WikiGroupDialog.cpp
 		)
 
 	list(
@@ -987,9 +988,9 @@ if(RS_GXSWIKIPOS)
 endif(RS_GXSWIKIPOS)
 	
 if(RS_GXSTHEWIRE)
-	target_compile_definitions(
-		${PROJECT_NAME} PUBLIC RS_USE_WIRE 
-		)
+	# See the RS_GXSWIKIPOS note above: the target does not exist yet here, so
+	# use a directory-scoped definition (also provided PUBLIC by libretroshare).
+	add_definitions(-DRS_USE_WIRE)
 
 	list(
 		APPEND RS_IMPLEMENTATION_HEADERS
@@ -1004,8 +1005,9 @@ if(RS_GXSTHEWIRE)
 		src/gui/TheWire/PulseReply.h 
 		src/gui/TheWire/PulseReplySeperator.h 
 		src/gui/TheWire/PulseMessage.h
+		src/gui/TheWire/CustomFrame.h
 		src/gui/TheWire/WireUserNotify.h
-		src/gui/feeds/WireNotifyGroupItem.h 
+		src/gui/feeds/WireNotifyGroupItem.h
 		src/gui/feeds/WireNotifyPostItem.h
 		)
 
@@ -1036,7 +1038,8 @@ if(RS_GXSTHEWIRE)
 		src/gui/TheWire/PulseViewGroup.cpp 
 		src/gui/TheWire/PulseReply.cpp 
 		src/gui/TheWire/PulseReplySeperator.cpp 
-		src/gui/TheWire/PulseMessage.cpp 
+		src/gui/TheWire/PulseMessage.cpp
+		src/gui/TheWire/CustomFrame.cpp
 		src/gui/TheWire/WireUserNotify.cpp
 		src/gui/feeds/WireNotifyGroupItem.cpp
 		src/gui/feeds/WireNotifyPostItem.cpp
@@ -1044,7 +1047,7 @@ if(RS_GXSTHEWIRE)
 
 	list(
 		APPEND RS_GUI_QTRESOURCES
-		RESOURCES += src/gui/TheWire/TheWire_images.qrc
+		src/gui/TheWire/TheWire_images.qrc
 		)
 endif(RS_GXSTHEWIRE)
 

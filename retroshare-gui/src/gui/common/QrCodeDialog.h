@@ -1,7 +1,7 @@
 /*******************************************************************************
- * gui/elastic/arrow.h                                                         *
+ * gui/common/QrCodeDialog.h                                                   *
  *                                                                             *
- * Copyright (c) 2012, RetroShare Team <retroshare.project@gmail.com>          *
+ * Copyright (C) 2026 RetroShare Team <retroshare.project@gmail.com>           *
  *                                                                             *
  * This program is free software: you can redistribute it and/or modify        *
  * it under the terms of the GNU Affero General Public License as              *
@@ -10,50 +10,25 @@
  *                                                                             *
  * This program is distributed in the hope that it will be useful,             *
  * but WITHOUT ANY WARRANTY; without even the implied warranty of              *
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the                *
  * GNU Affero General Public License for more details.                         *
  *                                                                             *
  * You should have received a copy of the GNU Affero General Public License    *
- * along with this program. If not, see <https://www.gnu.org/licenses/>.       *
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.      *
  *                                                                             *
  *******************************************************************************/
 
-// This code is inspired from http://doc.qt.io/qt-5/qtwidgets-graphicsview-diagramscene-arrow-h.html
+#pragma once
 
-#ifndef ARROW_H
-#define ARROW_H
+#include <QString>
 
-#include <QGraphicsItem>
+class QWidget;
 
-class Node;
-
-class Arrow : public QGraphicsItem
+namespace QrCodeDialog
 {
-public:
-    Arrow(Node *sourceNode, Node *destNode);
-    ~Arrow();
-
-    Node *sourceNode() const;
-    void setSourceNode(Node *node);
-
-    Node *destNode() const;
-    void setDestNode(Node *node);
-
-    void adjust();
-
-    enum { Type = UserType + 3 };
-    int type() const { return Type; }
-    
-protected:
-    QRectF boundingRect() const;
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
-    
-private:
-    Node *source, *dest;
-
-    QPointF sourcePoint;
-    QPointF destPoint;
-    qreal arrowSize;
-};
-
-#endif
+/** Shows @p text as a QR code in a dialog, with a button to save it as an
+ * image. Line breaks and spaces of @p text are left out of the code: a
+ * certificate is cut in lines for display only. Tells the user when the text
+ * is too long for a QR code. */
+void show(QWidget *parent, const QString& title, const QString& text);
+}

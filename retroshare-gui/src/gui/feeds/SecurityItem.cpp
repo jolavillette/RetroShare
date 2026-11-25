@@ -54,6 +54,14 @@ SecurityItem::SecurityItem(FeedHolder *parent, uint32_t feedId, const RsPgpId &g
 	chatButton->hide();
 	removeFriendButton->setEnabled(false);
 	removeFriendButton->hide();
+	banButton->hide();
+	banButton->setToolTip(tr("Ignore this profile: it is added to the Ignored Users list and its connection attempts are no longer "
+	                         "shown here. It leaves the list if you make it a friend. You can manage the list in Preferences -> Notify."));
+    
+    QPalette pal = banButton->palette();
+    pal.setColor(QPalette::ButtonText, Qt::red);
+    banButton->setPalette(pal);
+
 	peerDetailsButton->setEnabled(false);
 	friendRequesttoolButton->hide();
 	requestLabel->hide();
@@ -68,6 +76,7 @@ SecurityItem::SecurityItem(FeedHolder *parent, uint32_t feedId, const RsPgpId &g
 	//connect( quickmsgButton, SIGNAL( clicked( ) ), this, SLOT( sendMsg() ) );
 
 	connect( removeFriendButton, SIGNAL(clicked()), this, SLOT(removeFriend()));
+	connect( banButton, SIGNAL(clicked()), this, SLOT(banUser()));
 	connect( peerDetailsButton, SIGNAL(clicked()), this, SLOT(peerDetails()));
 	connect( friendRequesttoolButton, SIGNAL(clicked()), this, SLOT(friendRequest()));
 
@@ -129,6 +138,14 @@ void SecurityItem::updateItemStatic()
 			break;
         case RsFeedTypeFlags::RS_FEED_ITEM_SEC_AUTH_DENIED:
 			title = tr("Connection refused by remote peer");
+			requestLabel->hide();
+			avatar->setDefaultAvatar(":images/avatar_refused.png");
+			break;
+        case RsFeedTypeFlags::RS_FEED_ITEM_SEC_PEER_CLOSED_AFTER_AUTH:
+			title = tr("This node closes the connection right after authenticating us: you are probably on its ban list, or its IP whitelist requirement is not met.");
+			titleLabel->setToolTip(tr("The TLS handshake succeeds, so the node knows who we are, then it hangs up before sending anything. "
+			                          "This happened on several consecutive connection attempts. RetroShare keeps retrying every few minutes; "
+			                          "if it is not wanted, remove this node from your friends."));
 			requestLabel->hide();
 			avatar->setDefaultAvatar(":images/avatar_refused.png");
 			break;
@@ -244,6 +261,7 @@ void SecurityItem::updateItem()
 
 			removeFriendButton->setEnabled(false);
 			removeFriendButton->hide();
+			banButton->setVisible(!mGpgId.isNull()); // nothing to ignore without a PGP id
 			peerDetailsButton->setEnabled(false);
 			
             if(mType == RsFeedTypeFlags::RS_FEED_ITEM_SEC_BAD_CERTIFICATE)
@@ -259,6 +277,7 @@ void SecurityItem::updateItem()
 				friendRequesttoolButton->show();
 				requestLabel->show();
 				peerDetailsButton->show();
+				setConnectAttemptToolTips(false);
 			}
 
 			return;
@@ -314,6 +333,7 @@ void SecurityItem::updateItem()
 			requestLabel->hide();
 			removeFriendButton->setEnabled(true);
 			removeFriendButton->show();
+			banButton->hide();
 		}
 		else
 		{
@@ -322,6 +342,7 @@ void SecurityItem::updateItem()
 			{
 				friendRequesttoolButton->show();
 				requestLabel->show();
+				setConnectAttemptToolTips(true);
 			}
 			else 
 			{
@@ -330,12 +351,41 @@ void SecurityItem::updateItem()
 			}
 			removeFriendButton->setEnabled(false);
 			removeFriendButton->hide();
+			banButton->setVisible(!mGpgId.isNull()); // nothing to ignore without a PGP id
 		}
 
 		//quickmsgButton->show();
 	}
 
 	return;
+}
+
+// The feed shows a refused TLS handshake as a "friend request", which puzzles
+// users: explain what happened and what accepting does. The handshake only
+// carries the node and profile ids, never a name, hence "unknown peer".
+void SecurityItem::setConnectAttemptToolTips(bool profileKnown)
+{
+	if(mType != RsFeedTypeFlags::RS_FEED_ITEM_SEC_CONNECT_ATTEMPT)
+		return;
+
+	QString what, accept;
+
+	if(profileKnown)
+	{
+		what = tr("This node tried to connect to you and was refused: its profile key is in your keyring but is not accepted as a friend.");
+		accept = tr("Accept this profile as a friend. All its nodes will then be allowed to connect, with PGP signature verification.");
+	}
+	else
+	{
+		what = tr("A node you do not know tried to connect to you and was refused: the profile key that signed its certificate is not in your friend list. "
+		          "This is not necessarily a deliberate friend request. Its name cannot be shown because you do not have its profile key.");
+		accept = tr("Add this node as a friend. Its profile key is not in your keyring, so it will be added as an SSL-only friend and its name cannot be verified. "
+		            "Check the service permissions you grant it.");
+	}
+
+	peerNameLabel->setToolTip(what);
+	requestLabel->setToolTip(what);
+	friendRequesttoolButton->setToolTip(accept);
 }
 
 void SecurityItem::toggle()
@@ -383,6 +433,40 @@ void SecurityItem::removeFriend()
 		rsPeers->removeFriend(mGpgId);
 	}
 }
+
+void SecurityItem::banUser()
+{
+    if (mGpgId.isNull())
+        return;
+
+    // Confirmation dialog
+    QMessageBox::StandardButton reply;
+    reply = QMessageBox::question(this, tr("Ignore User"), tr("Are you sure you want to ignore this user? They will be added to the Ignored Users list and you will not receive further notifications from them. If they are a friend, they are also removed from your friends. You can manage the list in Preferences -> Notify."),
+                                  QMessageBox::Yes|QMessageBox::No);
+    if (reply == QMessageBox::Yes) {
+        // Keep the profile name when the key is known: the list stays readable
+        // if the key later leaves the keyring.
+        std::string name;
+        RsPeerDetails details;
+        if (rsPeers->getGPGDetails(mGpgId, details))
+            name = details.name;
+
+        rsPeers->addToIgnoreList(mGpgId, name);
+        rsPeers->removeFriend(mGpgId);
+
+        // Every item of this profile is now handled: remove them from the feed,
+        // this one last.
+        QList<SecurityItem*> others;
+        for (SecurityItem *item : window()->findChildren<SecurityItem*>())
+            if (item != this && item->mFeedHolder == mFeedHolder && item->mGpgId == mGpgId)
+                others << item;
+        for (SecurityItem *item : others)
+            item->removeItem();
+
+        removeItem();
+    }
+}
+
 void SecurityItem::friendRequest()
 {
 #ifdef DEBUG_ITEM

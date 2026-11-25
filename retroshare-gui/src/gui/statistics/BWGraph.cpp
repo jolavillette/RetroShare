@@ -23,8 +23,12 @@
 #include <time.h>
 #include <math.h>
 #include <tuple>
+#include <memory>
+#include <QPointer>
 #include "retroshare/rsservicecontrol.h"
 #include "retroshare/rspeers.h"
+#include "util/rsthreads.h"
+#include "util/qtthreadsutils.h"
 
 //#define BWGRAPH_DEBUG 1
 
@@ -56,9 +60,35 @@ void BWGraphSource::update()
     std::cerr << "Updating BW graphsource..." << std::endl;
 #endif
 
-    TrafficHistoryChunk thc ;
-    rsConfig->getTrafficInfo(thc.out_rstcl,thc.in_rstcl);
+    // The traffic information is asked from a worker thread: the core answers after taking the mutex of
+    // each peer link, and when one of them is held for seconds the GUI thread must not be the one waiting.
+    // While an answer is pending no new request is made, so that requests do not pile up.
 
+    if(mTrafficRequestPending)
+        return ;
+
+    mTrafficRequestPending = true ;
+
+    QPointer<BWGraphSource> self(this) ;	// only dereferenced on the GUI thread
+
+    RsThread::async([self]()
+    {
+        auto thc = std::make_shared<TrafficHistoryChunk>() ;
+        rsConfig->getTrafficInfo(thc->out_rstcl,thc->in_rstcl);
+
+        RsQThreadUtils::postToObject([self,thc]()
+        {
+            if(!self)
+                return ;
+
+            self->mTrafficRequestPending = false ;
+            self->addTrafficChunk(*thc) ;
+        }, qApp) ;
+    });
+}
+
+void BWGraphSource::addTrafficChunk(TrafficHistoryChunk& thc)
+{
     aggregateClues(thc.out_rstcl) ;
     aggregateClues(thc.in_rstcl) ;
 
@@ -390,6 +420,7 @@ BWGraphSource::BWGraphSource()
 
     _total_sent =0;
     _total_recv =0;
+    mTrafficRequestPending = false;
 
     _friend_graph_type = GRAPH_TYPE_SUM;
     _service_graph_type = GRAPH_TYPE_SUM;
@@ -445,25 +476,40 @@ QString BWGraphSource::unitName() const { return (_current_unit == UNIT_KILOBYTE
 //    return QString("[error]");
 //}
 
+// At most three significant digits and no trailing zeros: "10 KB/s", not "10.00 KB/s".
+static QString shortNumber(double v)
+{
+    QString s = QString::number(v, 'f', (v < 10) ? 2 : ((v < 100) ? 1 : 0)) ;
+
+    if(s.contains('.'))
+    {
+        while(s.endsWith('0'))
+            s.chop(1) ;
+        if(s.endsWith('.'))
+            s.chop(1) ;
+    }
+    return s ;
+}
+
 QString BWGraphSource::displayValue(float v) const
 {
     if(_current_unit == UNIT_KILOBYTES)
     {
-	    if(v < 1000)
-		    return QString::number(v,'f',2) + " B/s" ;
-	    else if(v < 1000*1024)
-		    return QString::number(v/1024.0,'f',2) + " KB/s" ;
+	    if(v < 1024)
+		    return shortNumber(v) + " B/s" ;
+	    else if(v < 1024*1024)
+		    return shortNumber(v/1024.0) + " KB/s" ;
 	    else
-		    return QString::number(v/(1024.0*1024),'f',2) + " MB/s" ;
+		    return shortNumber(v/(1024.0*1024)) + " MB/s" ;
     }
     else if(_current_unit == UNIT_COUNT)
     {
-	    if(v < 1000)
-		    return QString::number(v,'f',0) ;
-	    else if(v < 1000*1024)
-		    return QString::number(v/1024.0,'f',1) + "k" ;
+	    if(v < 1024)
+		    return shortNumber(v) ;
+	    else if(v < 1024*1024)
+		    return shortNumber(v/1024.0) + "k" ;
 	    else
-		    return QString::number(v/(1024.0*1024),'f',1) + "M" ;
+		    return shortNumber(v/(1024.0*1024)) + "M" ;
     }
     else
     return QString() ;

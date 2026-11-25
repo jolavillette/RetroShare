@@ -148,7 +148,23 @@ void SecurityIpItem::updateItem()
 	if(!RsAutoUpdatePage::eventsLocked()) {
 		switch (mType) {
         case RsFeedTypeFlags::RS_FEED_ITEM_SEC_IP_BLACKLISTED:
-			ui->titleLabel->setText(RsBanListDefs::resultString(mResult));
+			// The library raises this item once the friend has authenticated,
+			// when our own IP filter refuses the address of the connection.
+			switch (mResult) {
+			case RSBANLIST_CHECK_RESULT_BLACKLISTED:
+				ui->titleLabel->setText(tr("Connection refused: IP address is blacklisted"));
+				ui->titleLabel->setToolTip(tr("This friend authenticated correctly, but the address of the connection is in your IP blacklist "
+				                              "(Options > Network > IP Filters). Add the address to the whitelist to accept this friend at that address."));
+				break;
+			case RSBANLIST_CHECK_RESULT_NOT_WHITELISTED:
+				ui->titleLabel->setText(tr("Connection refused: IP address is not whitelisted"));
+				ui->titleLabel->setToolTip(tr("This friend authenticated correctly, but it has the \"Require white list clearance\" option and the address of "
+				                              "the connection is not in your IP whitelist. Add the address to the whitelist, or turn the option off in "
+				                              "this friend's details."));
+				break;
+			default:
+				ui->titleLabel->setText(RsBanListDefs::resultString(mResult));
+			}
 			ui->ipAddr->setText(QString::fromStdString(mIpAddr));
 
 			if (!mIsTest) {

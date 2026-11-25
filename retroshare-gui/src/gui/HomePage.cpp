@@ -26,6 +26,7 @@
 #include "util/qtthreadsutils.h"
 #include "util/misc.h"
 
+#include "gui/common/QrCodeDialog.h"
 #include "gui/common/FilesDefs.h"
 #include "gui/msgs/MessageComposer.h"
 #include "gui/connect/ConnectFriendWizard.h"
@@ -73,8 +74,19 @@ HomePage::HomePage(QWidget *parent) :
     QAction *CopyIdAction = new QAction(QIcon(),tr("Copy your Retroshare ID to Clipboard"), this);
     connect(CopyIdAction, SIGNAL(triggered()), this, SLOT(copyId()));
 
+    QAction *QrCodeAction = new QAction(QIcon(),tr("Show your Retroshare ID as a QR code"), this);
+    connect(QrCodeAction, &QAction::triggered, this, [this]()
+    {
+        // The code carries what the page shows: the short ID, or the whole
+        // certificate when the old format is chosen.
+        QString invite, description;
+        getOwnCert(invite, description);
+        QrCodeDialog::show(this, tr("Retroshare ID"), invite);
+    });
+
     QMenu *menu = new QMenu();
     menu->addAction(CopyIdAction);
+    menu->addAction(QrCodeAction);
 
     menu->addSeparator();
     menu->addAction(SaveAction);

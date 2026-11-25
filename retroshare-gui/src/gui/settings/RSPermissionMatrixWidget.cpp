@@ -235,7 +235,7 @@ void RSPermissionMatrixWidget::paintEvent(QPaintEvent *)
 {
     //std::cerr << "In paint event!" << std::endl;
 
-    int S = QFontMetricsF(font()).height();
+    float S = QFontMetricsF(font()).height();
 
   /* Set current graph dimensions */
   _rec = this->frameRect();

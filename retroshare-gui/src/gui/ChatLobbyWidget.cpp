@@ -42,8 +42,10 @@
 #include "retroshare/rsidentity.h"
 
 #include <QGridLayout>
+#include <QApplication>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPointer>
 #include <QTextBrowser>
 #include <QTimer>
 #include <QTreeWidget>
@@ -52,6 +54,9 @@
 #include <time.h>
 
 //#define CHAT_LOBBY_GUI_DEBUG 1
+
+// Shortest time between two refreshes of the list asked by the "list changed" events.
+#define LIST_REFRESH_MIN_INTERVAL_MS 2000
 
 #define COLUMN_NAME       0
 #define COLUMN_USER_COUNT 1
@@ -69,6 +74,7 @@
 #define ROLE_PRIVACYLEVEL  Qt::UserRole + 3
 #define ROLE_AUTOSUBSCRIBE Qt::UserRole + 4
 #define ROLE_FLAGS         Qt::UserRole + 5
+#define ROLE_BASE_NAME     Qt::UserRole + 6	// name without the counters appended for display
 
 
 #define TYPE_FOLDER       0
@@ -128,8 +134,12 @@ ChatLobbyWidget::ChatLobbyWidget(QWidget *parent, Qt::WindowFlags flags)
             case RsChatLobbyEventCode::CHAT_LOBBY_EVENT_PEER_JOINED:
             case RsChatLobbyEventCode::CHAT_LOBBY_EVENT_PEER_CHANGE_NICKNAME:
             case RsChatLobbyEventCode::CHAT_LOBBY_EVENT_KEEP_ALIVE:
-
                 handleChatLobbyEvent(ev->mLobbyId,ev->mEventCode,ev->mGxsId,QString::fromUtf8(ev->mStr.c_str()));
+                break;
+
+            case RsChatLobbyEventCode::CHAT_LOBBY_EVENT_HISTORY_PROBE_RESPONSE:
+            case RsChatLobbyEventCode::CHAT_LOBBY_EVENT_HISTORY_DATA:
+                handleLobbyHistoryEvent(ev);
                 break;
 
             default:
@@ -173,6 +183,7 @@ ChatLobbyWidget::ChatLobbyWidget(QWidget *parent, Qt::WindowFlags flags)
 
     privateSubLobbyItem = new RSTreeWidgetItem(compareRole, TYPE_FOLDER);
     privateSubLobbyItem->setText(COLUMN_NAME, tr("Private Subscribed"));
+	privateSubLobbyItem->setData(COLUMN_NAME, ROLE_BASE_NAME, tr("Private Subscribed"));
 	privateSubLobbyItem->setData(COLUMN_NAME, ROLE_SORT, "1");
 	//	privateLobbyItem->setIcon(COLUMN_NAME, QIcon(IMAGE_PRIVATE));
     privateSubLobbyItem->setData(COLUMN_DATA, ROLE_PRIVACYLEVEL, CHAT_LOBBY_PRIVACY_LEVEL_PRIVATE);
@@ -180,6 +191,7 @@ ChatLobbyWidget::ChatLobbyWidget(QWidget *parent, Qt::WindowFlags flags)
 
 	publicSubLobbyItem = new RSTreeWidgetItem(compareRole, TYPE_FOLDER);
 	publicSubLobbyItem->setText(COLUMN_NAME, tr("Public Subscribed"));
+	publicSubLobbyItem->setData(COLUMN_NAME, ROLE_BASE_NAME, tr("Public Subscribed"));
 	publicSubLobbyItem->setData(COLUMN_NAME, ROLE_SORT, "2");
 	//	publicLobbyItem->setIcon(COLUMN_NAME, QIcon(IMAGE_PUBLIC));
     publicSubLobbyItem->setData(COLUMN_DATA, ROLE_PRIVACYLEVEL, CHAT_LOBBY_PRIVACY_LEVEL_PUBLIC);
@@ -187,6 +199,7 @@ ChatLobbyWidget::ChatLobbyWidget(QWidget *parent, Qt::WindowFlags flags)
 
 	privateLobbyItem = new RSTreeWidgetItem(compareRole, TYPE_FOLDER);
 	privateLobbyItem->setText(COLUMN_NAME, tr("Private"));
+	privateLobbyItem->setData(COLUMN_NAME, ROLE_BASE_NAME, tr("Private"));
 	privateLobbyItem->setData(COLUMN_NAME, ROLE_SORT, "3");
 	//	privateLobbyItem->setIcon(COLUMN_NAME, QIcon(IMAGE_PRIVATE));
     privateLobbyItem->setData(COLUMN_DATA, ROLE_PRIVACYLEVEL, CHAT_LOBBY_PRIVACY_LEVEL_PRIVATE);
@@ -194,6 +207,7 @@ ChatLobbyWidget::ChatLobbyWidget(QWidget *parent, Qt::WindowFlags flags)
 
 	publicLobbyItem = new RSTreeWidgetItem(compareRole, TYPE_FOLDER);
 	publicLobbyItem->setText(COLUMN_NAME, tr("Public"));
+	publicLobbyItem->setData(COLUMN_NAME, ROLE_BASE_NAME, tr("Public"));
 	publicLobbyItem->setData(COLUMN_NAME, ROLE_SORT, "4");
 	//	publicLobbyItem->setIcon(COLUMN_NAME, QIcon(IMAGE_PUBLIC));
     publicLobbyItem->setData(COLUMN_DATA, ROLE_PRIVACYLEVEL, CHAT_LOBBY_PRIVACY_LEVEL_PUBLIC);
@@ -291,6 +305,15 @@ UserNotify *ChatLobbyWidget::createUserNotify(QObject *parent)
 
 void ChatLobbyWidget::updateNotify(ChatLobbyId id, unsigned int count)
 {
+	// Keep the per room unread count, so that the tree can show it on the room and
+	// on its parent branch. Do this before any early return below.
+	if (count)
+		_unread_counts[id] = count;
+	else
+		_unread_counts.erase(id);
+
+	updateUnreadCounters();
+
 	ChatLobbyDialog *dialog=NULL;
 	dialog=_lobby_infos[id].dialog;
 	if(!dialog) return;
@@ -304,6 +327,92 @@ void ChatLobbyWidget::updateNotify(ChatLobbyId id, unsigned int count)
 		notifyButton->setToolTip(QString("(%1)").arg(count));
 	} else {
 		notifyButton->setVisible(false);
+	}
+}
+
+/*!
+ * \brief Refresh the counters displayed in the room tree.
+ *
+ * Each room shows "[n]" when it holds n unread messages, and each branch shows the
+ * number of rooms it contains "(n)" plus the total of unread messages of its rooms
+ * "[n]". Counters that would be zero are simply omitted, and the item is put in bold
+ * when it has unread messages, so that a collapsed branch still tells that something
+ * is waiting inside.
+ */
+/*!
+ * \brief Put an item of the room tree in bold, or back to normal.
+ *
+ * The tree itself carries the font size taken from the settings (see FontSizeHandler),
+ * but QTreeWidgetItem::font() returns a default constructed font when the item has no
+ * Qt::FontRole yet, and RSElidedItemDelegate paints the item with the model font as is,
+ * without merging it into the font of the view. Deriving the bold font from the item
+ * would therefore shrink the whole list down to the application font. So derive it from
+ * the tree, and remove the role altogether when the item is not bold, so that it keeps
+ * following the font size of the settings.
+ */
+static void setItemBold(QTreeWidget *treeWidget, QTreeWidgetItem *item, bool bold)
+{
+	if(bold)
+	{
+		QFont font = treeWidget->font();
+		font.setBold(true);
+		item->setFont(COLUMN_NAME, font);
+	}
+	else
+		item->setData(COLUMN_NAME, Qt::FontRole, QVariant());
+}
+
+void ChatLobbyWidget::updateUnreadCounters()
+{
+	QTreeWidgetItem *branches[4] = { privateSubLobbyItem, publicSubLobbyItem, privateLobbyItem, publicLobbyItem };
+
+	for(int b=0; b<4; ++b)
+	{
+		QTreeWidgetItem *branch = branches[b];
+
+		if(branch == NULL)
+			continue;
+
+		unsigned int branch_unread = 0;
+		int room_count = 0;
+
+		for(int c=0; c<branch->childCount(); ++c)
+		{
+			QTreeWidgetItem *item = branch->child(c);
+
+			if(item->type() != TYPE_LOBBY)
+				continue;
+
+			++room_count;
+
+			ChatLobbyId id = item->data(COLUMN_DATA, ROLE_ID).toULongLong();
+			std::map<ChatLobbyId,unsigned int>::const_iterator it = _unread_counts.find(id);
+			unsigned int unread = (it == _unread_counts.end()) ? 0 : it->second;
+
+			branch_unread += unread;
+
+			QString name = item->data(COLUMN_NAME, ROLE_BASE_NAME).toString();
+
+			if(name.isEmpty())	// item not filled by updateItem() yet
+				continue;
+
+			item->setText(COLUMN_NAME, unread ? QString("%1 [%2]").arg(name).arg(unread) : name);
+
+			setItemBold(ui.lobbyTreeWidget, item, unread > 0);
+		}
+
+		QString label = branch->data(COLUMN_NAME, ROLE_BASE_NAME).toString();
+
+		if(room_count > 0)
+			label += QString(" (%1)").arg(room_count);
+
+		if(branch_unread > 0)
+			label += QString(" [%1]").arg(branch_unread);
+
+		branch->setText(COLUMN_NAME, label);
+		branch->setToolTip(COLUMN_NAME, branch_unread ? tr("%n unread message(s)", "", branch_unread) : QString());
+
+		setItemBold(ui.lobbyTreeWidget, branch, branch_unread > 0);
 	}
 }
 
@@ -411,13 +520,40 @@ void ChatLobbyWidget::lobbyTreeWidgetCustomPopupMenu(QPoint)
 
 void ChatLobbyWidget::lobbyChanged()
 {
-	ChatLobbyWidget::updateDisplay();
+	// One "list changed" event arrives for every list of rooms a friend sends, among others: 150 a
+	// minute were counted on a node with 92 rooms, each one a full refresh of the list, page shown
+	// or not. A lone event still refreshes at once; the events that follow within the interval are
+	// served by a single refresh at its end.
+
+	if (mListRefreshPending)
+		return;
+
+	const qint64 elapsed = mLastListRefresh.isValid() ? mLastListRefresh.elapsed() : LIST_REFRESH_MIN_INTERVAL_MS;
+
+	if (elapsed >= LIST_REFRESH_MIN_INTERVAL_MS)
+	{
+		mLastListRefresh.start();
+		ChatLobbyWidget::updateDisplay();
+		return;
+	}
+
+	mListRefreshPending = true;
+
+	QTimer::singleShot(LIST_REFRESH_MIN_INTERVAL_MS - elapsed, this, [this]()
+	{
+		mListRefreshPending = false;
+		mLastListRefresh.start();
+		ChatLobbyWidget::updateDisplay();
+	});
 }
 
 static void updateItem(QTreeWidget *treeWidget, QTreeWidgetItem *item, ChatLobbyId id, const std::string &name, const std::string &topic, int count, bool subscribed, bool autoSubscribe,ChatLobbyFlags lobby_flags)
 {
 	item->setText(COLUMN_NAME, QString::fromUtf8(name.c_str()));
 	item->setData(COLUMN_NAME, ROLE_SORT, QString::fromUtf8(name.c_str()));
+	// Keep the bare name aside: the displayed text gets an unread counter appended by
+	// ChatLobbyWidget::updateUnreadCounters(), which needs to rebuild it from scratch.
+	item->setData(COLUMN_NAME, ROLE_BASE_NAME, QString::fromUtf8(name.c_str()));
 
 	if(topic.empty())
 	{
@@ -537,10 +673,32 @@ void ChatLobbyWidget::updateDisplay()
 	std::cerr << "got " << visibleLobbies.size() << " visible lobbies" << std::endl;
 #endif
 
+	// The tree is not sorted while it is refreshed: every change of a sorted item puts it back
+	// in its place at once, with comparisons that convert numbers to text. It is sorted once at
+	// the end, on the same column and in the same order, when this function returns.
+
+	struct SortingPause
+	{
+		explicit SortingPause(QTreeWidget *w) : mTree(w) { mTree->setSortingEnabled(false); }
+		~SortingPause() { mTree->setSortingEnabled(true); }
+		QTreeWidget *mTree;
+	} sortingPause(ui.lobbyTreeWidget);
+
 	// now, do a nice display of lobbies
 	
     RsPeerId vpid;
     std::list<ChatLobbyId>::const_iterator lobbyIt;
+
+	// The ids of all rooms to keep, and below the item of each room: the tree is
+	// looked up by id instead of being scanned for each room, which read the id of
+	// every item (a QVariant each time) for every room.
+
+	std::set<ChatLobbyId> knownLobbies(lobbies.begin(), lobbies.end());
+
+	for (uint32_t i = 0; i < visibleLobbies.size(); ++i)
+		knownLobbies.insert(visibleLobbies[i].lobby_id);
+
+	std::map<ChatLobbyId,QTreeWidgetItem*> lobbyItems;
 
 	// remove not existing public lobbies
 
@@ -564,29 +722,18 @@ void ChatLobbyWidget::updateDisplay()
 			QTreeWidgetItem *itemLoop = lobby_item->child(childIndex);
 			if (itemLoop->type() == TYPE_LOBBY) 
 			{
-				// check for visible lobby
+				// check for visible lobby, or participating lobby with public level
 				//
-				uint32_t i;
-	
-				for (i = 0; i < visibleLobbies.size(); ++i) 
-					if (itemLoop->data(COLUMN_DATA, ROLE_ID).toULongLong() == visibleLobbies[i].lobby_id) 
-						break;
+				const ChatLobbyId itemLobbyId = itemLoop->data(COLUMN_DATA, ROLE_ID).toULongLong();
 
-				if (i >= visibleLobbies.size()) 
+				if (knownLobbies.find(itemLobbyId) == knownLobbies.end())
 				{
-					// Check for participating lobby with public level
-					//
-					for (lobbyIt = lobbies.begin(); lobbyIt != lobbies.end(); ++lobbyIt) 
-                        if(itemLoop->data(COLUMN_DATA, ROLE_ID).toULongLong() == *lobbyIt)
-							break;
-
-					if (lobbyIt == lobbies.end()) 
-					{
-						delete(lobby_item->takeChild(lobby_item->indexOfChild(itemLoop)));
-						childCnt = lobby_item->childCount();
-						continue;
-					}
+					delete(lobby_item->takeChild(childIndex));
+					childCnt = lobby_item->childCount();
+					continue;
 				}
+				if (lobbyItems.find(itemLobbyId) == lobbyItems.end())	// the first one, as the scans found it
+					lobbyItems[itemLobbyId] = itemLoop;
 			}
 			++childIndex;
 		}
@@ -639,24 +786,18 @@ void ChatLobbyWidget::updateDisplay()
 
 		// Search existing item
 		//
-		int childCnt = lobby_other_item->childCount();
-		for (int childIndex = 0; childIndex < childCnt; ++childIndex)
+		std::map<ChatLobbyId,QTreeWidgetItem*>::iterator itemIt = lobbyItems.find(lobby.lobby_id);
+
+		if (itemIt != lobbyItems.end())
 		{
-			QTreeWidgetItem *itemLoop = lobby_other_item->child(childIndex);
-			if (itemLoop->type() == TYPE_LOBBY && itemLoop->data(COLUMN_DATA, ROLE_ID).toULongLong() == lobby.lobby_id) {
-				delete(lobby_other_item->takeChild(lobby_other_item->indexOfChild(itemLoop)));
-				//childCnt = lobby_other_item->childCount();
-				break;
+			if (itemIt->second->parent() == lobby_other_item)
+			{
+				// the room changed between subscribed and not subscribed: its item is made again
+				delete(lobby_other_item->takeChild(lobby_other_item->indexOfChild(itemIt->second)));
+				lobbyItems.erase(itemIt);
 			}
-		}
-		childCnt = lobby_item->childCount();
-		for (int childIndex = 0; childIndex < childCnt; ++childIndex)
-		{
-			QTreeWidgetItem *itemLoop = lobby_item->child(childIndex);
-			if (itemLoop->type() == TYPE_LOBBY && itemLoop->data(COLUMN_DATA, ROLE_ID).toULongLong() == lobby.lobby_id) {
-				item = itemLoop;
-				break;
-			}
+			else if (itemIt->second->parent() == lobby_item)
+				item = itemIt->second;
 		}
 
 	ChatLobbyFlags lobby_flags = lobby.lobby_flags ;
@@ -667,6 +808,7 @@ void ChatLobbyWidget::updateDisplay()
 			item = new RSTreeWidgetItem(compareRole, TYPE_LOBBY);
             icon = (lobby.lobby_flags & RS_CHAT_LOBBY_FLAGS_PUBLIC) ? FilesDefs::getIconFromQtResourcePath(IMAGE_PUBLIC) : FilesDefs::getIconFromQtResourcePath(IMAGE_PRIVATE);
 			lobby_item->addChild(item);
+			lobbyItems[lobby.lobby_id] = item;
             
 		} 
 		else
@@ -685,12 +827,12 @@ void ChatLobbyWidget::updateDisplay()
 
         bool autoSubscribe = rsChats->getLobbyAutoSubscribe(lobby.lobby_id);
 
-		if (autoSubscribe && subscribed && _lobby_infos.find(lobby.lobby_id) == _lobby_infos.end())
-		{
-            ChatDialog *cd = ChatDialog::getChat(ChatId(lobby.lobby_id), RsChatFlags::RS_CHAT_OPEN);
+		// Creating a ChatLobbyDialog is expensive, and shortly after startup all the auto-subscribed
+		// rooms become visible at once: creating their dialogs right here froze the interface for
+		// more than a second. So only queue the room, see createNextPendingLobbyDialog().
 
-			addChatPage(dynamic_cast<ChatLobbyDialog*>(cd));
-		}
+		if (autoSubscribe && subscribed && _lobby_infos.find(lobby.lobby_id) == _lobby_infos.end())
+			scheduleLobbyDialog(lobby.lobby_id);
 
 		updateItem(ui.lobbyTreeWidget, item, lobby.lobby_id, lobby.lobby_name,lobby.lobby_topic, lobby.total_number_of_peers, subscribed, autoSubscribe,lobby_flags);
 	}
@@ -717,14 +859,10 @@ void ChatLobbyWidget::updateDisplay()
 		QTreeWidgetItem *item = NULL;
 
 		// search existing item
-		int childCount = itemParent->childCount();
-		for (int childIndex = 0; childIndex < childCount; ++childIndex) {
-			QTreeWidgetItem *itemLoop = itemParent->child(childIndex);
-			if (itemLoop->type() == TYPE_LOBBY && itemLoop->data(COLUMN_DATA, ROLE_ID).toULongLong() == lobby.lobby_id) {
-				item = itemLoop;
-				break;
-			}
-		}
+		std::map<ChatLobbyId,QTreeWidgetItem*>::iterator itemIt = lobbyItems.find(lobby.lobby_id);
+
+		if (itemIt != lobbyItems.end() && itemIt->second->parent() == itemParent)
+			item = itemIt->second;
 
 		QIcon icon;
         
@@ -735,6 +873,7 @@ void ChatLobbyWidget::updateDisplay()
             item = new RSTreeWidgetItem(compareRole, TYPE_LOBBY);
             icon = (lobby.lobby_flags & RS_CHAT_LOBBY_FLAGS_PUBLIC) ? FilesDefs::getIconFromQtResourcePath(IMAGE_PUBLIC) : FilesDefs::getIconFromQtResourcePath(IMAGE_PRIVATE);
             itemParent->addChild(item);
+            lobbyItems[lobby.lobby_id] = item;
         } else {
             if (!item->data(COLUMN_DATA, ROLE_SUBSCRIBED).toBool()) {
                 // Replace icon
@@ -753,16 +892,82 @@ void ChatLobbyWidget::updateDisplay()
 
         // look for chat rooms that are subscribed but not displayed as such
 
-        if(it == _lobby_infos.end() && rsChats->joinVisibleChatLobby(lobby.lobby_id,lobby.gxs_id))
+        // (rooms waiting in mPendingLobbyDialogs are about to get their dialog: leave them alone)
+
+        if(it == _lobby_infos.end()
+                && std::find(mPendingLobbyDialogs.begin(), mPendingLobbyDialogs.end(), lobby.lobby_id) == mPendingLobbyDialogs.end()
+                && rsChats->joinVisibleChatLobby(lobby.lobby_id,lobby.gxs_id))
         {
             std::cerr << "Adding back ChatLobbyDialog for subscribed lobby " << std::hex << lobby.lobby_id << std::dec << std::endl;
 			ChatDialog::chatFriend(ChatId(lobby.lobby_id),true) ;
         }
 	}
 	publicSubLobbyItem->setHidden(publicSubLobbyItem->childCount()==0);
-	publicSubLobbyItem->setText(COLUMN_NAME, tr("Public Subscribed")+ QString(" (") + QString::number(publicSubLobbyItem->childCount())+QString(")"));
 	privateSubLobbyItem->setHidden(privateSubLobbyItem->childCount()==0);
-	publicLobbyItem->setText(COLUMN_NAME, tr("Public")+ " (" + QString::number(publicLobbyItem->childCount())+QString(")"));
+
+	// re-append the counters, since updateItem() above has reset the room names
+	updateUnreadCounters();
+}
+
+bool ChatLobbyWidget::mCreatingDialogInBackground = false;
+
+void ChatLobbyWidget::scheduleLobbyDialog(ChatLobbyId id)
+{
+	if(std::find(mPendingLobbyDialogs.begin(), mPendingLobbyDialogs.end(), id) != mPendingLobbyDialogs.end())
+		return;
+
+	bool start = mPendingLobbyDialogs.empty();
+	mPendingLobbyDialogs.push_back(id);
+
+	if(start)
+		QTimer::singleShot(0, this, SLOT(createNextPendingLobbyDialog()));
+}
+
+/*!
+ * \brief Create the dialog of one queued room, then come back for the next one.
+ *
+ * One dialog per pass of the event loop, so that the interface keeps handling user input
+ * while the dialogs of the auto-subscribed rooms are created.
+ */
+void ChatLobbyWidget::createNextPendingLobbyDialog()
+{
+	if(mPendingLobbyDialogs.empty())
+		return;
+
+	ChatLobbyId id = mPendingLobbyDialogs.front();
+	mPendingLobbyDialogs.pop_front();
+
+	// The room may have got its dialog, or have been left, while it was waiting.
+
+	std::list<ChatLobbyId> lobbies;
+	rsChats->getChatLobbyList(lobbies);
+
+	if(_lobby_infos.find(id) == _lobby_infos.end() && std::find(lobbies.begin(), lobbies.end(), id) != lobbies.end())
+	{
+		// The user did not ask for this room: the new dialog must not take the focus, nor bring
+		// the chat rooms page to the front. See ChatLobbyDialog::showDialog().
+		QPointer<QWidget> focus_widget = QApplication::focusWidget();
+
+		mCreatingDialogInBackground = true;
+		ChatLobbyDialog *cld = dynamic_cast<ChatLobbyDialog*>(ChatDialog::getChat(ChatId(id), RsChatFlags::RS_CHAT_OPEN));
+		mCreatingDialogInBackground = false;
+
+		if(cld)
+		{
+			addChatPage(cld);
+
+			// init() has shown the dialog, although it is not the current page of the stack.
+			if(ui.stackedWidget->currentWidget() != cld)
+				cld->hide();
+		}
+
+		// A chat widget takes the keyboard focus when it is shown: give it back.
+		if(focus_widget && QApplication::focusWidget() != focus_widget)
+			focus_widget->setFocus();
+	}
+
+	if(!mPendingLobbyDialogs.empty())
+		QTimer::singleShot(0, this, SLOT(createNextPendingLobbyDialog()));
 }
 
 void ChatLobbyWidget::createChatLobby()
@@ -793,6 +998,8 @@ void ChatLobbyWidget::showLobby(QTreeWidgetItem *item)
         _lobby_infos[id].dialog->showDialog(RsChatFlags::RS_CHAT_FOCUS);
 		if (_lobby_infos[id].dialog->isWindowed())
 			showBlankPage(id, true);
+		else if (ui.stackedWidget->indexOf(_lobby_infos[id].dialog) == -1)
+			showBlankPage(id, true, true);
 	}
 }
 
@@ -856,6 +1063,8 @@ bool ChatLobbyWidget::showLobbyAnchor(ChatLobbyId id, QString anchor)
                 _lobby_infos[id].dialog->showDialog(RsChatFlags::RS_CHAT_FOCUS);
 				if (_lobby_infos[id].dialog->isWindowed())
 					showBlankPage(id, true);
+				else if (ui.stackedWidget->indexOf(_lobby_infos[id].dialog) == -1)
+					showBlankPage(id, true, true);
 
 				_lobby_infos[id].dialog->getChatWidget()->scrollToAnchor(anchor);
 			}
@@ -932,7 +1141,9 @@ void ChatLobbyWidget::autoSubscribeLobby(QTreeWidgetItem *item)
         subscribeChatLobbyAtItem(item);
 }
 
-void ChatLobbyWidget::showBlankPage(ChatLobbyId id, bool subscribed /*= false*/)
+// hostedElsewhere: the room's dialog was re-parented out of our stacked widget (a plugin
+// embeds it in its own page), so selecting the room here can show nothing but this page.
+void ChatLobbyWidget::showBlankPage(ChatLobbyId id, bool subscribed /*= false*/, bool hostedElsewhere /*= false*/)
 {
 	// show the default blank page.
 	ui.stackedWidget->setCurrentWidget(ui._lobby_blank_page) ;
@@ -957,7 +1168,9 @@ void ChatLobbyWidget::showBlankPage(ChatLobbyId id, bool subscribed /*= false*/)
 			ui.lobbypeers_lineEdit->setText( QString::number((*it).total_number_of_peers) );
 
 			QString text = tr("You're subscribed to this chat room; Double click to show window and chat.") ;
-			if (!subscribed)
+			if (hostedElsewhere)
+				text = tr("You're subscribed to this chat room, but it is currently displayed in another page (for instance a plugin's), so it cannot be shown here.") ;
+			else if (!subscribed)
 			{
 				text = tr("You're not subscribed to this chat room; Double click-it to enter and chat.") ;
 				if(my_ids.empty())
@@ -1002,7 +1215,7 @@ void ChatLobbyWidget::copyItemLink()
 	}
 
 	ChatLobbyId id = item->data(COLUMN_DATA, ROLE_ID).toULongLong();
-	QString name = item->text(COLUMN_NAME);
+	QString name = item->data(COLUMN_NAME, ROLE_BASE_NAME).toString();	// without the unread counter
 
 	RetroShareLink link = RetroShareLink::createChatRoom(ChatId(id),name);
 	if (link.valid()) {
@@ -1199,6 +1412,14 @@ void ChatLobbyWidget::handleChatLobbyEvent(uint64_t lobby_id, RsChatLobbyEventCo
 {
     if (ChatLobbyDialog *cld = dynamic_cast<ChatLobbyDialog*>(ChatDialog::getExistingChat(ChatId(lobby_id)))) {
         cld->handleLobbyEvent(event_type, gxs_id, str);
+    }
+}
+
+void ChatLobbyWidget::handleLobbyHistoryEvent(const RsChatLobbyEvent* ev)
+{
+    if (!ev) return;
+    if (ChatLobbyDialog *cld = dynamic_cast<ChatLobbyDialog*>(ChatDialog::getExistingChat(ChatId(ev->mLobbyId)))) {
+        cld->handleLobbyHistoryEvent(ev);
     }
 }
 

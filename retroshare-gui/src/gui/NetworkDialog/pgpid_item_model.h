@@ -64,8 +64,10 @@ private:
 
     std::vector<RsPgpId> neighs;
 
-    // A row is read once per column, so keep the details of the last one read. Cleared in data_updated().
-    mutable RsPgpId mCachedId;
+    // A row is read once per column, so keep the details of the last one read. Keyed by row, not by
+    // key id: a cleared id is the null id, which a keyring can hold, and that row was then given the
+    // details of another key. -1 = nothing cached; reset in data_updated().
+    mutable int mCachedRow = -1;
     mutable RsPeerDetails mCachedDetails;
     float font_height;
     QColor mBackgroundColorSelf;

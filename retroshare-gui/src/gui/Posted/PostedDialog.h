@@ -22,6 +22,9 @@
 #ifndef MRK_POSTED_DIALOG_H
 #define MRK_POSTED_DIALOG_H
 
+#include <map>
+#include <QPixmap>
+
 #include "gui/gxs/GxsGroupFrameDialog.h"
 
 #define IMAGE_POSTED ":/icons/png/posted.png"
@@ -67,6 +70,17 @@ private:
     RsEventsHandlerId_t mEventHandlerId;
 
     QTimer *mUpdateTimer;
+
+    // Group images, kept with the publish time of the group and the size of the image data they were made
+    // from. Without it every refresh of the list hashes the image of every group to find it in the pixmap
+    // cache of GxsIdDetails.
+    struct GroupImage
+    {
+        rstime_t publishTs = 0;
+        uint32_t dataSize = 0;
+        QPixmap pixmap;
+    };
+    std::map<RsGxsGroupId,GroupImage> mGroupImages;
 
 private slots:
     void timerUpdate() { updateDisplay(true); }

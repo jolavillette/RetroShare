@@ -134,9 +134,6 @@ public:
     QModelIndex getIndexOfIdentity(const RsGxsId& id) const;
     QModelIndex getIndexOfCategory(Category id) const;
 
-    void updateIdentityList();
-    void refreshIdentityDetails(const RsGxsId& id);
-
     int count() const { return mIdentities.size() ; }	// total number of identities
 
     static const QString FilterString ;
@@ -166,7 +163,6 @@ public:
     QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
 
-	void clear() ;
     QString indexIdentifier(QModelIndex i);
 
 	/* Color definitions (for standard see default.qss) */
@@ -199,7 +195,6 @@ private:
      */
 
 public slots:
-	void checkInternalData(bool force);
     void debug_dump() const;
     void timerUpdate();
 
@@ -211,6 +206,7 @@ signals:
 private:
     bool passesFilter(const EntryIndex &e, int column) const;
 
+	void initCategories() ;
 	void preMods() ;
 	void postMods() ;
 
@@ -227,7 +223,6 @@ private:
     uint8_t  mFilterType;
     int mFontSize;
 
-    rstime_t mLastInternalDataUpdate;
     rstime_t mLastNodeUpdate;;
 
     // The 3 vectors below store thehierarchical information for groups, profiles and locations,
@@ -250,13 +245,6 @@ private:
 
     // List of identities for which getIdDetails() failed, to be requested again.
     mutable QTimer *mIdentityUpdateTimer;
-    mutable QTimer *mThrottlingTimer;
-
-public:
-    void handleIdentityEvent(std::shared_ptr<const RsEvent> event);
-
-private:
-   RsEventsHandlerId_t mEventHandlerId = 0;
 };
 
 

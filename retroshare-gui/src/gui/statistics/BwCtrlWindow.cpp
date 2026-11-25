@@ -22,9 +22,9 @@
 #include "gui/common/RSGraphWidget.h"
 #include "ui_BwCtrlWindow.h"
 #include "util/RsQtVersion.h"
+#include "gui/settings/rsharesettings.h"
 #include <QTimer>
 #include <QDateTime>
-#include <QSettings>
 
 #include <algorithm>
 #include <iostream>
@@ -339,13 +339,26 @@ void BwCtrlWindow::updateBandwidth()
 }
 
 // Persist column sizes
+// The column state lives in the settings of the node, like the state of the other
+// statistics pages. It used to go through a QSettings object created here: its
+// destructor wrote a file of its own to disk, lock file included, on the GUI
+// thread, each time the page was hidden.
 void BwCtrlWindow::showEvent(QShowEvent *) {
-    QSettings settings;
-    bwTreeWidget->header()->restoreState(settings.value("BwCtrlColumns").toByteArray());
+    Settings->beginGroup(QString("BwCtrlWindow"));
+    QByteArray state = Settings->value("TreeState").toByteArray();
+    Settings->endGroup();
+
+    if (!state.isEmpty())
+        bwTreeWidget->header()->restoreState(state);
 }
 
 void BwCtrlWindow::hideEvent(QHideEvent *) {
-    QSettings settings;
-    settings.setValue("BwCtrlColumns", bwTreeWidget->header()->saveState());
+    QByteArray state = bwTreeWidget->header()->saveState();
+
+    Settings->beginGroup(QString("BwCtrlWindow"));
+    // an unchanged state is not written again: every write makes Qt save the whole file
+    if (Settings->value("TreeState").toByteArray() != state)
+        Settings->setValue("TreeState", state);
+    Settings->endGroup();
 }
 

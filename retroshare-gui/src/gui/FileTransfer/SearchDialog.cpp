@@ -22,6 +22,7 @@
 #include <QDir>
 #include <QTimer>
 #include <QShortcut>
+#include <QSet>
 
 #include "rshare.h"
 #include "SearchDialog.h"
@@ -39,6 +40,9 @@
 #include "util/RsQtVersion.h"
 #include "util/qtthreadsutils.h"
 #include "util/misc.h"
+#include "util/rsthreads.h"
+
+#include <QPointer>
 
 #include <retroshare/rsfiles.h>
 #include <retroshare/rsturtle.h>
@@ -718,42 +722,56 @@ void SearchDialog::searchSummaryWidgetCustomPopupMenu( QPoint /*point*/ )
 void SearchDialog::searchRemove()
 {
 	/* get the current search id from the summary window */
-        QTreeWidgetItem *ci = ui.searchSummaryWidget->currentItem();
+	QTreeWidgetItem *ci = ui.searchSummaryWidget->currentItem();
 	if (!ci)
 		return;
 
-        /* get the searchId text */
-        QString searchId = ci->text(SS_SEARCH_ID_COL);
+	/* get the searchId text */
+	QString searchId = ci->text(SS_SEARCH_ID_COL);
 
-        std::cerr << "SearchDialog::searchRemove(): searchId: " << searchId.toStdString();
-        std::cerr << std::endl;
+	/* Take all the results out of the tree in one go, drop those of this search and put the
+	 * others back in one go. Taking the results out one by one makes the view update itself
+	 * (and every hidden row it keeps track of) once per result: seconds of cpu for a search
+	 * with thousands of results. */
+	ui.searchResultWidget->setUpdatesEnabled(false);
 
-        /* show only matching searchIds in main window */
-        int items = ui.searchResultWidget->topLevelItemCount();
-        for(int i = 0; i < items;)
-        {
-                /* get item */
-                QTreeWidgetItem *ti = ui.searchResultWidget->topLevelItem(i);
-                if (ti->text(SR_SEARCH_ID_COL) == searchId)
-                {
-			/* remove */
-                        delete (ui.searchResultWidget->takeTopLevelItem(i));
-			items--;
-                }
-                else
-                {
-			/* step to the next */
-			++i;
-                }
-        }
+	QTreeWidgetItem *root = ui.searchResultWidget->invisibleRootItem();
+	QSet<QTreeWidgetItem*> expanded;
+	int items = root->childCount();
+	for(int i = 0; i < items; ++i)
+		if (root->child(i)->isExpanded())
+			expanded.insert(root->child(i));
+
+	QList<QTreeWidgetItem*> all = root->takeChildren();
+	QList<QTreeWidgetItem*> kept;
+	QList<QTreeWidgetItem*> removed;
+	for(QTreeWidgetItem *ti : all)
+		if (ti->text(SR_SEARCH_ID_COL) == searchId)
+			removed.push_back(ti);
+		else
+			kept.push_back(ti);
+
+	if (!kept.empty())
+	{
+		ui.searchResultWidget->setSortingEnabled(false);
+		root->addChildren(kept);
+		ui.searchResultWidget->setSortingEnabled(true);
+
+		for(QTreeWidgetItem *ti : kept)
+			if (expanded.contains(ti))
+				ti->setExpanded(true);
+	}
+	qDeleteAll(removed);
+
+	/* Removing the current search selects another one, which hides or shows the results that
+	 * are left (selectSearchResults). */
 	int sii = ui.searchSummaryWidget->indexOfTopLevelItem(ci);
 	if (sii != -1)
-	{
-        	delete (ui.searchSummaryWidget->takeTopLevelItem(sii));
-	}
+		delete (ui.searchSummaryWidget->takeTopLevelItem(sii));
 
-        ui.searchResultWidget->update();
-        ui.searchSummaryWidget->update();
+	ui.searchResultWidget->setUpdatesEnabled(true);
+	ui.searchResultWidget->update();
+	ui.searchSummaryWidget->update();
 }
 
 /** remove all search results **/
@@ -864,16 +882,29 @@ void SearchDialog::advancedSearch(RsRegularExpression::Expression* expression)
 
     initSearchResult(QString::fromStdString(e.GetStrings()),req_id, ui.FileTypeComboBox->currentIndex(), true) ;
 
-    std::list<DirDetails> results;
-
     FileSearchFlags flags(0);
     if(ui._ownFiles_CB->isChecked())         flags |= RS_FILE_HINTS_LOCAL;
     if(ui._friendListsearch_SB->isChecked()) flags |= RS_FILE_HINTS_REMOTE;
 
-    rsFiles -> SearchBoolExp(expression, results, flags);
+    QString txt = advSearchDialog->getSearchAsString();
 
-	/* abstraction to allow reusee of tree rendering code */
-    resultsToTree(advSearchDialog->getSearchAsString(),req_id, results);
+    // Scanning the file lists can take seconds (large lists, swapped-out memory): keep it off the GUI thread.
+    // The expression was allocated by AdvancedSearchDialog::getRsExpr() for us, so it is freed here.
+    // The results go to qApp, which outlives the search: this dialog may be gone by then (exit).
+    QPointer<SearchDialog> self(this);
+    RsThread::async([self,expression,flags,txt,req_id]()
+    {
+        std::list<DirDetails> results;
+        rsFiles -> SearchBoolExp(expression, results, flags);
+        delete expression;
+
+        RsQThreadUtils::postToObject([self,txt,req_id,results]()
+        {
+            if(!self) return;
+            /* abstraction to allow reusee of tree rendering code */
+            self->resultsToTree(txt,req_id, results);
+        }, qApp);
+    });
 }
 
 void SearchDialog::searchKeywords()
@@ -936,46 +967,34 @@ void SearchDialog::searchKeywords(const QString& keywords)
 
 	if(ui._friendListsearch_SB->isChecked() || ui._ownFiles_CB->isChecked())
 	{
-		/* extract keywords from lineEdit */
-		// make a compound expression with an AND
-		//
+		bool search_remote = ui._friendListsearch_SB->isChecked();
+		bool search_local = ui._ownFiles_CB->isChecked();
 
-		std::list<DirDetails> finalResults ;
-
-		if(ui._friendListsearch_SB->isChecked())
+		// Scanning the file lists can take seconds (large lists, swapped-out memory): keep it off the GUI thread.
+		// The results go to qApp, which outlives the search: this dialog may be gone by then (exit).
+		QPointer<SearchDialog> self(this);
+		RsThread::async([self,words,search_remote,search_local,keywords,req_id]()
 		{
-			std::list<DirDetails> initialResults;
+			RsRegularExpression::NameExpression exprs(RsRegularExpression::ContainsAllStrings,words,true) ;
+			std::list<DirDetails> finalResults ;
 
-			rsFiles->SearchBoolExp(&exprs, initialResults, RS_FILE_HINTS_REMOTE) ;
+			if(search_remote)
+				rsFiles->SearchBoolExp(&exprs, finalResults, RS_FILE_HINTS_REMOTE) ;
 
-			/* which extensions do we use? */
-			DirDetails dd;
-
-			for(std::list<DirDetails>::iterator resultsIter = initialResults.begin(); resultsIter != initialResults.end(); ++resultsIter)
+			if(search_local)
 			{
-				dd = *resultsIter;
-				finalResults.push_back(dd);
+				std::list<DirDetails> initialResults;
+				rsFiles->SearchBoolExp(&exprs, initialResults, RS_FILE_HINTS_LOCAL);// | DIR_FLAGS_NETWORK_WIDE | DIR_FLAGS_BROWSABLE) ;
+				finalResults.splice(finalResults.end(), initialResults);
 			}
-		}
 
-		if(ui._ownFiles_CB->isChecked())
-		{
-			std::list<DirDetails> initialResults;
-
-			rsFiles->SearchBoolExp(&exprs, initialResults, RS_FILE_HINTS_LOCAL);// | DIR_FLAGS_NETWORK_WIDE | DIR_FLAGS_BROWSABLE) ;
-
-			/* which extensions do we use? */
-			DirDetails dd;
-
-			for(std::list<DirDetails>::iterator resultsIter = initialResults.begin(); resultsIter != initialResults.end(); ++resultsIter)
+			RsQThreadUtils::postToObject([self,keywords,req_id,finalResults]()
 			{
-				dd = *resultsIter;
-				finalResults.push_back(dd);
-			}
-		}
-
-		/* abstraction to allow reusee of tree rendering code */
-		resultsToTree(keywords,req_id, finalResults);
+				if(!self) return;
+				/* abstraction to allow reusee of tree rendering code */
+				self->resultsToTree(keywords,req_id, finalResults);
+			}, qApp);
+		});
 	}
 }
 

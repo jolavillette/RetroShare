@@ -150,7 +150,28 @@ endif()
 set(FETCHCONTENT_QUIET OFF)
 include(FetchContent)
 
-find_package(Git REQUIRED)
+################################################################################
+## Offline build guard. Several dependencies fall back to FetchContent (network
+## download at configure time) when their local sources are absent. For
+## offline/distribution builds (e.g. a Debian source package) that fallback must
+## be a hard error: it would silently build against an unpinned upstream tip.
+option(
+	RS_FETCH_MISSING_DEPS
+	"Allow downloading missing dependencies at configure time via FetchContent. Turn OFF for offline/distribution builds: a missing dependency then stops the configure with an explicit error instead of a silent network download." ON )
+
+macro(rs_fetch_fallback_guard RS_FFG_DEP_NAME)
+	if(RS_FETCH_MISSING_DEPS)
+		message(STATUS "${RS_FFG_DEP_NAME} not found locally, downloading it via FetchContent (pass -DRS_FETCH_MISSING_DEPS=OFF to make this an error)")
+	else()
+		message(FATAL_ERROR "${RS_FFG_DEP_NAME} not found locally and RS_FETCH_MISSING_DEPS is OFF: refusing to download it at configure time. Provide its sources (git submodule / complete source tarball) or the system library." )
+	endif()
+endmacro()
+################################################################################
+
+# Git is optional: it is only used to stamp versions (git describe, with a
+# Source_Version file fallback for source tarballs) and by the FetchContent
+# network fallbacks, which are guarded by RS_FETCH_MISSING_DEPS.
+find_package(Git)
 
 ################################################################################
 
@@ -193,6 +214,40 @@ elseif(APPLE)
     set_source_files_properties(src/rsMacIcon.icns PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
 endif()
 
+# Translations: compile the .ts files listed in RS_TRANSLATIONS into .qm at build
+# time and embed those, so the binary carries the current translations. The .qm
+# committed in src/lang/ are refreshed by hand and lag behind the .ts files (most
+# of them date from 2019); they remain the fallback when Qt LinguistTools is missing.
+find_package(Qt${QT_VERSION_MAJOR} QUIET COMPONENTS LinguistTools)
+if(TARGET Qt${QT_VERSION_MAJOR}::lrelease)
+	set(RS_LANG_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/lang")
+	file(MAKE_DIRECTORY "${RS_LANG_BINARY_DIR}")
+	set(RS_QM_FILES "")
+	set(RS_LANG_QRC "<RCC>\n  <qresource prefix=\"/lang\">\n")
+	foreach(RS_TS_FILE IN LISTS RS_TRANSLATIONS)
+		get_filename_component(RS_TS_NAME "${RS_TS_FILE}" NAME_WE)
+		set(RS_QM_FILE "${RS_LANG_BINARY_DIR}/${RS_TS_NAME}.qm")
+		add_custom_command(
+			OUTPUT "${RS_QM_FILE}"
+			COMMAND Qt${QT_VERSION_MAJOR}::lrelease -silent
+				"${CMAKE_CURRENT_SOURCE_DIR}/${RS_TS_FILE}" -qm "${RS_QM_FILE}"
+			DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${RS_TS_FILE}"
+			VERBATIM)
+		list(APPEND RS_QM_FILES "${RS_QM_FILE}")
+		string(APPEND RS_LANG_QRC "    <file>${RS_TS_NAME}.qm</file>\n")
+	endforeach()
+	string(APPEND RS_LANG_QRC "  </qresource>\n</RCC>\n")
+	# Only rewritten when its content changes, so rcc does not rerun for nothing.
+	file(CONFIGURE OUTPUT "${RS_LANG_BINARY_DIR}/lang.qrc" CONTENT "${RS_LANG_QRC}")
+	add_custom_target(retroshare-gui-translations DEPENDS ${RS_QM_FILES})
+	list(REMOVE_ITEM RS_GUI_QTRESOURCES src/lang/lang.qrc)
+	list(APPEND RS_GUI_QTRESOURCES "${RS_LANG_BINARY_DIR}/lang.qrc")
+	list(LENGTH RS_QM_FILES RS_QM_COUNT)
+	message(STATUS "retroshare-gui: ${RS_QM_COUNT} translations compiled from the .ts files with lrelease")
+else()
+	message(STATUS "retroshare-gui: Qt LinguistTools not found, embedding the committed .qm translations")
+endif()
+
 set(GUI_TYPE "")
 if(WIN32)
 	# Hide the console window on Windows for production builds (Release), 
@@ -205,6 +260,10 @@ elseif(APPLE)
 endif()
 
 add_executable(${PROJECT_NAME} ${GUI_TYPE} ${RS_GUI_SOURCES} ${RS_IMPLEMENTATION_HEADERS} ${RS_UI_HEADERS} ${RS_GUI_QTRESOURCES})
+if(TARGET retroshare-gui-translations)
+	# rcc must find the .qm listed in the generated lang.qrc.
+	add_dependencies(${PROJECT_NAME} retroshare-gui-translations)
+endif()
 # The GUI executable is named "retroshare-gui" on all platforms (it was
 # historically just "retroshare"; renamed for clarity vs retroshare-service).
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_NAME "retroshare-gui")
@@ -237,6 +296,24 @@ if(RS_USE_NATIVE_DIALOGS)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE RS_NATIVEDIALOGS)
 endif()
 
+# Diagnostics only: every MimeTextEdit (the chat inputs) logs a TEXTCURSOR-PROBE
+# line on stderr the moment its internal text cursor drops out of its document's
+# cursor set, the state that ends in a crash in ~QTextCursorPrivate when the
+# widget is destroyed. Reads Qt private headers, so Qt6 only.
+option(RS_TEXTCURSOR_PROBE "Log when a text edit's cursor drops out of its document (diagnostics, Qt6 only)" OFF)
+if(RS_TEXTCURSOR_PROBE)
+	if(NOT QT_VERSION_MAJOR EQUAL 6)
+		message(FATAL_ERROR "RS_TEXTCURSOR_PROBE needs Qt6")
+	endif()
+	if(NOT TARGET Qt6::GuiPrivate)
+		find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)
+	endif()
+	target_sources(${PROJECT_NAME} PRIVATE
+		src/gui/common/TextCursorProbe.cpp src/gui/common/TextCursorProbe.h)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE RS_TEXTCURSOR_PROBE)
+	target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::GuiPrivate)
+endif()
+
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/)
 
@@ -257,6 +334,7 @@ if(NOT TARGET retroshare)
 		add_subdirectory(
 			"${LIBRETROSHARE_DEVEL_DIR}" "${CMAKE_BINARY_DIR}/libretroshare" )
 	else()
+		rs_fetch_fallback_guard(libretroshare)
 		FetchContent_Declare(
 			libretroshare
 			GIT_REPOSITORY "https://gitlab.com/RetroShare/libretroshare.git"
@@ -278,41 +356,44 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${LIBRETROSHARE_DEVEL_DIR}/sr
 
 if(RS_SERVICE_DESKTOP)
 	if(UNIX AND NOT APPLE)
-		install(
-			FILES data/retroshare.svg
-			DESTINATION ${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/scalable/ )
+		# freedesktop.org integration: menu entry, AppStream metadata and icons
+		# (the files live in data/ at the top of the tree), plus the files the
+		# GUI looks for in its data directory, RS_DATA_DIR on Linux: chat
+		# styles in stylesheets/, sounds/ and extra stylesheets in qss/.
+		set(RS_DESKTOP_DATA "${CMAKE_CURRENT_SOURCE_DIR}/../data")
 
 		install(
-			FILES data/retroshare.xpm
-			DESTINATION ${CMAKE_INSTALL_PREFIX}/share/pixmaps/ )
+			FILES "${RS_DESKTOP_DATA}/retroshare.desktop"
+			DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications" )
 
 		install(
-			FILES data/24x24/apps/retroshare.png
-			DESTINATION ${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/24x24/apps/retroshare.png )
+			FILES "${RS_DESKTOP_DATA}/cc.retroshare.RetroShare.metainfo.xml"
+			DESTINATION "${CMAKE_INSTALL_PREFIX}/share/metainfo" )
 
 		install(
-			FILES data/48x48/apps/retroshare.png
-			DESTINATION ${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/48x48/apps/retroshare.png )
+			FILES "${RS_DESKTOP_DATA}/retroshare.svg"
+			DESTINATION "${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/scalable/apps" )
+
+		foreach(RS_ICON_SIZE 24x24 48x48 64x64 128x128)
+			install(
+				FILES "${RS_DESKTOP_DATA}/${RS_ICON_SIZE}/apps/retroshare.png"
+				DESTINATION "${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/${RS_ICON_SIZE}/apps" )
+		endforeach()
 
 		install(
-			FILES data/64x64/apps/retroshare.png
-			DESTINATION ${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/64x64/apps/retroshare.png )
+			FILES "${RS_DESKTOP_DATA}/retroshare.xpm"
+			DESTINATION "${CMAKE_INSTALL_PREFIX}/share/pixmaps" )
+
+		# Bubble/src holds the SVG and the script that generate the images of
+		# the style, not files the GUI reads.
+		install(
+			DIRECTORY src/gui/qss/chat/Bubble src/gui/qss/chat/Bubble_Compact
+			DESTINATION "${RS_DATA_DIR}/stylesheets"
+			PATTERN "src" EXCLUDE )
 
 		install(
-			FILES data/128x128/apps/retroshare.png
-			DESTINATION ${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/128x128/apps/retroshare.png )
-
-		install(
-			FILES data/retroshare.desktop
-			DESTINATION ${CMAKE_INSTALL_PREFIX}/data/retroshare.desktop )
-
-		install(
-			FILES gui/qss/chat/Bubble gui/qss/chat/Bubble_Compact
-			DESTINATION ${CMAKE_INSTALL_PREFIX}/data/stylesheets/ )
-
-		install(
-			FILES src/sounds/ src/qss/
-			DESTINATION ${CMAKE_INSTALL_PREFIX}/ )
+			DIRECTORY src/sounds src/qss
+			DESTINATION "${RS_DATA_DIR}" )
 	endif(UNIX AND NOT APPLE)
 endif(RS_SERVICE_DESKTOP)
 
@@ -324,6 +405,13 @@ endif(RS_JSON_API)
 
 if(RS_WEBUI)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE RS_WEBUI)
+
+	# The GUI serves the web files too, so it must wait for them to be generated
+	# (the target is created by the root CMakeLists, or by retroshare-service in
+	# a standalone build).
+	if(TARGET retroshare-webui)
+		add_dependencies(${PROJECT_NAME} retroshare-webui)
+	endif()
 endif(RS_WEBUI)
 
 ################################# CMark ########################################
@@ -335,6 +423,7 @@ if(RS_GUI_CMARK)
 		add_subdirectory( "${CMARK_DEVEL_DIR}" "${CMAKE_BINARY_DIR}/cmark" )
 		set(CMARK_INCLUDE_DIR "${CMARK_DEVEL_DIR}/src")
 	else()
+		rs_fetch_fallback_guard(cmark)
 		FetchContent_Declare(
 			cmark
 			GIT_REPOSITORY "https://github.com/commonmark/cmark.git"
@@ -351,6 +440,27 @@ if(RS_GUI_CMARK)
 	target_link_libraries(${PROJECT_NAME} PRIVATE libcmark_static)
 	target_include_directories(${PROJECT_NAME} PRIVATE "${CMARK_INCLUDE_DIR}")
 endif(RS_GUI_CMARK)
+
+############################# pegmarkdown (WikiPoos) ###########################
+
+# The WikiPoos GUI (gui/WikiPoos/*) renders markdown via the bundled
+# peg-markdown library. Build and link it only when the Wiki feature is on.
+if(RS_GXSWIKIPOS)
+	set(PEGMARKDOWN_DEVEL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../supportlibs/pegmarkdown/")
+	if(EXISTS "${PEGMARKDOWN_DEVEL_DIR}/CMakeLists.txt")
+		message(STATUS "pegmarkdown source found at ${PEGMARKDOWN_DEVEL_DIR} using it")
+		if(NOT TARGET pegmarkdown)
+			add_subdirectory("${PEGMARKDOWN_DEVEL_DIR}" "${CMAKE_BINARY_DIR}/pegmarkdown")
+		endif()
+		# PUBLIC include dir of the pegmarkdown target makes markdown_lib.h and
+		# the dummy <glib.h> reachable from the GUI's Wiki sources.
+		target_link_libraries(${PROJECT_NAME} PRIVATE pegmarkdown)
+	else()
+		message(FATAL_ERROR
+			"RS_GXSWIKIPOS is ON but pegmarkdown was not found at "
+			"${PEGMARKDOWN_DEVEL_DIR}")
+	endif()
+endif(RS_GXSWIKIPOS)
 
 ################################# LibSam v3 ####################################
 
@@ -418,7 +528,6 @@ if(UNIX)
 		# (src/idle/idle_platform.cpp, guarded by HAVE_XSS). NOTE: the XScreenSaver
 		# extension only works under X11/XWayland, not native Wayland; modernising
 		# idle detection for Wayland is a separate effort.
-		pkg_check_modules(REQUIRED x11)
 		pkg_check_modules(X11 REQUIRED x11)
 		pkg_check_modules(XSCRNSAVER REQUIRED xscrnsaver)
 
@@ -428,8 +537,8 @@ if(UNIX)
 		target_include_directories(${PROJECT_NAME} PRIVATE ${X11_INCLUDE_DIRS})
 		target_compile_options(${PROJECT_NAME} PRIVATE ${X11_CFLAGS_OTHER})
 
-		target_include_directories(retroshare-gui PRIVATE ${XSCRNSAVER_INCLUDE_DIRS})
-		target_compile_options(retroshare-gui PRIVATE ${XSCRNSAVER_CFLAGS_OTHER})
+		target_include_directories(${PROJECT_NAME} PRIVATE ${XSCRNSAVER_INCLUDE_DIRS})
+		target_compile_options(${PROJECT_NAME} PRIVATE ${XSCRNSAVER_CFLAGS_OTHER})
 
 		target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_XSS)
 	endif()
@@ -446,182 +555,14 @@ if(RS_SANITIZE)
 	list( APPEND RS_LINK_LIBRARIES ubsan )
 endif(RS_SANITIZE)
 
-#                       #################### Cross compilation for windows under Linux ###################
-#                       
-#                       win32-x-g++ {
-#                       		OBJECTS_DIR = temp/win32-x-g++/obj
-#                       
-#                       		LIBS += ../../../../lib/win32-x-g++-v0.5/libssl.a
-#                       		LIBS += ../../../../lib/win32-x-g++-v0.5/libcrypto.a
-#                       		LIBS += ../../../../lib/win32-x-g++-v0.5/libgpgme.dll.a
-#                       		LIBS += ../../../../lib/win32-x-g++-v0.5/libminiupnpc.a
-#                       		LIBS += ../../../../lib/win32-x-g++-v0.5/libz.a
-#                       		LIBS += -L${HOME}/.wine/drive_c/pthreads/lib -lpthreadGCE2
-#                       		LIBS += -lQtUiTools
-#                       		LIBS += -lws2_32 -luuid -lole32 -liphlpapi -lcrypt32 -gdi32
-#                       		LIBS += -lole32 -lwinmm
-#                       
-#                       		DEFINES *= WINDOWS_SYS WIN32 WIN32_CROSS_UBUNTU
-#                       
-#                       		INCLUDEPATH += ../../../../gpgme-1.1.8/src/
-#                       		INCLUDEPATH += ../../../../libgpg-error-1.7/src/
-#                       
-#                       		RC_FILE = gui/images/retroshare_win.rc
-#                       }
-#                       
-#                       #################################### Windows #####################################
-#                       
-#                       win32-g++|win32-clang-g++ {
-#                       	CONFIG(debug, debug|release) {
-#                       		# show console output
-#                       		CONFIG += console
-#                       	} else {
-#                       		CONFIG -= console
-#                       	}
-#                       
-#                       	CONFIG(debug, debug|release) {
-#                       	} else {
-#                       		# Tell linker to use ASLR protection
-#                       		QMAKE_LFLAGS += -Wl,-dynamicbase
-#                       		# Tell linker to use DEP protection
-#                       		QMAKE_LFLAGS += -Wl,-nxcompat
-#                       	}
-#                       
-#                           # Fix linking error (ld.exe: Error: export ordinal too large) due to too
-#                           # many exported symbols.
-#                           !libretroshare_shared:QMAKE_LFLAGS+=-Wl,--exclude-libs,ALL
-#                       
-#                       	# Switch off optimization for release version
-#                       	QMAKE_CXXFLAGS_RELEASE -= -O2
-#                       	QMAKE_CXXFLAGS_RELEASE += -O0
-#                       	QMAKE_CFLAGS_RELEASE -= -O2
-#                       	QMAKE_CFLAGS_RELEASE += -O0
-#                       
-#                       	# Switch on optimization for debug version
-#                       	#QMAKE_CXXFLAGS_DEBUG += -O2
-#                       	#QMAKE_CFLAGS_DEBUG += -O2
-#                       
-#                       	OBJECTS_DIR = temp/obj
-#                       
-#                           dLib = ws2_32 gdi32 uuid ole32 iphlpapi crypt32 winmm
-#                           LIBS *= $$linkDynamicLibs(dLib)
-#                       
-#                       	RC_FILE = gui/images/retroshare_win.rc
-#                       
-#                       	# export symbols for the plugins
-#                       	LIBS += -Wl,--export-all-symbols,--out-implib,lib/libretroshare-gui.a
-#                       
-#                       	# create lib directory
-#                       	isEmpty(QMAKE_SH) {
-#                       		QMAKE_PRE_LINK = $(CHK_DIR_EXISTS) lib $(MKDIR) lib
-#                       	} else {
-#                       		QMAKE_PRE_LINK = $(CHK_DIR_EXISTS) lib || $(MKDIR) lib
-#                       	}
-#                       
-#                       	greaterThan(QT_MAJOR_VERSION, 4) {
-#                       		# Qt 5
-#                       		RC_INCLUDEPATH += $$_PRO_FILE_PWD_/../../libretroshare/src
-#                       	} else {
-#                       		# Qt 4
-#                       		QMAKE_RC += --include-dir=$$_PRO_FILE_PWD_/../../libretroshare/src
-#                       	}
-#                       }
-#                       
-#                       ##################################### MacOS ######################################
-#                       
-#                       macx {
-#                       	# ENABLE THIS OPTION FOR Univeral Binary BUILD.
-#                       	#CONFIG += ppc x86
-#                       	#QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.4
-#                       	QMAKE_INFO_PLIST = Info.plist
-#                       	mac_icon.files = $$files($$PWD/rsMacIcon.icns)
-#                       	mac_icon.path = Contents/Resources
-#                       	QMAKE_BUNDLE_DATA += mac_icon
-#                       	dplQSS.files = $$PWD/qss
-#                       	dplQSS.path = Contents/Resources
-#                       	QMAKE_BUNDLE_DATA += dplQSS
-#                       	dplChatStyles.files = \
-#                       		$$PWD/gui/qss/chat/Bubble \
-#                       		$$PWD/gui/qss/chat/Bubble_Compact
-#                       	dplChatStyles.path = Contents/Resources/stylesheets
-#                       	QMAKE_BUNDLE_DATA += dplChatStyles 
-#                       #	mac_webui.files = $$files($$PWD/../../libresapi/src/webui)
-#                       #	mac_webui.path = Contents/Resources
-#                       #	QMAKE_BUNDLE_DATA += mac_webui
-#                       
-#                       	OBJECTS_DIR = temp/obj
-#                       
-#                       	CONFIG += version_detail_bash_script
-#                       	LIBS += -lssl -lcrypto -lz 
-#                       	for(lib, LIB_DIR):exists($$lib/libminiupnpc.a){ LIBS += $$lib/libminiupnpc.a}
-#                       	LIBS += -framework CoreFoundation
-#                       	LIBS += -framework Security
-#                       	LIBS += -framework Carbon
-#                       
-#                       	for(lib, LIB_DIR):LIBS += -L"$$lib"
-#                       	for(bin, BIN_DIR):LIBS += -L"$$bin"
-#                       
-#                       	DEPENDPATH += . $$INC_DIR
-#                       	INCLUDEPATH += . $$INC_DIR
-#                       
-#                       	#DEFINES *= MAC_IDLE # for idle feature
-#                       	CONFIG -= uitools
-#                       }
-#                       
-#                       ##################################### FreeBSD ######################################
-#                       
-#                       freebsd-* {
-#                       	INCLUDEPATH *= /usr/local/include/gpgme
-#                       	LIBS *= -lssl
-#                       	LIBS *= -lgpgme
-#                       	LIBS *= -lupnp
-#                       	LIBS *= -lgnome-keyring
-#                       
-#                       	LIBS += -lsqlite3
-#                       }
-#                       
-#                       ##################################### Haiku ######################################
-#                       
-#                       haiku-* {
-#                       	PRE_TARGETDEPS *= ../../libretroshare/src/lib/libretroshare.a
-#                       	PRE_TARGETDEPS *= ../../openpgpsdk/src/lib/libops.a
-#                       
-#                       	LIBS *= ../../libretroshare/src/lib/libretroshare.a
-#                       	LIBS *= ../../openpgpsdk/src/lib/libops.a -lbz2 -lbsd
-#                       	LIBS *= -lssl -lcrypto -lnetwork
-#                       	LIBS *= -lgpgme
-#                       	LIBS *= -lupnp
-#                       	LIBS *= -lz
-#                       	LIBS *= -lixml
-#                       
-#                       	LIBS += ../../supportlibs/pegmarkdown/lib/libpegmarkdown.a
-#                       	LIBS += -lsqlite3
-#                       }
-#                       
-#                       ##################################### OpenBSD ######################################
-#                       
-#                       openbsd-* {
-#                       	INCLUDEPATH *= /usr/local/include
-#                       
-#                       	LIBS *= -lssl -lcrypto
-#                       	LIBS *= -lgpgme
-#                       	LIBS *= -lupnp
-#                       	LIBS *= -lgnome-keyring
-#                       	LIBS += -lsqlite3
-#                       	LIBS *= -rdynamic
-#                       }
-#                       
-#                       ################################### COMMON stuff ##################################
-#                       
-#                       wikipoos {
-#                       	PRE_TARGETDEPS *= $$OUT_PWD/../../supportlibs/pegmarkdown/lib/libpegmarkdown.a
-#                       	LIBS *= $$OUT_PWD/../../supportlibs/pegmarkdown/lib/libpegmarkdown.a
-#                       	LIBS *= -lglib-2.0
-#                       }
-
 ################################ GENERAL #######################################
 
 target_link_libraries(${PROJECT_NAME} PRIVATE ${RS_LINK_LIBRARIES})
+
+if(WIN32)
+	# ShellExecuteExW and CoInitializeEx (gui/common/RsUrlHandler.cpp)
+	target_link_libraries(${PROJECT_NAME} PRIVATE shell32 ole32)
+endif()
 
 
 # Controlled by an option, like in libretroshare/CMakeLists.txt: silence the
@@ -643,12 +584,22 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE RS_DIRECT_CHAT)
 # what the GUI should report as its own version. Drop the leading 'v' to match the
 # usual version style. rsguiversion.h provides a default, so a build without git
 # metadata (or the qmake/Android build path) still compiles.
-execute_process(
-	COMMAND ${GIT_EXECUTABLE} describe --tags --always --dirty
-	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-	OUTPUT_VARIABLE RS_GUI_VERSION
-	OUTPUT_STRIP_TRAILING_WHITESPACE
-	RESULT_VARIABLE RS_GUI_GIT_RESULT ) # Avoid CMake failure if git fails
+# A source tarball made by build_scripts/make-source-tarball.sh carries the
+# super-project `git describe` in Source_Version: use it first, because the
+# tarball may be unpacked inside another git repository (git-buildpackage).
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Source_Version")
+	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../Source_Version" RS_GUI_VERSION)
+	string(STRIP "${RS_GUI_VERSION}" RS_GUI_VERSION)
+	set(RS_GUI_GIT_RESULT 0)
+else()
+	execute_process(
+		COMMAND ${GIT_EXECUTABLE} describe --tags --always --dirty
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+		OUTPUT_VARIABLE RS_GUI_VERSION
+		OUTPUT_STRIP_TRAILING_WHITESPACE
+		RESULT_VARIABLE RS_GUI_GIT_RESULT ) # Avoid CMake failure if git fails
+endif()
+
 if(RS_GUI_GIT_RESULT EQUAL 0 AND NOT RS_GUI_VERSION STREQUAL "")
 	string(REGEX REPLACE "^v" "" RS_GUI_VERSION "${RS_GUI_VERSION}")
 	message(STATUS "RetroShare GUI version ${RS_GUI_VERSION}")
@@ -669,18 +620,25 @@ endif(RS_GXSCIRCLES)
 # because the statically-linked librnp does not propagate them. Ideally librnp
 # (or libretroshare) should export these as link-interface deps so consumers don't
 # have to repeat them; that belongs to libretroshare and is left as a follow-up.
-find_library(BOTAN_LIBRARY NAMES botan botan-3 botan-2 libbotan-3 libbotan-2 REQUIRED)
-
-if(WIN32)
-    # Robust resolution including RNP and sexpp inside the link group for Windows MinGW
-    target_link_libraries(${PROJECT_NAME} PRIVATE -Wl,--start-group retroshare librnp sexpp z bz2 json-c ${BOTAN_LIBRARY} -Wl,--end-group)
-elseif(APPLE)
-    # macOS specific behavior: skip Linux-specific linker flags
-    target_link_libraries(${PROJECT_NAME} PRIVATE retroshare z bz2 json-c ${BOTAN_LIBRARY})
-else()
-    # Default behavior for Linux
+# When RS_SYSTEM_LIBRNP is ON (distribution builds, e.g. Debian) the system
+# librnp is a shared library that carries its own dependencies, so none of this
+# is needed — and botan development files may legitimately be absent.
+if(RS_SYSTEM_LIBRNP)
     target_link_libraries(${PROJECT_NAME} PRIVATE retroshare)
-    target_link_libraries(${PROJECT_NAME} PRIVATE -Wl,--no-as-needed z bz2 json-c ${BOTAN_LIBRARY} -Wl,--as-needed)
+else()
+    find_library(BOTAN_LIBRARY NAMES botan botan-3 botan-2 libbotan-3 libbotan-2 REQUIRED)
+
+    if(WIN32)
+        # Robust resolution including RNP and sexpp inside the link group for Windows MinGW
+        target_link_libraries(${PROJECT_NAME} PRIVATE -Wl,--start-group retroshare librnp sexpp z bz2 json-c ${BOTAN_LIBRARY} -Wl,--end-group)
+    elseif(APPLE)
+        # macOS specific behavior: skip Linux-specific linker flags
+        target_link_libraries(${PROJECT_NAME} PRIVATE retroshare z bz2 json-c ${BOTAN_LIBRARY})
+    else()
+        # Default behavior for Linux
+        target_link_libraries(${PROJECT_NAME} PRIVATE retroshare)
+        target_link_libraries(${PROJECT_NAME} PRIVATE -Wl,--no-as-needed z bz2 json-c ${BOTAN_LIBRARY} -Wl,--as-needed)
+    endif()
 endif()
 
 if(RS_PLUGINS AND CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)

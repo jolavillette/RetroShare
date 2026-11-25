@@ -21,6 +21,7 @@
 #include "gui/common/FilesDefs.h"
 #include <QDialogButtonBox>
 #include <QMenu>
+#include <QTimer>
 #include "FriendSelectionWidget.h"
 #include "ui_FriendSelectionWidget.h"
 #include "gui/gxs/GxsIdDetails.h"
@@ -125,6 +126,14 @@ FriendSelectionWidget::FriendSelectionWidget(QWidget *parent)
 	/* Refresh style to have the correct text color */
 	RsApplication::refreshStyleSheet(this, false);
 
+    // Identity events come in herds (a sync, or a pass of the identity cleaner, posts hundreds of them):
+    // they are grouped into one reload per second.
+
+    mIdentityEventTimer = new QTimer(this);
+    mIdentityEventTimer->setSingleShot(true);
+    mIdentityEventTimer->setInterval(1000);
+    connect(mIdentityEventTimer, &QTimer::timeout, this, [this]() { updateDisplay(true); update(); });
+
     mEventHandlerId_identities = 0;
     rsEvents->registerEventsHandler( [this](std::shared_ptr<const RsEvent> event) {
         RsQThreadUtils::postToObject( [this,event]() { handleEvent_main_thread(event); }) ;}, mEventHandlerId_identities, RsEventType::GXS_IDENTITY );
@@ -141,8 +150,8 @@ void FriendSelectionWidget::handleEvent_main_thread(std::shared_ptr<const RsEven
 
     if(fe)
     {
-        updateDisplay(true);
-        update(); // Qt flush
+        if(!mIdentityEventTimer->isActive())
+            mIdentityEventTimer->start();
         return;
     }
     const RsFriendListEvent *fp = dynamic_cast<const RsFriendListEvent*>(event.get());
@@ -388,8 +397,18 @@ void FriendSelectionWidget::secured_fillList()
 	else
 		rsPeers->getGPGAcceptedList(gpgIds);
 
-    // add own pgp id to the list
-    gpgIds.push_back(rsPeers->getGPGOwnId()) ;
+	// The own PGP profile is not a friend: it is neither a valid group member, nor a peer whose service
+	// permissions or keyring entry can be edited. Callers that really want it (none at the moment) ask for
+	// it explicitly with SHOW_OWN_GPG. Note that getGPGAllList() already contains it, hence the removal.
+	const RsPgpId ownId = rsPeers->getGPGOwnId();
+
+	if(mShowTypes & SHOW_OWN_GPG)
+	{
+		if(std::find(gpgIds.begin(), gpgIds.end(), ownId) == gpgIds.end())
+			gpgIds.push_back(ownId);
+	}
+	else
+		gpgIds.remove(ownId);
 
     std::list<RsPeerId> sslIds;
     std::list<RsPeerId>::iterator sslIt;

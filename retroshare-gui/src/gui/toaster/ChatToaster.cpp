@@ -24,7 +24,17 @@
 
 #include <retroshare/rspeers.h>
 
-ChatToaster::ChatToaster(const RsPeerId &peer_id, const QString &message) : QWidget(NULL), mPeerId(peer_id)
+ChatToaster::ChatToaster(const RsPeerId &peer_id, const QString &message) : QWidget(NULL), mChatId(peer_id)
+{
+	setup(QString::fromUtf8(rsPeers->getPeerName(peer_id).c_str()), message);
+}
+
+ChatToaster::ChatToaster(const ChatId &chat_id, const QString &name, const QString &message) : QWidget(NULL), mChatId(chat_id)
+{
+	setup(name, message);
+}
+
+void ChatToaster::setup(const QString &name, const QString &message)
 {
 	/* Invoke the Qt Designer generated object setup routine */
 	ui.setupUi(this);
@@ -36,13 +46,14 @@ ChatToaster::ChatToaster(const RsPeerId &peer_id, const QString &message) : QWid
 	//ui.textLabel->setText(RsHtml().formatText(NULL, message, RSHTML_FORMATTEXT_EMBED_SMILEYS | RSHTML_FORMATTEXT_EMBED_LINKS | RSHTML_FORMATTEXT_CLEANSTYLE));
     // emoticons disabled because they kill performance.
 	ui.textLabel->setText(RsHtml().formatText(NULL, message, RSHTML_FORMATTEXT_CLEANSTYLE));
-    ui.toasterLabel->setText(QString::fromUtf8(rsPeers->getPeerName(mPeerId).c_str()));
+	ui.toasterLabel->setText(name);
 	ui.avatarWidget->setFrameType(AvatarWidget::STATUS_FRAME);
-    ui.avatarWidget->setId(ChatId(mPeerId));
+	ui.avatarWidget->setId(mChatId);
 }
 
 void ChatToaster::chatButtonSlot()
 {
-    ChatDialog::chatFriend(ChatId(mPeerId));
+	// Opened by a user click: the OS lets the window come to the foreground
+	ChatDialog::chatFriend(mChatId);
 	hide();
 }
