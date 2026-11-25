@@ -600,10 +600,9 @@ preference deterministic, and is also what makes
 
 ### Version numbering
 
-Versions are **not** hard-coded — CMake derives them at configure time from
-`git describe` run in each component's working tree, so what a build reports is
-exactly what your local checkout resolves to. Three independent strings are
-stamped in:
+Versions are **not** hard-coded — they come from `git describe` run in each
+component's working tree, so what a build reports is exactly what your local
+checkout resolves to. Three independent strings are stamped in:
 
 | String | Source command | CMake file |
 |---|---|---|
@@ -625,11 +624,22 @@ git -C libretroshare describe --tags --long --match 'v*.*.*'
 The first line is `RS_GUI_VERSION` (drop the leading `v`); the second is the
 libRetroShare version.
 
+The parts that change at every commit (`RS_GUI_VERSION`, the `-<N>-g<hash>`
+extra of the libRetroShare version and the engine build hash) are read **at
+build time**: every build runs `git describe` again and writes the result to a
+small generated header (`rsguiversion_build.h`, `rsversion_build.h`) that only
+the few files showing the version include. So a build after a new commit
+reports that commit without running CMake again, and recompiles those few files
+only. The `major.minor.mini` numbers of libRetroShare are compile definitions
+set at configure time: after a new `v*.*.*` tag, run CMake again (the build
+prints a warning until then).
+
 Notes:
 - **`-dirty`** is appended whenever the working tree has *tracked* modifications
-  at configure time. Modified **submodule pointers count**: a submodule checked
-  out on another commit than the pinned one alone makes the GUI version
-  `-dirty`. Untracked files never trigger it.
+  at build time. Untracked files never trigger it. For the GUI version only
+  the files of the super-project count: a submodule that is not at the commit
+  the super-project records does not make it `-dirty`, so the first command
+  above can print `-dirty` where the build does not.
 - libretroshare uses `--long`, which **always** prints the `-<N>-g<hash>` suffix —
   even on a tagged commit you get `v0.6.7-0-g…`, never a bare `0.6.7`.
 - If git metadata is unavailable (tarball / distro build, or the git call fails),
