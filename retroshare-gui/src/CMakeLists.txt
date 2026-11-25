@@ -84,6 +84,7 @@ list(
 	src/util/printpreview.cpp 
 	src/util/log.cpp 
 	src/util/misc.cpp 
+	src/util/qrcodegen/qrcodegen.cpp
 	src/util/HandleRichText.cpp 
 	src/util/ObjectPainter.cpp 
 	src/util/RsFile.cpp 
@@ -146,6 +147,7 @@ list(
 	src/gui/common/RSTextEdit.cpp 
 	src/gui/common/RSPlainTextEdit.cpp 
 	src/gui/common/RSTreeWidget.cpp 
+	src/gui/common/QrCodeDialog.cpp
 	src/gui/common/RSTreeWidgetItem.cpp 
 	src/gui/common/RSFeedWidget.cpp 
 	src/gui/common/RSTabWidget.cpp 
@@ -513,6 +515,7 @@ list(
 	src/util/printpreview.h 
 	src/util/log.h 
 	src/util/misc.h 
+	src/util/qrcodegen/qrcodegen.hpp
 	src/util/HandleRichText.h 
 	src/util/FontSizeHandler.h 
 	src/util/ObjectPainter.h 
@@ -613,6 +616,7 @@ list(
 	src/gui/common/RSTextEdit.h 
 	src/gui/common/RSPlainTextEdit.h 
 	src/gui/common/RSTreeWidget.h 
+	src/gui/common/QrCodeDialog.h
 	src/gui/common/RSTreeWidgetItem.h 
 	src/gui/common/RSFeedWidget.h 
 	src/gui/common/RSTabWidget.h 
