@@ -55,6 +55,15 @@ if([===[@WIN32@]===])
 		[===[@CMAKE_CURRENT_FUNCTION_LIST_DIR@/]===]
 		RuntimeDependenciesInstallScript-exclude-windows.txt
 	)
+elseif([===[@UNIX@]===] AND NOT [===[@APPLE@]===])
+	# The libraries a portable Linux package must take from the system it runs
+	# on (the C library, the graphics drivers, X11...): the AppImage project's
+	# excludelist, pkg2appimage commit 15a64c20dc23 (2024-11-03), as regular
+	# expressions.
+	string(CONCAT EXCLUDE_LIBS
+		[===[@CMAKE_CURRENT_FUNCTION_LIST_DIR@/]===]
+		RuntimeDependenciesInstallScript-exclude-linux.txt
+	)
 endif()
 if(DEFINED EXCLUDE_LIBS)
 	file(READ ${EXCLUDE_LIBS} EXCLUDE_LIBS)
