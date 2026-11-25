@@ -139,10 +139,13 @@ cmake_dependent_option(
 	OFF
 )
 
-cmake_dependent_option(RS_PACKAGE_RUNTIME_DEPENDENCIES
+set(RS_PACKAGE_RUNTIME_DEPENDENCIES_DEFAULT FALSE)
+if((WIN32 OR APPLE) AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.16)
+	set(RS_PACKAGE_RUNTIME_DEPENDENCIES_DEFAULT TRUE)
+endif()
+option(RS_PACKAGE_RUNTIME_DEPENDENCIES
 	"Bundle runtime dependencies (DLLs) into packages"
-	TRUE "(WIN32 OR APPLE) AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.16"
-	FALSE
+	${RS_PACKAGE_RUNTIME_DEPENDENCIES_DEFAULT}
 )
 
 set(RUNTIME_DEPENDENCY_PATH
@@ -627,10 +630,10 @@ endif()
 
 
 ################################################################################
-### Windows: runtime dependencies of a package
+### Windows, Linux: runtime dependencies of a package
 
-# Install-time scripts that copy into a package the DLLs the program needs and
-# the Qt plugins. Prepared here, outside the packaging section below, and
+# Install-time scripts that copy into a package the shared libraries (DLLs) the
+# program needs and the Qt plugins, which go beside the program. Prepared here, outside the packaging section below, and
 # registered in the global property RS_PACKAGE_INSTALL_SCRIPTS, because the
 # super-project's package needs them too.
 if(RS_PACKAGE_RUNTIME_DEPENDENCIES AND NOT APPLE)
@@ -695,7 +698,7 @@ if(RS_PACKAGE_RUNTIME_DEPENDENCIES AND NOT APPLE)
 			"file(COPY $<TARGET_FILE:${plugin}>\n"
 				"DESTINATION "
 					"\${CMAKE_INSTALL_PREFIX}/"
-					"${CMAKE_INSTALL_SODIR}/"
+					"${CMAKE_INSTALL_BINDIR}/"
 					"$<TARGET_PROPERTY:${plugin},QT_PLUGIN_TYPE>/\n"
 				"NO_SOURCE_PERMISSIONS\n"
 				"FOLLOW_SYMLINK_CHAIN\n"
@@ -776,6 +779,9 @@ set(CPACK_SOURCE_IGNORE_FILES
   "^${PROJECT_SOURCE_DIR}/\\.git(/|\$)"
   "^${PROJECT_SOURCE_DIR}/build/"
 )
+
+## AppImage generator
+set(CPACK_APPIMAGE_NO_APPSTREAM TRUE)
 
 ## NSIS generator
 # set(CPACK_NSIS_MUI_ICON ${PROJECT_SOURCE_DIR}/data/logos/${APPSTREAM_ID}.ico)
