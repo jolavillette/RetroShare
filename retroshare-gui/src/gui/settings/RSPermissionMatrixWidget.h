@@ -26,6 +26,7 @@
 #include <QApplication>
 #include <QFrame>
 #include <QColor>
+#include <QPixmap>
 
 #include <stdint.h>
 #include <retroshare/rspeers.h>
@@ -88,6 +89,9 @@ private:
     void switchPermission(uint32_t service_id,const RsPeerId& peer_id) ;
     void switchPermission(uint32_t service_id) ;
 
+    // Scales the switch icons to the font height S, when it is not the one they were scaled for.
+    void updateScaledPixmaps(float S) ;
+
     std::vector<RsPeerId> peer_ids ;
     std::vector<uint32_t> service_ids ;
 
@@ -106,6 +110,11 @@ private:
     QColor brushColor;
 
     bool mHideOffline;
+
+    // The switch icons scaled to the font height, made once instead of at every cell of every paint.
+    QPixmap mSwitchPixmaps[4] ;
+    QPixmap mGlobalSwitchPixmaps[2] ;
+    float mPixmapsFontHeight ;
 
     static const float fROW_SIZE ;
     static const float fCOL_SIZE ;

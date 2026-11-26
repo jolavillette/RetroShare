@@ -23,6 +23,7 @@
 #endif
 
 #include <iostream>
+#include <algorithm>
 #include <math.h>
 #include <QtGlobal>
 #include <QPainter>
@@ -56,6 +57,15 @@ const float RSPermissionMatrixWidget::fCOL_SIZE       = 42/16.0 ;
 const float RSPermissionMatrixWidget::fMATRIX_START_X =  5/16.0 ;
 const float RSPermissionMatrixWidget::fMATRIX_START_Y =100/16.0 ;
 
+static const char *const GLOBAL_SWITCH_PIXMAPS[2] = { ":/icons/global_switch_off_128.png",
+                                                      ":/icons/global_switch_on_128.png" } ;
+
+// indexed by (locally allowed << 1) + remotely allowed
+static const char *const SWITCH_PIXMAPS[4] = { ":/icons/switch00_128.png",
+                                               ":/icons/switch01_128.png",
+                                               ":/icons/switch10_128.png",
+                                               ":/icons/switch11_128.png" } ;
+
 /** Default contructor */
 RSPermissionMatrixWidget::RSPermissionMatrixWidget(QWidget *parent)
   :QFrame(parent)
@@ -73,6 +83,21 @@ RSPermissionMatrixWidget::RSPermissionMatrixWidget(QWidget *parent)
   _max_height = 0 ;
 
   mHideOffline = false;
+  mPixmapsFontHeight = -1 ;
+}
+
+void RSPermissionMatrixWidget::updateScaledPixmaps(float S)
+{
+    if(S == mPixmapsFontHeight)
+        return ;
+
+    for(int i=0;i<4;++i)
+        mSwitchPixmaps[i] = QPixmap(SWITCH_PIXMAPS[i]).scaledToHeight(S*fICON_SIZE_X,Qt::SmoothTransformation) ;
+
+    for(int i=0;i<2;++i)
+        mGlobalSwitchPixmaps[i] = QPixmap(GLOBAL_SWITCH_PIXMAPS[i]).scaledToHeight(S*fICON_SIZE_Y*0.9,Qt::SmoothTransformation) ;
+
+    mPixmapsFontHeight = S ;
 }
 
 void RSPermissionMatrixWidget::setHideOffline(bool hide)
@@ -211,24 +236,6 @@ RSPermissionMatrixWidget::~RSPermissionMatrixWidget()
     delete _painter;
 }
 
-bool sortRsPeerIdByNameLocation(const RsPeerId &a, const RsPeerId &b)
-{
-	RsPeerDetails detailsA, detailsB;
-	rsPeers->getPeerDetails(a, detailsA);
-	rsPeers->getPeerDetails(b, detailsB);
-	QString stringA, stringB;
-
-	// name
-	stringA += QString::fromUtf8(detailsA.name.c_str());
-	stringB += QString::fromUtf8(detailsB.name.c_str());
-
-	// location
-	stringA += QString::fromUtf8(detailsA.location.c_str());
-	stringB += QString::fromUtf8(detailsB.location.c_str());
-
-	return stringA.toLower() < stringB.toLower();
-}
-
 /** Overloads default QWidget::paintEvent. Draws the actual
  * bandwidth graph. */
 void RSPermissionMatrixWidget::paintEvent(QPaintEvent *)
@@ -257,19 +264,24 @@ void RSPermissionMatrixWidget::paintEvent(QPaintEvent *)
     brushColor = Qt::black ;
   }
 
+  updateScaledPixmaps(S) ;
+
   // draw one line per friend.
   std::list<RsPeerId> ssllist ;
   rsPeers->getFriendList(ssllist) ;
+
+  // The details of each friend, asked once: the sort below used to ask them twice per comparison.
+  std::map<RsPeerId,RsPeerDetails> peerDetails ;
+
+  for(std::list<RsPeerId>::const_iterator it(ssllist.begin());it!=ssllist.end();++it)
+      rsPeers->getPeerDetails(*it, peerDetails[*it]) ;
 
   // sort list
   {
       // sort out offline peers
       if(mHideOffline) {
-          RsPeerDetails peerDetails;
           for(std::list<RsPeerId>::iterator it = ssllist.begin(); it != ssllist.end();) {
-              rsPeers->getPeerDetails(*it, peerDetails);
-
-              switch (peerDetails.connectState) {
+              switch (peerDetails[*it].connectState) {
               case RS_PEER_CONNECTSTATE_OFFLINE:
               case RS_PEER_CONNECTSTATE_TRYING_TCP:
               case RS_PEER_CONNECTSTATE_TRYING_UDP:
@@ -282,8 +294,16 @@ void RSPermissionMatrixWidget::paintEvent(QPaintEvent *)
           }
       }
 
-      // sort by name
-      ssllist.sort(sortRsPeerIdByNameLocation);
+      // sort by name, then location
+      std::map<RsPeerId,QString> sortKeys ;
+
+      for(std::list<RsPeerId>::const_iterator it(ssllist.begin());it!=ssllist.end();++it)
+      {
+          const RsPeerDetails& details(peerDetails[*it]) ;
+          sortKeys[*it] = (QString::fromUtf8(details.name.c_str()) + QString::fromUtf8(details.location.c_str())).toLower() ;
+      }
+
+      ssllist.sort([&sortKeys](const RsPeerId& a,const RsPeerId& b) { return sortKeys[a] < sortKeys[b] ; }) ;
   }
 
   RsPeerServiceInfo ownServices;
@@ -300,8 +320,7 @@ void RSPermissionMatrixWidget::paintEvent(QPaintEvent *)
 
   for(std::list<RsPeerId>::const_iterator it(ssllist.begin());it!=ssllist.end();++it)
   {
-      RsPeerDetails details ;
-      rsPeers->getPeerDetails(*it,details) ;
+      const RsPeerDetails& details(peerDetails[*it]) ;
 
       QString name = QString::fromUtf8(details.name.c_str()) + " (" + QString::fromUtf8(details.location.c_str()) + ")";
       // TODO does not work correctly with hieroglyphs
@@ -394,15 +413,12 @@ void RSPermissionMatrixWidget::paintEvent(QPaintEvent *)
   for(std::map<uint32_t, RsServiceInfo>::const_iterator sit(ownServices.mServiceList.begin());sit!=ownServices.mServiceList.end();++sit)
       service_ids.push_back(sit->first) ;
 
-  static const std::string global_switch[2] = { ":/icons/global_switch_off_128.png",
-                                                ":/icons/global_switch_on_128.png" } ;
-
   for(uint32_t i=0;i<service_ids.size();++i)
   {
       RsServicePermissions serv_perm ;
       rsServiceControl->getServicePermissions(service_ids[i],serv_perm) ;
 
-      QPixmap pix(global_switch[serv_perm.mDefaultAllowed].c_str()) ;
+      const QPixmap& pix(mGlobalSwitchPixmaps[serv_perm.mDefaultAllowed ? 1 : 0]) ;
       QRect position = computeNodePosition(0,i,false) ;
 
       position.setY(position.y() - S*fICON_SIZE_Y + 8/14.0*S) ;
@@ -410,15 +426,26 @@ void RSPermissionMatrixWidget::paintEvent(QPaintEvent *)
       position.setHeight(30/14.0*S) ;
       position.setWidth(30/14.0*S) ;
 
-      _painter->drawPixmap(position,pix.scaledToHeight(S*fICON_SIZE_Y*0.9,Qt::SmoothTransformation),QRect(0,0,S*fICON_SIZE_X,S*fICON_SIZE_Y)) ;
+      _painter->drawPixmap(position,pix,QRect(0,0,S*fICON_SIZE_X,S*fICON_SIZE_Y)) ;
+  }
+
+  // The services allowed for each friend and those it provides, asked once per friend instead of
+  // once per friend and per service.
+
+  std::vector<RsPeerServiceInfo>  localServicePerms(ssllist.size()) ;
+  std::vector<RsPeerServiceInfo> remoteServicePerms(ssllist.size()) ;
+
+  {
+      int n_row = 0 ;
+
+      for(std::list<RsPeerId>::const_iterator it(ssllist.begin());it!=ssllist.end();++it,++n_row)
+      {
+          rsServiceControl->getServicesAllowed (*it, localServicePerms[n_row]) ;
+          rsServiceControl->getServicesProvided(*it,remoteServicePerms[n_row]) ;
+      }
   }
 
   // We draw for each service.
-
-  static const std::string pixmap_names[4] = { ":/icons/switch00_128.png",
-                                               ":/icons/switch01_128.png",
-                                               ":/icons/switch10_128.png",
-                                               ":/icons/switch11_128.png" } ;
 
   int n_col = 0 ;
   int n_col_selected = -1 ;
@@ -426,29 +453,19 @@ void RSPermissionMatrixWidget::paintEvent(QPaintEvent *)
 
   for(std::map<uint32_t, RsServiceInfo>::const_iterator sit(ownServices.mServiceList.begin());sit!=ownServices.mServiceList.end();++sit,++n_col)
   {
-      RsServicePermissions service_perms ;
-
-      rsServiceControl->getServicePermissions(sit->first,service_perms) ;
-
-      // draw the default switch.
-
-
       // draw one switch per friend.
 
       int n_row = 0 ;
 
       for(std::list<RsPeerId>::const_iterator it(ssllist.begin());it!=ssllist.end();++it,++n_row)
       {
-          RsPeerServiceInfo local_service_perms ;
-          RsPeerServiceInfo remote_service_perms ;
-
-          rsServiceControl->getServicesAllowed (*it, local_service_perms) ;
-          rsServiceControl->getServicesProvided(*it,remote_service_perms) ;
+          const RsPeerServiceInfo&  local_service_perms( localServicePerms[n_row]) ;
+          const RsPeerServiceInfo& remote_service_perms(remoteServicePerms[n_row]) ;
 
           bool  local_allowed =  local_service_perms.mServiceList.find(sit->first) !=  local_service_perms.mServiceList.end() ;
           bool remote_allowed = remote_service_perms.mServiceList.find(sit->first) != remote_service_perms.mServiceList.end() ;
 
-          QPixmap pix(pixmap_names[(local_allowed << 1) + remote_allowed].c_str()) ;
+          const QPixmap& pix(mSwitchPixmaps[(local_allowed << 1) + remote_allowed]) ;
 
           bool selected = (sit->first == _current_service_id && *it == _current_peer_id) ;
           QRect position = computeNodePosition(n_row,n_col,selected) ;
@@ -458,7 +475,7 @@ void RSPermissionMatrixWidget::paintEvent(QPaintEvent *)
               n_row_selected = n_row ;
               n_col_selected = n_col ;
           }
-          _painter->drawPixmap(position,pix.scaledToHeight(S*fICON_SIZE_X,Qt::SmoothTransformation),QRect(0,0,S*fICON_SIZE_X,S*fICON_SIZE_Y)) ;
+          _painter->drawPixmap(position,pix,QRect(0,0,S*fICON_SIZE_X,S*fICON_SIZE_Y)) ;
       }
   }
 
