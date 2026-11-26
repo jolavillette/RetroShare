@@ -32,7 +32,6 @@
 #include "gui/connect/ConnectFriendWizard.h"
 #include "gui/connect/ConfCertDialog.h"
 #include <gui/QuickStartWizard.h>
-#include "gui/connect/FriendRecommendDialog.h"
 #include "settings/rsharesettings.h"
 
 #if QT_VERSION >= QT_VERSION_CHECK(5,0,0)
@@ -43,6 +42,7 @@
 #include <string>
 #include <QTime>
 #include <QMenu>
+#include <QPushButton>
 #include <QDesktopServices>
 #include <QMessageBox>
 #include <QFileDialog>
@@ -58,49 +58,25 @@ HomePage::HomePage(QWidget *parent) :
 
     connect(ui->addButton, SIGNAL(clicked()), this, SLOT(addFriend()));
     connect(ui->copyIDButton, SIGNAL(clicked()), this, SLOT(copyId()));
+    connect(ui->saveButton, SIGNAL(clicked()), this, SLOT(saveCert()));
+    connect(ui->emailButton, SIGNAL(clicked()), this, SLOT(runEmailClient()));
 
-    QAction *WebMailAction = new QAction(QIcon(),tr("Invite via WebMail"), this);
-    connect(WebMailAction, SIGNAL(triggered()), this, SLOT(webMail()));
+    // The two format buttons exclude each other: one signal is enough.
+    connect(ui->fullCertButton, SIGNAL(toggled(bool)), this, SLOT(updateOwnCert()));
 
-    QAction *RecAction = new QAction(QIcon(),tr("Recommend friends to each others"), this);
-    connect(RecAction, SIGNAL(triggered()), this, SLOT(recommendFriends()));
-
-    QAction *SaveAction = new QAction(QIcon(),tr("Save to File"), this);
-    connect(SaveAction, SIGNAL(triggered()), this, SLOT(saveCert()));
-
-    QAction *SendAction = new QAction(QIcon(),tr("Send via Email"), this);
-    connect(SendAction, SIGNAL(triggered()), this, SLOT(runEmailClient()));
-
-    QAction *CopyIdAction = new QAction(QIcon(),tr("Copy your Retroshare ID to Clipboard"), this);
-    connect(CopyIdAction, SIGNAL(triggered()), this, SLOT(copyId()));
-
-    QAction *QrCodeAction = new QAction(QIcon(),tr("Show your Retroshare ID as a QR code"), this);
-    connect(QrCodeAction, &QAction::triggered, this, [this]()
+    connect(ui->qrCodeButton, &QPushButton::clicked, this, [this]()
     {
         // The code carries what the page shows: the short ID, or the whole
-        // certificate when the old format is chosen.
+        // certificate when the full format is chosen.
         QString invite, description;
         getOwnCert(invite, description);
         QrCodeDialog::show(this, tr("Retroshare ID"), invite);
     });
 
-    QMenu *menu = new QMenu();
-    menu->addAction(CopyIdAction);
-    menu->addAction(QrCodeAction);
+    // A hidden node has no address to choose: the options button stays away.
+    ui->optionsButton->setVisible(!RsAccounts::isHiddenNode());
 
-    menu->addSeparator();
-    menu->addAction(SaveAction);
-    menu->addAction(SendAction);
-    menu->addAction(WebMailAction);
-    menu->addAction(RecAction);
-    menu->addSeparator();
-
-    mUseOldFormatact = new QAction(QIcon(), tr("Use old certificate format"),this);
-    mUseOldFormatact->setToolTip(tr("Displays the certificate format used up to version 0.6.5\nOld Retroshare nodes will not understand the\nnew short format"));
-    connect(mUseOldFormatact, SIGNAL(triggered()), this, SLOT(updateOwnCert()));
-    mUseOldFormatact->setCheckable(true);
-    mUseOldFormatact->setChecked(false);
-    menu->addAction(mUseOldFormatact);
+    QMenu *menu = new QMenu(this);
 
     if(!RsAccounts::isHiddenNode())
     {
@@ -129,7 +105,7 @@ HomePage::HomePage(QWidget *parent) :
         menu->addAction(mIncludeIPHistoryact);
     }
 
-    ui->shareButton->setMenu(menu);
+    ui->optionsButton->setMenu(menu);
 
     connect(ui->openwebhelp,SIGNAL(clicked()), this,SLOT(openWebHelp())) ;
 
@@ -258,7 +234,7 @@ void HomePage::getOwnCert(QString& invite,QString& description) const
 
     invite_flags |= RetroshareInviteFlags::SLICE_TO_80_CHARS;
 
-    if(!mUseOldFormatact->isChecked())
+    if(!ui->fullCertButton->isChecked())
     {
         std::string short_invite;
         rsPeers->getShortInvite(short_invite,rsPeers->getOwnId(),invite_flags | RetroshareInviteFlags::RADIX_FORMAT);
@@ -267,7 +243,7 @@ void HomePage::getOwnCert(QString& invite,QString& description) const
     else
         invite = QString::fromStdString(rsPeers->GetRetroshareInvite(detail.id,invite_flags));
 
-    description = ConfCertDialog::getCertificateDescription(detail,false,!mUseOldFormatact->isChecked(),invite_flags);
+    description = ConfCertDialog::getCertificateDescription(detail,false,!ui->fullCertButton->isChecked(),invite_flags);
 }
 
 void HomePage::updateOwnCert()
@@ -276,7 +252,7 @@ void HomePage::updateOwnCert()
 
     getOwnCert(certificate,description);
 
-    if(!mUseOldFormatact->isChecked())	// in this case we have to split the cert for a better display
+    if(!ui->fullCertButton->isChecked())	// in this case we have to split the cert for a better display
     {
         QString S;
         QString txt;
@@ -326,11 +302,6 @@ static void sendMail(const QString &sAddress, const QString &sSubject, const QSt
     QDesktopServices::openUrl (url);
 }
 
-void HomePage::recommendFriends()
-{
-    FriendRecommendDialog::showIt() ;
-}
-
 void HomePage::runEmailClient()
 {
     sendMail("", tr("RetroShare Invite"), ui->retroshareid->text());
@@ -377,14 +348,6 @@ void HomePage::addFriend()
     ConnectFriendWizard connwiz (this);
 
     connwiz.setStartId(ConnectFriendWizard::Page_Text);
-    connwiz.exec ();
-}
-
-void HomePage::webMail()
-{
-    ConnectFriendWizard connwiz (this);
-
-    connwiz.setStartId(ConnectFriendWizard::Page_WebMail);
     connwiz.exec ();
 }
 

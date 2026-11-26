@@ -63,9 +63,7 @@ private slots:
 	void copyId();
 	void saveCert();
 	void addFriend();
-	void webMail();
 	void openWebHelp() ;
-	void recommendFriends();
 	void updateHomeLogo();
 
 private:
@@ -75,7 +73,6 @@ private:
     QAction *mIncludeIPHistoryact;
     QAction *mIncludeExtIPact;
     QAction *mIncludeLocIPact;
-    QAction *mUseOldFormatact;
 
     RsEventsHandlerId_t mEventHandlerId;
 

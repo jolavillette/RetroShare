@@ -20,6 +20,8 @@
 
 #include "QrCodeDialog.h"
 
+#include <QApplication>
+#include <QClipboard>
 #include <QCoreApplication>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -91,9 +93,14 @@ void QrCodeDialog::show(QWidget *parent, const QString& title, const QString& te
 	label->setAlignment(Qt::AlignCenter);
 
 	QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+	QPushButton *copy = buttons->addButton(tr("Copy image"), QDialogButtonBox::ActionRole);
 	QPushButton *save = buttons->addButton(tr("Save as image"), QDialogButtonBox::ActionRole);
 
 	QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+	QObject::connect(copy, &QPushButton::clicked, &dialog, [image]()
+	{
+		QApplication::clipboard()->setImage(image);
+	});
 	QObject::connect(save, &QPushButton::clicked, &dialog, [&dialog, image]()
 	{
 		QString file = QFileDialog::getSaveFileName( &dialog, tr("Save as image"),
