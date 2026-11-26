@@ -26,6 +26,7 @@
 #include <QActionGroup>
 
 #include "ChatLobbyDialog.h"
+#include "ChatLobbyPolicyDialog.h"
 
 #include "ChatTabWidget.h"
 #include "gui/ChatLobbyWidget.h"
@@ -45,6 +46,8 @@
 #include "util/HandleRichText.h"
 #include "util/RsQtVersion.h"
 #include "util/qtthreadsutils.h"
+
+#include <retroshare/rspeers.h>
 
 #include "util/rstime.h"
 #include "util/DateTime.h"
@@ -100,6 +103,8 @@ ChatLobbyDialog::ChatLobbyDialog(const ChatLobbyId& lid, QWidget *parent, Qt::Wi
     distantChatAct = new QAction(FilesDefs::getIconFromQtResourcePath(":/icons/png/chats.png"), tr("Start private chat"), this);
     sendMessageAct = new QAction(FilesDefs::getIconFromQtResourcePath(":/icons/mail/write-mail.png"), tr("Send Message"), this);
     showInPeopleAct = new QAction(QIcon(), tr("Show author in people tab"), this);
+    adminAct = new QAction(QIcon(), tr("Admin of this room"), this);
+    adminAct->setCheckable(true);
 
     QActionGroup *sortgrp = new QActionGroup(this);
     actionSortByName = new QAction(QIcon(), tr("Sort by Name"), this);
@@ -120,6 +125,7 @@ ChatLobbyDialog::ChatLobbyDialog(const ChatLobbyId& lid, QWidget *parent, Qt::Wi
     connect(voteNeutralAct, SIGNAL(triggered()), this, SLOT(voteParticipant()));
     connect(voteNegativeAct, SIGNAL(triggered()), this, SLOT(voteParticipant()));
     connect(showInPeopleAct, SIGNAL(triggered()), this, SLOT(showInPeopleTab()));
+    connect(adminAct, SIGNAL(triggered()), this, SLOT(toggleParticipantAdmin()));
 
     connect(actionSortByName, SIGNAL(triggered()), this, SLOT(sortParcipants()));
     connect(actionSortByActivity, SIGNAL(triggered()), this, SLOT(sortParcipants()));
@@ -164,6 +170,16 @@ ChatLobbyDialog::ChatLobbyDialog(const ChatLobbyId& lid, QWidget *parent, Qt::Wi
 	connect(inviteFriendsButton, SIGNAL(clicked()), this , SLOT(inviteFriends()));
 
     getChatWidget()->addTitleBarWidget(inviteFriendsButton) ;
+
+	// Add a button for the hosted room: role of this node, rules.
+	//
+	policyButton = new QToolButton ;
+	policyButton->setAutoRaise(true) ;
+	policyButton->setToolButtonStyle(Qt::ToolButtonTextOnly) ;
+	connect(policyButton, SIGNAL(clicked()), this , SLOT(showPolicyDialog()));
+
+	getChatWidget()->addTitleBarWidget(policyButton) ;
+	updatePolicyDisplay() ;
 
     RsGxsId current_id;
     rsChats->getIdentityForChatLobby(lobbyId, current_id);
@@ -244,6 +260,52 @@ void ChatLobbyDialog::inviteFriends()
 	}
 }
 
+void ChatLobbyDialog::showPolicyDialog()
+{
+	ChatLobbyPolicyDialog(lobbyId, this).exec();
+	updatePolicyDisplay();
+}
+
+void ChatLobbyDialog::toggleParticipantAdmin()
+{
+	const RsPeerId node(adminAct->data().toString().toStdString());
+
+	if(!node.isNull())
+		rsChats->setChatLobbyParticipant(lobbyId, node, RsGxsId(), adminAct->isChecked());
+}
+
+void ChatLobbyDialog::updatePolicyDisplay()
+{
+	ChatLobbyPolicy policy;
+	ChatLobbyRole role;
+
+	if(rsChats->getChatLobbyPolicy(lobbyId, policy) && policy.enabled)
+	{
+		policyButton->setText(tr("Hosted room: host"));
+		policyButton->setToolTip(tr("Your node is the host of this room: it decides what it passes on between the participants. Click to change the rules and the admins."));
+	}
+	else if(rsChats->getChatLobbyRole(lobbyId, role) && role.ruled)
+	{
+		QStringList lines;
+		lines << tr("The node %1 is the host of this room: it decides what it passes on between the participants.").arg(QString::fromUtf8(rsPeers->getPeerName(role.host).c_str()));
+
+		if(role.admin)
+			lines << tr("You are an admin: what you write goes to everyone, and you receive everything.");
+		else
+		{
+			lines << (role.membersTalk ? tr("What you write goes to everyone.") : tr("What you write reaches the admins only."));
+			lines << (role.membersSeeEachOther ? tr("You see every participant.") : tr("You see the admins only."));
+		}
+		policyButton->setText(role.admin ? tr("Hosted room: admin") : tr("Hosted room: member"));
+		policyButton->setToolTip(lines.join("\n"));
+	}
+	else
+	{
+		policyButton->setText(tr("Host this room"));
+		policyButton->setToolTip(tr("This room has no host: everything goes to every participant. Click to make your node its host and decide what it passes on."));
+	}
+}
+
 void ChatLobbyDialog::participantsTreeWidgetCustomPopupMenu(QPoint)
 {
 	QList<QTreeWidgetItem*> selectedItems = ui.participantsList->selectedItems();
@@ -297,6 +359,21 @@ void ChatLobbyDialog::initParticipantsContextMenu(QMenu *contextMnu, QList<RsGxs
 	contextMnu->addAction(voteNeutralAct);
 	contextMnu->addAction(voteNegativeAct);
 	contextMnu->addAction(showInPeopleAct);
+
+	// The node that holds the room's relay rules names the admins. The
+	// table is by node: a participant is found there by its identity.
+	ChatLobbyPolicy policy;
+
+	if(idList.count() == 1 && rsChats->getChatLobbyPolicy(lobbyId, policy) && policy.enabled)
+		for(const ChatLobbyParticipant& participant : policy.participants)
+			if(!participant.identity.isNull() && participant.identity == idList.at(0))
+			{
+				contextMnu->addSeparator();
+				contextMnu->addAction(adminAct);
+				adminAct->setChecked(participant.admin);
+				adminAct->setData(QString::fromStdString(participant.node.toStdString()));
+				break;
+			}
 
 	distantChatAct->setEnabled(false);
 	sendMessageAct->setEnabled(false);
@@ -935,6 +1012,9 @@ void ChatLobbyDialog::handleLobbyEvent(RsChatLobbyEventCode event_type, const Rs
         break;
     case RsChatLobbyEventCode::CHAT_LOBBY_EVENT_KEEP_ALIVE:
         //std::cerr << "Received keep alive packet from " << nickname.toStdString() << " in chat room " << getPeerId() << std::endl;
+        break;
+    case RsChatLobbyEventCode::CHAT_LOBBY_POLICY_CHANGED:
+        updatePolicyDisplay();
         break;
     default:
         std::cerr << "ChatLobbyDialog::handledLobbyEvent() Unhandled chat room event type " << (int)event_type << std::endl;

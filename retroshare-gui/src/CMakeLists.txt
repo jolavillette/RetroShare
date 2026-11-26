@@ -104,6 +104,7 @@ list(
 	src/gui/chat/ChatDialog.cpp 
 	src/gui/chat/ChatLobbyDialog.cpp 
 	src/gui/chat/CreateLobbyDialog.cpp 
+	src/gui/chat/ChatLobbyPolicyDialog.cpp 
 	src/gui/chat/ChatStyle.cpp 
 	src/gui/chat/ChatUserNotify.cpp 
 	src/gui/chat/ChatLobbyUserNotify.cpp 
@@ -535,6 +536,7 @@ list(
 	src/gui/ChatLobbyWidget.h 
 	src/gui/chat/ChatLobbyDialog.h 
 	src/gui/chat/CreateLobbyDialog.h 
+	src/gui/chat/ChatLobbyPolicyDialog.h 
 	src/gui/chat/ChatStyle.h 
 	src/gui/chat/ChatUserNotify.h 
 	src/gui/chat/ChatLobbyUserNotify.h 
