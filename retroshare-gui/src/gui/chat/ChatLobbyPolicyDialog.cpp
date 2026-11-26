@@ -32,6 +32,7 @@
 #define COLUMN_NODE     0
 #define COLUMN_IDENTITY 1
 #define COLUMN_ADMIN    2
+#define COLUMN_REMOVED  3
 
 #define ROLE_NODE_ID    Qt::UserRole
 
@@ -56,7 +57,9 @@ void ChatLobbyPolicyDialog::buildRoleView(const ChatLobbyRole& role)
 	QStringList lines;
 	lines << tr("The node %1 is the host of this room: it decides what it passes on between the participants.").arg(QString::fromUtf8(rsPeers->getPeerName(role.host).c_str()));
 
-	if(role.admin)
+	if(role.excluded)
+		lines << tr("The host removed you from this room: you no longer receive what is written here, and what you write reaches nobody through the host.");
+	else if(role.admin)
 		lines << tr("You are an admin: what you write goes to everyone, and you receive everything.");
 	else
 	{
@@ -97,7 +100,8 @@ void ChatLobbyPolicyDialog::buildEditor()
 
 	mParticipants = new QTreeWidget;
 	mParticipants->setRootIsDecorated(false);
-	mParticipants->setHeaderLabels(QStringList() << tr("Invited node") << tr("Identity in the room") << tr("Admin"));
+	mParticipants->setHeaderLabels(QStringList() << tr("Invited node") << tr("Identity in the room") << tr("Admin") << tr("Removed"));
+	mParticipants->headerItem()->setToolTip(COLUMN_REMOVED, tr("Your node passes nothing of this room on to a removed node and accepts nothing from it. Unticking invites it again."));
 	mParticipants->header()->setSectionResizeMode(COLUMN_NODE, QHeaderView::Stretch);
 	mParticipants->header()->setSectionResizeMode(COLUMN_IDENTITY, QHeaderView::Stretch);
 	mParticipants->header()->setStretchLastSection(false);
@@ -144,6 +148,7 @@ void ChatLobbyPolicyDialog::fillParticipants(const ChatLobbyPolicy& policy)
 		                 : QString::fromStdString(participant.identity.toStdString()));
 		item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
 		item->setCheckState(COLUMN_ADMIN, participant.admin ? Qt::Checked : Qt::Unchecked);
+		item->setCheckState(COLUMN_REMOVED, participant.excluded ? Qt::Checked : Qt::Unchecked);
 	}
 }
 
@@ -170,10 +175,20 @@ void ChatLobbyPolicyDialog::apply()
 
 			const RsPeerId node(item->data(COLUMN_NODE, ROLE_NODE_ID).toString().toStdString());
 			const bool admin = item->checkState(COLUMN_ADMIN) == Qt::Checked;
+			const bool removed = item->checkState(COLUMN_REMOVED) == Qt::Checked;
 
 			for(const ChatLobbyParticipant& participant : mPolicy.participants)
-				if(participant.node == node && participant.admin != admin)
-					rsChats->setChatLobbyParticipant(mLobbyId, node, RsGxsId(), admin);
+				if(participant.node == node)
+				{
+					// Removing a node, or inviting again one that was removed.
+					if(removed && !participant.excluded)
+						rsChats->removeChatLobbyParticipant(mLobbyId, node);
+					else if(!removed && participant.excluded)
+						rsChats->invitePeerToLobby(mLobbyId, node);
+
+					if(!removed && participant.admin != admin)
+						rsChats->setChatLobbyParticipant(mLobbyId, node, RsGxsId(), admin);
+				}
 		}
 	}
 	accept();

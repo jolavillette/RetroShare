@@ -105,6 +105,7 @@ ChatLobbyDialog::ChatLobbyDialog(const ChatLobbyId& lid, QWidget *parent, Qt::Wi
     showInPeopleAct = new QAction(QIcon(), tr("Show author in people tab"), this);
     adminAct = new QAction(QIcon(), tr("Admin of this room"), this);
     adminAct->setCheckable(true);
+    removeParticipantAct = new QAction(QIcon(), tr("Remove from this room"), this);
 
     QActionGroup *sortgrp = new QActionGroup(this);
     actionSortByName = new QAction(QIcon(), tr("Sort by Name"), this);
@@ -126,6 +127,7 @@ ChatLobbyDialog::ChatLobbyDialog(const ChatLobbyId& lid, QWidget *parent, Qt::Wi
     connect(voteNegativeAct, SIGNAL(triggered()), this, SLOT(voteParticipant()));
     connect(showInPeopleAct, SIGNAL(triggered()), this, SLOT(showInPeopleTab()));
     connect(adminAct, SIGNAL(triggered()), this, SLOT(toggleParticipantAdmin()));
+    connect(removeParticipantAct, SIGNAL(triggered()), this, SLOT(removeParticipant()));
 
     connect(actionSortByName, SIGNAL(triggered()), this, SLOT(sortParcipants()));
     connect(actionSortByActivity, SIGNAL(triggered()), this, SLOT(sortParcipants()));
@@ -274,6 +276,22 @@ void ChatLobbyDialog::toggleParticipantAdmin()
 		rsChats->setChatLobbyParticipant(lobbyId, node, RsGxsId(), adminAct->isChecked());
 }
 
+void ChatLobbyDialog::removeParticipant()
+{
+	const RsPeerId node(removeParticipantAct->data().toString().toStdString());
+
+	if(node.isNull())
+		return;
+
+	if(QMessageBox::question(this, tr("Remove from this room"),
+	                         tr("Remove %1 from this room?\n\nYour node will no longer pass anything of this room on to it, nor accept anything from it. It is told so. Inviting it again takes it back.")
+	                         .arg(QString::fromUtf8(rsPeers->getPeerName(node).c_str())),
+	                         QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+		return;
+
+	rsChats->removeChatLobbyParticipant(lobbyId, node);
+}
+
 void ChatLobbyDialog::updatePolicyDisplay()
 {
 	ChatLobbyPolicy policy;
@@ -289,14 +307,16 @@ void ChatLobbyDialog::updatePolicyDisplay()
 		QStringList lines;
 		lines << tr("The node %1 is the host of this room: it decides what it passes on between the participants.").arg(QString::fromUtf8(rsPeers->getPeerName(role.host).c_str()));
 
-		if(role.admin)
+		if(role.excluded)
+			lines << tr("The host removed you from this room: you no longer receive what is written here, and what you write reaches nobody through the host.");
+		else if(role.admin)
 			lines << tr("You are an admin: what you write goes to everyone, and you receive everything.");
 		else
 		{
 			lines << (role.membersTalk ? tr("What you write goes to everyone.") : tr("What you write reaches the admins only."));
 			lines << (role.membersSeeEachOther ? tr("You see every participant.") : tr("You see the admins only."));
 		}
-		policyButton->setText(role.admin ? tr("Hosted room: admin") : tr("Hosted room: member"));
+		policyButton->setText(role.excluded ? tr("Hosted room: removed") : role.admin ? tr("Hosted room: admin") : tr("Hosted room: member"));
 		policyButton->setToolTip(lines.join("\n"));
 	}
 	else
@@ -366,12 +386,14 @@ void ChatLobbyDialog::initParticipantsContextMenu(QMenu *contextMnu, QList<RsGxs
 
 	if(idList.count() == 1 && rsChats->getChatLobbyPolicy(lobbyId, policy) && policy.enabled)
 		for(const ChatLobbyParticipant& participant : policy.participants)
-			if(!participant.identity.isNull() && participant.identity == idList.at(0))
+			if(!participant.identity.isNull() && participant.identity == idList.at(0) && !participant.excluded)
 			{
 				contextMnu->addSeparator();
 				contextMnu->addAction(adminAct);
+				contextMnu->addAction(removeParticipantAct);
 				adminAct->setChecked(participant.admin);
 				adminAct->setData(QString::fromStdString(participant.node.toStdString()));
+				removeParticipantAct->setData(QString::fromStdString(participant.node.toStdString()));
 				break;
 			}
 
