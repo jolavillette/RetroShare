@@ -147,6 +147,52 @@
                </property>
               </widget>
              </item>
+             <item row="5" column="0">
+              <widget class="QLabel" name="ruled_Lb">
+               <property name="text">
+                <string>Hosted room:</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item row="5" column="2">
+              <widget class="QCheckBox" name="ruled_CB">
+               <property name="toolTip">
+                <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;If you check this, your node is the host of the room: it decides what it passes on between the participants you invite. You choose which of them are admins: what an admin writes goes to everyone, and admins receive everything. The other participants are members.&lt;/p&gt;&lt;p&gt;This holds for participants that reach the room through your node. Participants connected to each other directly exchange everything.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+               </property>
+               <property name="text">
+                <string>my node is the host: it decides what participants see and say</string>
+               </property>
+              </widget>
+             </item>
+             <item row="6" column="2">
+              <widget class="QCheckBox" name="membersSee_CB">
+               <property name="enabled">
+                <bool>false</bool>
+               </property>
+               <property name="toolTip">
+                <string>If unchecked, a member only sees the admins in the participant list.</string>
+               </property>
+               <property name="text">
+                <string>members see each other</string>
+               </property>
+              </widget>
+             </item>
+             <item row="7" column="2">
+              <widget class="QCheckBox" name="membersTalk_CB">
+               <property name="enabled">
+                <bool>false</bool>
+               </property>
+               <property name="toolTip">
+                <string>If unchecked, what a member writes reaches the admins only.</string>
+               </property>
+               <property name="text">
+                <string>members talk to each other</string>
+               </property>
+              </widget>
+             </item>
             </layout>
            </item>
            <item>

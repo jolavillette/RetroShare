@@ -68,6 +68,8 @@ private slots:
 	void participantsTreeWidgetCustomPopupMenu( QPoint point );
 	void textBrowserAskContextMenu(QMenu* contextMnu, QString anchorForPosition, const QPoint point);
 	void inviteFriends() ;
+	void showPolicyDialog();
+	void toggleParticipantAdmin();
 	void filterChanged(const QString &text);
 	void showInPeopleTab();
 	void toggleWindowed(){setWindowed(!isWindowed());}
@@ -105,6 +107,9 @@ private:
 
 	void filterIds();
 
+	/// Shows what this node holds or was told about the room's relay rules.
+	void updatePolicyDisplay();
+
     QString getParticipantName(const RsGxsId& id) const;
     void muteParticipant(const RsGxsId& id);
     void unMuteParticipant(const RsGxsId& id);
@@ -120,6 +125,7 @@ private:
 	QToolButton *inviteFriendsButton ;
 	QToolButton *unsubscribeButton ;
 	QToolButton *fetchHistoryButton ;
+	QToolButton *policyButton ;
 
 	bool mWindowedSetted;
 	PopupChatWindow* mPCWindow;
@@ -142,6 +148,7 @@ private:
     QWidgetAction *checkableAction;
     QAction *sendMessageAct;
     QAction *showInPeopleAct;
+    QAction *adminAct;
 
     GxsIdChooser *ownIdChooser ;
     //icons cache

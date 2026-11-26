@@ -134,6 +134,7 @@ ChatLobbyWidget::ChatLobbyWidget(QWidget *parent, Qt::WindowFlags flags)
             case RsChatLobbyEventCode::CHAT_LOBBY_EVENT_PEER_JOINED:
             case RsChatLobbyEventCode::CHAT_LOBBY_EVENT_PEER_CHANGE_NICKNAME:
             case RsChatLobbyEventCode::CHAT_LOBBY_EVENT_KEEP_ALIVE:
+            case RsChatLobbyEventCode::CHAT_LOBBY_POLICY_CHANGED:
                 handleChatLobbyEvent(ev->mLobbyId,ev->mEventCode,ev->mGxsId,QString::fromUtf8(ev->mStr.c_str()));
                 break;
 

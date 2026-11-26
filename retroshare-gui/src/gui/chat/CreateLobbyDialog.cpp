@@ -60,6 +60,8 @@ CreateLobbyDialog::CreateLobbyDialog(const std::set<RsPeerId>& peer_list, int pr
 	connect( ui->lobbyTopic_LE, SIGNAL( textChanged ( QString ) ), this, SLOT( checkTextFields( ) ) );
     connect( ui->idChooser_CB, SIGNAL( currentIndexChanged ( int ) ), this, SLOT( checkTextFields( ) ) );
     connect( ui->pgp_signed_CB, SIGNAL( toggled ( bool ) ), this, SLOT( checkTextFields( ) ) );
+    connect( ui->ruled_CB, SIGNAL( toggled ( bool ) ), ui->membersSee_CB, SLOT( setEnabled ( bool ) ) );
+    connect( ui->ruled_CB, SIGNAL( toggled ( bool ) ), ui->membersTalk_CB, SLOT( setEnabled ( bool ) ) );
 
 	/* initialize key share list */
 	ui->keyShareList->setHeaderText(tr("Contacts:"));
@@ -149,7 +151,20 @@ void CreateLobbyDialog::createLobby()
     if(ui->pgp_signed_CB->isChecked())
         lobby_flags |= RS_CHAT_LOBBY_FLAGS_PGP_SIGNED ;
     
-    ChatLobbyId id = rsChats->createChatLobby(lobby_name,gxs_id, lobby_topic, shareList, lobby_flags);
+    // With relay rules the friends are invited once the rules are set: a
+    // node invited to a room that has rules is entered in its participant
+    // table and told its role.
+    const bool ruled = ui->ruled_CB->isChecked() ;
+
+    ChatLobbyId id = rsChats->createChatLobby(lobby_name,gxs_id, lobby_topic, ruled ? std::set<RsPeerId>() : shareList, lobby_flags);
+
+    if(ruled && id != 0)
+    {
+        rsChats->setChatLobbyPolicy(id, true, ui->membersSee_CB->isChecked(), ui->membersTalk_CB->isChecked()) ;
+
+        for(const RsPeerId& peer : shareList)
+            rsChats->invitePeerToLobby(id, peer) ;
+    }
 
     std::cerr << "gui: Created chat room " << std::hex << id << std::dec << std::endl ;
 
