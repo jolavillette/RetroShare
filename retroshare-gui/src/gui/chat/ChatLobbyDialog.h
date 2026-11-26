@@ -70,6 +70,7 @@ private slots:
 	void inviteFriends() ;
 	void showPolicyDialog();
 	void toggleParticipantAdmin();
+	void removeParticipant();
 	void filterChanged(const QString &text);
 	void showInPeopleTab();
 	void toggleWindowed(){setWindowed(!isWindowed());}
@@ -149,6 +150,7 @@ private:
     QAction *sendMessageAct;
     QAction *showInPeopleAct;
     QAction *adminAct;
+    QAction *removeParticipantAct;
 
     GxsIdChooser *ownIdChooser ;
     //icons cache
