@@ -45,6 +45,7 @@ it there.
   select a folder or **Message Folders** first.
 - **Update feed**: fetches the selected feed now. On a folder, it fetches all
   the feeds of the folder.
+- **?** (help button): opens this page of the manual, as F1 does.
 
 ### Message toolbar
 

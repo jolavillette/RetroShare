@@ -1,8 +1,8 @@
 # The RetroShare manual
 
 This directory holds the manual that the GUI shows in its help browser
-(F1, the "Help" entry of the tray menu, the "Read more in the manual" link of
-the help bubbles).
+(F1, the "?" button of each page, the "Manual" entry of the main window and of
+the tray menu, the "Read more in the manual" link of the help bubbles).
 
 - `en/contents.xml` is the table of contents. Each `Topic` has an `id`, the
   `name` shown in the tree and the Markdown file of the page (`html`

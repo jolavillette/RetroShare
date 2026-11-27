@@ -29,7 +29,9 @@ connection items.
 - Sort selector: **Newest on top** or **Oldest on top**. The choice is
   remembered.
 - **Remove All**: removes every item from the page.
-- **?** (help button): shows a short introduction to the page.
+- **?** (help button): opens the manual on this page. The first time you open
+  the page, a short introduction to the page is shown in a bubble; click the
+  bubble to close it.
 
 ### Buttons found on every item
 

@@ -66,7 +66,9 @@ per line, and the card view, with a large picture.
 
 ### Above the list
 
-- **?** (help button): shows a short introduction to boards.
+- **?** (help button): opens the manual on this page. The first time you open
+  the page, a short introduction to boards is shown in a bubble; click the
+  bubble to close it.
 - **Create Board**: opens the **Create New Board** dialog.
 
 ### Details tab

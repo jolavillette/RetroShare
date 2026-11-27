@@ -514,7 +514,12 @@ void MainWindow::initStackedPage()
 		 std::cerr << "  Adding widget page for plugin " << rsPlugins->plugin(i)->getPluginName() << std::endl;
 		 pluginPage->setIconPixmap(icon);
 		 pluginPage->setPageName(QString::fromUtf8(rsPlugins->plugin(i)->getPluginName().c_str()));
-		 addPage(pluginPage, grp, &notify, "plugins." + pluginPage->pageName().toLower());
+		 // A plugin page may give its own help topic; otherwise it gets one
+		 // under "plugins", named after the plugin.
+		 QString helpTopic = pluginPage->helpTopic();
+		 if (helpTopic.isEmpty())
+			 helpTopic = "plugins." + pluginPage->pageName().toLower();
+		 addPage(pluginPage, grp, &notify, helpTopic);
 	 }
 	 else if(rsPlugins->plugin(i) == NULL)
 		 std::cerr << "  No plugin object !" << std::endl;
@@ -575,6 +580,7 @@ void MainWindow::initStackedPage()
   // Removed About because it's now in options.
   //addAction(new QAction(QIcon(IMAGE_ABOUT), tr("About"), ui->toolBarAction), &MainWindow::showabout, SLOT(showabout()));
 
+  addAction(new QAction(QIcon(IMG_HELP), tr("Manual"), ui->toolBarAction), &MainWindow::showHelpDialog, SLOT(showHelpDialog()));
   addAction(new QAction(QIcon(IMAGE_QUIT), tr("Quit"), ui->toolBarAction), &MainWindow::doQuit, SLOT(doQuit()));
 
 }
@@ -681,7 +687,7 @@ void MainWindow::createTrayIcon()
     trayMenu->addAction(QIcon(), tr("Applications"), this, SLOT(showApplWindow()));
 #endif
     trayMenu->addAction(QIcon(IMAGE_PREFERENCES), tr("Options"), this, SLOT(showSettings()));
-    trayMenu->addAction(QIcon(IMG_HELP), tr("Help"), this, SLOT(showHelpDialog()));
+    trayMenu->addAction(QIcon(IMG_HELP), tr("Manual"), this, SLOT(showHelpDialog()));
     trayMenu->addSeparator();
     trayMenu->addAction(QIcon(IMAGE_MINIMIZE), tr("Minimize"), this, SLOT(showMinimized()));
     trayMenu->addAction(QIcon(IMAGE_MAXIMIZE), tr("Maximize"), this, SLOT(showMaximized()));
@@ -740,7 +746,7 @@ void MainWindow::createMenuBar()
     dockMenu->addAction(tr("Bandwidth Graph"), this, SLOT(showBandwidthGraph()));
     dockMenu->addAction(tr("Statistics"), this, SLOT(showStatisticsWindow()));
     dockMenu->addAction(tr("Options"), this, SLOT(showSettings()));
-    dockMenu->addAction(tr("Help"), this, SLOT(showHelpDialog()));
+    dockMenu->addAction(tr("Manual"), this, SLOT(showHelpDialog()));
 
     dockMenu->addSeparator();
     QMenu *statusMenu = dockMenu->addMenu(tr("Status"));

@@ -29,7 +29,6 @@
 #include "ui_settingsw.h"
 #include "util/FontSizeHandler.h"
 
-class FloatingHelpBrowser;
 
 #define PREF_IMAGE_PREFERENCES       ":/icons/png/options.png"
 
@@ -70,7 +69,6 @@ private:
 	void initStackedWidget();
 
 private:
-	FloatingHelpBrowser *mHelpBrowser;
 	static int lastPage;
 
 	FontSizeHandler mFontSizeHandler;

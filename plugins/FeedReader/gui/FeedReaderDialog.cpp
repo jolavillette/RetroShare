@@ -66,6 +66,10 @@ FeedReaderDialog::FeedReaderDialog(RsFeedReader *feedReader, FeedReaderNotify *n
 	/* Invoke the Qt Designer generated object setup routine */
 	ui->setupUi(this);
 
+	/* The help button opens the manual on this page */
+	setHelpTopic("plugins.feedreader");
+	registerHelpButton(ui->helpButton, QString(), "FeedReaderDialog");
+
 	mProcessSettings = false;
 	mOpenFeedIds = NULL;
 	mMessageWidget = NULL;

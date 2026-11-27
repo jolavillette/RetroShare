@@ -79,7 +79,9 @@ Several rows can be selected.
 
 ## Buttons
 
-- **?** (help button, top right): shows a short introduction to the page.
+- **?** (help button, top right): opens the manual on this page. The first
+  time you open the page, a short introduction to the page is shown in a
+  bubble; click the bubble to close it.
 - Your avatar: click it to open the **Change Avatar** dialog.
 - Your status message (tooltip **Edit status message**): click it to open the
   **Status message** dialog. It shows **Set your status message here.** when

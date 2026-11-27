@@ -96,7 +96,9 @@ magnifier to choose where to search: **Subject**, **From**, **To**, **Date**,
   message.
 - **Tags**: opens the tags menu for the selected messages (see Context menus).
   Disabled when no message is selected.
-- **?** (help button): shows a short introduction to the page.
+- **?** (help button): opens the manual on this page. The first time you open
+  the page, a short introduction to the page is shown in a bubble; click the
+  bubble to close it.
 - `Delete` key in the list: removes the selected messages, like **Remove
   Message**. `Shift+Delete` deletes them for good without going through the
   trash.

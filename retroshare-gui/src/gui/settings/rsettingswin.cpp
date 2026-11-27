@@ -41,7 +41,6 @@
 #include "ServicePermissionsPage.h"
 #include "rsharesettings.h"
 #include "gui/RsGUIEventManager.h"
-#include "gui/common/FloatingHelpBrowser.h"
 #include "gui/help/browser/helpbrowser.h"
 #include "gui/common/RSElidedItemDelegate.h"
 
@@ -66,8 +65,10 @@ SettingsPage::SettingsPage(QWidget *parent)
     ui.setupUi(this);
     setAttribute(Qt::WA_DeleteOnClose, true);
 
-    /* Initialize help browser */
-    mHelpBrowser = new FloatingHelpBrowser(this, ui.helpButton);
+    /* The help button opens the manual on the page displayed */
+    ui.helpButton->setCheckable(false);
+    ui.helpButton->setToolTip(tr("Open the manual on this page (F1)"));
+    connect(ui.helpButton, &QToolButton::clicked, this, [this]() { HelpBrowser::showWindow(HelpBrowser::widgetTopic(this)); });
 
     /* set initial size the splitter */
     ui.splitter->setStretchFactor(0, 0);
@@ -218,12 +219,9 @@ SettingsPage::setNewPage(int page)
 {
 	ConfigPage *pagew = dynamic_cast<ConfigPage*>(ui.stackedWidget->widget(page)) ;
 
-	mHelpBrowser->hide();
-
 	if(pagew == NULL)
 	{
 		std::cerr << "Error in RSettingsPage::setNewPage(): widget is not a ConfigPage!" << std::endl;
-		mHelpBrowser->clear();
 		return ;
 	}
 	ui.pageNameLabel->setText(pagew->pageName());
@@ -231,8 +229,6 @@ SettingsPage::setNewPage(int page)
 
 	ui.stackedWidget->setCurrentIndex(page);
 	ui.listWidget->setCurrentRow(page);
-
-	mHelpBrowser->setHelpText(pagew->helpText());
 
 	// The help topic of the Preferences page is the one of the page it shows.
 	const QString topic = HelpBrowser::widgetTopic(pagew);

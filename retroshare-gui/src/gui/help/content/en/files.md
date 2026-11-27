@@ -29,8 +29,9 @@ A plugin can add a tab of its own after these four.
 
 ## Buttons
 
-- **?** (help button, top right): shows a short introduction to the page.
-  Click the introduction to close it.
+- **?** (help button, top right): opens the manual on this page. The first
+  time you open the page, a short introduction to the page is shown in a
+  bubble; click the bubble to close it.
 
 The page has no other button of its own: every action is in the tabs and in
 their context menus.

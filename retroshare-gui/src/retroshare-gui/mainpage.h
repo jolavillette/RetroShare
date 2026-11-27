@@ -64,6 +64,12 @@ public:
 	//
 	void registerHelpButton(QToolButton *button, const QString& help_html_text, const QString &code_name) ;
 
+	// Topic of the page in the manual (e.g. "plugins.feedreader"), opened by
+	// F1 and by the help button. The main window gives a topic to the pages it
+	// creates; a plugin page can set its own.
+	void setHelpTopic(const QString& topic) ;
+	QString helpTopic() const ;
+
     UserNotify *getUserNotify() ;
 
 protected:

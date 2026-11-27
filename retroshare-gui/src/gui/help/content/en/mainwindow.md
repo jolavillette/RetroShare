@@ -23,8 +23,9 @@ There is one button per page: **Home**, **Network**, **People**, **Chats**,
 **Preferences**. Click a button to show its page. RetroShare reopens on the
 page that was displayed when you quit.
 
-After the pages comes one action:
+After the pages come two actions:
 
+- **Manual**: opens this manual, on the page you read last.
 - **Quit**: closes RetroShare, after the confirmation described below.
 
 When a page has something new for you (unread mail, new chat messages, new
@@ -41,7 +42,8 @@ between the list and the page to change the width of the list.
 
 ### Keyboard
 
-- F1 opens this manual on the topic of the page that is displayed.
+- F1 opens this manual on the topic of the page that is displayed, like the
+  **?** button at the top of the page.
 
 ## Closing and quitting
 
@@ -98,7 +100,7 @@ desktop).
   and download speed. See [Statistics](statistics.md).
 - **Statistics**: opens the [Statistics](statistics.md) window.
 - **Options**: shows the main window on the [Preferences](settings.md) page.
-- **Help**: opens this manual.
+- **Manual**: opens this manual.
 - **Minimize**: reduces the main window to the task bar.
 - **Maximize**: shows the main window on the whole screen.
 - **Quit**: closes RetroShare, after the confirmation described above.
@@ -138,7 +140,7 @@ announces them together ("3 new messages").
 ### macOS menus
 
 On macOS, the menu of the Dock icon offers **Open Messages**, **Bandwidth
-Graph**, **Statistics**, **Options**, **Help** and the **Status** submenu.
+Graph**, **Statistics**, **Options**, **Manual** and the **Status** submenu.
 The menu bar adds **Minimize** (Cmd+M) and **Close window**.
 
 ## Status bar

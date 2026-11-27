@@ -73,7 +73,9 @@ wheel to change the size of the thumbnails.
 
 ### Above the list
 
-- **?** (help button): shows a short introduction to channels.
+- **?** (help button): opens the manual on this page. The first time you open
+  the page, a short introduction to channels is shown in a bubble; click the
+  bubble to close it.
 - **Create Channel**: opens the **Create New Channel** dialog.
 
 ### In an open channel

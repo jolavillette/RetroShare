@@ -45,8 +45,11 @@ services: [chats](chats.md), [mail](mail.md), [file sharing](files.md),
 ### Get help inside RetroShare
 
 - Press **F1** to open this manual on the topic of the page that is displayed.
-- Click the **?** button at the top right of a page to show a short
-  introduction to the page. Click the introduction to close it.
+- Click the **?** button at the top right of a page to do the same. The first
+  time you open a page, a short introduction to it is shown in a bubble;
+  click the bubble to close it.
+- The **Manual** entry, after the page buttons, opens the manual where you
+  left it. **Esc** closes it.
 
 ## See also
 

@@ -61,7 +61,9 @@ In the list of messages:
 
 ## Buttons
 
-- **?** (help button): shows a short introduction to forums.
+- **?** (help button): opens the manual on this page. The first time you open
+  the page, a short introduction to forums is shown in a bubble; click the
+  bubble to close it.
 - **Create Forum** (above the list): opens the **Create New Forum** dialog.
 - **Subscribe**: subscribes to the forum. Your node then collects the
   messages from your friends and offers the forum to them. To unsubscribe, use

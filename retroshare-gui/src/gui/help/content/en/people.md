@@ -105,8 +105,9 @@ The circles are listed in two categories, **Circles I belong to** and
 
 ## Buttons
 
-- **?** (help button, top right): shows a short introduction to identities and
-  circles.
+- **?** (help button, top right): opens the manual on this page. The first
+  time you open the page, a short introduction to identities and circles is
+  shown in a bubble; click the bubble to close it.
 - **Create new...**: opens a menu with **Create new Identity** and **Create
   new circle**. Both open the dialogs described below.
 - **Send Invite** (Person tab, not for your own identities): opens a new mail

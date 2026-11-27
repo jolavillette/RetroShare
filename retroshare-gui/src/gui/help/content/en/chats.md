@@ -85,7 +85,9 @@ a name to insert `@name` in the input field.
 
 ### Chats page
 
-- **?** (help button, top right): shows a short introduction to the page.
+- **?** (help button, top right): opens the manual on this page. The first
+  time you open the page, a short introduction to the page is shown in a
+  bubble; click the bubble to close it.
 - **+** (tooltip **Create new chat room**): opens the **Create Chat Room**
   dialog.
 

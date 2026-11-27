@@ -17,9 +17,9 @@ friend adds yours.
 
 ## Buttons
 
-- **?** (help button, top right): shows a short introduction to the page. Click
-  the introduction to close it. It is shown automatically the first time you
-  open the page.
+- **?** (help button, top right): opens the manual on this page. The first
+  time you open the page, a short introduction to the page is shown in a
+  bubble; click the bubble to close it.
 - **Copy** button, next to the ID (tooltip **Copy your RetroShare ID to
   clipboard**): copies the ID as it is displayed.
 - **Share** button (tooltip **Share your RetroShare ID**): opens the share

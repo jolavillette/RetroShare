@@ -9,9 +9,10 @@ This manual describes every page of the application, with its buttons and
 menus. Choose a topic in the tree on the left, or use the **Search** tab to
 look for a word in all the pages.
 
-Press **F1** anywhere in the main window to open the manual on the page you
-are looking at, and **Esc** to close it. The **?** button at the top of a page shows a short
-introduction to it.
+Press **F1** anywhere in the main window, or click the **?** button at the
+top of a page, to open the manual on the page you are looking at. The
+**Manual** entry of the main window opens it where you left it. Press **Esc**
+to close it.
 
 ## First steps
 

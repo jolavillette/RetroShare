@@ -19,8 +19,8 @@ settings.
   on the right. The separator between the list and the sub-page can be
   dragged.
 - On the right, a header shows the icon and the name of the current sub-page,
-  with a **?** button that shows the short help of the sub-page when it has
-  one. The options are below the header.
+  with a **?** button that opens the manual on the sub-page, as F1 does. The
+  options are below the header.
 
 ## The sub-pages
 
