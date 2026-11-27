@@ -225,20 +225,20 @@ void AWidget::initImages()
     font.setPointSizeF(font.pointSizeF() + 2);
     p.setFont(font);
 
-    /* Draw RetroShare version */
-    /* [Fix] Removed space before colon to match English typography */
+    /* Draw the day of the build, then the versions of the GUI and of libretroshare */
+    QStringList lines = RsApplication::buildDescription();
 #ifdef RS_ONLYHIDDENNODE
-    p.drawText(QPointF(10, 50), QString("%1: %2 (With embedded Tor)").arg(tr("RetroShare version"), RsApplication::retroshareVersion(true)));
-#else
-    p.drawText(QPointF(10, 50), QString("%1: %2").arg(tr("RetroShare version"), RsApplication::retroshareVersion(true)));
+    lines[0] += " (With embedded Tor)";
 #endif
-
-    /* [Added] Draw libretroshare version below the GUI version */
-    /* [Fix] Removed space before colon here too */
-    p.drawText(QPointF(10, 70), QString("%1: %2").arg(tr("libretroshare version"), QString::fromUtf8(RsInit::libRetroShareVersion())));
-
     /* Draw Qt's version number */
-    p.drawText(QPointF(10, 90), QString("Qt %1: %2").arg(tr("version"), QT_VERSION_STR));
+    lines << QString("Qt %1").arg(QT_VERSION_STR);
+
+    int y = 50;
+    for(const QString& line : lines)
+    {
+        p.drawText(QPointF(10, y), line);
+        y += 20;
+    }
 
     p.end();
 
@@ -943,13 +943,7 @@ static QString addLibraries(const std::string &name, const std::list<RsLibraryIn
 void AboutWidget::on_copy_button_clicked()
 {
 	QString verInfo;
-	QString rsVerString = "RetroShare Version: ";
-    rsVerString+=RsApplication::retroshareVersion(true);
-	verInfo+=rsVerString;
-
-    /* [Added] Append libretroshare version to clipboard info */
-    verInfo+= "\nlibretroshare: ";
-    verInfo+= QString::fromUtf8(RsInit::libRetroShareVersion());
+	verInfo+=RsApplication::buildDescription().join('\n');
 
 #ifdef RS_ONLYHIDDENNODE
 	verInfo+=" " + tr("Only Hidden Node");

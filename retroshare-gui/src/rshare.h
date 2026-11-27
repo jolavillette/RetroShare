@@ -78,8 +78,16 @@ public:
   /** Destructor. */
   ~RsApplication();
 
-  /** Return the version info */
+  /** Version of the GUI: the number of commits since the last version tag and
+   * the commit, for example "2190-g6b1b684d1". The tag itself is not shown. */
   static QString retroshareVersion(bool=true);
+  /** Version of libretroshare, in the same form */
+  static QString libretroshareVersion();
+  /** Day of the build as YYYYMMDD */
+  static QString buildDate();
+  /** The three lines that name a build: "RetroShare Build <day>",
+   * "UI <version>" and "libretroshare <version>" */
+  static QStringList buildDescription();
 
   /** Sets the current language. */
   static bool setLanguage(QString languageCode = QString());

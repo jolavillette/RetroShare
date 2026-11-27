@@ -82,7 +82,7 @@
             </property>
            </widget>
           </item>
-          <item row="12" column="0" colspan="3">
+          <item row="14" column="0" colspan="3">
            <layout class="QGridLayout" name="gridLayout_6">
             <property name="topMargin">
              <number>6</number>
@@ -182,14 +182,14 @@
             </item>
            </layout>
           </item>
-          <item row="11" column="1">
+          <item row="13" column="1">
            <widget class="QPushButton" name="showStats_PB">
             <property name="text">
              <string>Show statistics</string>
             </property>
            </widget>
           </item>
-          <item row="14" column="0">
+          <item row="16" column="0">
            <widget class="QLabel" name="label_11">
             <property name="text">
              <string>Export Profile:</string>
@@ -197,7 +197,51 @@
            </widget>
           </item>
           <item row="9" column="1" colspan="2">
-           <widget class="QLabel" name="version">
+           <widget class="QLabel" name="buildDate">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="MinimumExpanding" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="font">
+             <font>
+              <weight>75</weight>
+              <bold>true</bold>
+             </font>
+            </property>
+            <property name="text">
+             <string notr="true">TextLabel</string>
+            </property>
+            <property name="textInteractionFlags">
+             <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
+            </property>
+           </widget>
+          </item>
+          <item row="10" column="1" colspan="2">
+           <widget class="QLabel" name="uiVersion">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="MinimumExpanding" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="font">
+             <font>
+              <weight>75</weight>
+              <bold>true</bold>
+             </font>
+            </property>
+            <property name="text">
+             <string notr="true">TextLabel</string>
+            </property>
+            <property name="textInteractionFlags">
+             <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
+            </property>
+           </widget>
+          </item>
+          <item row="11" column="1" colspan="2">
+           <widget class="QLabel" name="libVersion">
             <property name="sizePolicy">
              <sizepolicy hsizetype="MinimumExpanding" vsizetype="Preferred">
               <horstretch>0</horstretch>
@@ -237,7 +281,7 @@
             </property>
            </widget>
           </item>
-          <item row="10" column="1" colspan="2">
+          <item row="12" column="1" colspan="2">
            <widget class="QLabel" name="onlinesince">
             <property name="sizePolicy">
              <sizepolicy hsizetype="MinimumExpanding" vsizetype="Preferred">
@@ -275,7 +319,7 @@
             </property>
            </widget>
           </item>
-          <item row="14" column="1">
+          <item row="16" column="1">
            <widget class="QPushButton" name="exportprofile">
             <property name="toolTip">
              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Use this button to export your profile key. You can then import it in a different computer and make a new node with the same profile. Doing so, existing friends that you also add to the new node will automatically recognise that new node as friend.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
@@ -285,7 +329,7 @@
             </property>
            </widget>
           </item>
-          <item row="11" column="0">
+          <item row="13" column="0">
            <widget class="QLabel" name="label_4">
             <property name="text">
              <string>Statistics:</string>
@@ -311,7 +355,7 @@
             </property>
            </widget>
           </item>
-          <item row="10" column="0">
+          <item row="12" column="0">
            <widget class="QLabel" name="label_16">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
@@ -330,14 +374,14 @@
             </property>
            </widget>
           </item>
-          <item row="13" column="0">
+          <item row="15" column="0">
            <widget class="QLabel" name="label_5">
             <property name="text">
              <string>Profile path:</string>
             </property>
            </widget>
           </item>
-          <item row="11" column="2">
+          <item row="13" column="2">
            <spacer name="horizontalSpacer_3">
             <property name="orientation">
              <enum>Qt::Horizontal</enum>
@@ -350,7 +394,7 @@
             </property>
            </spacer>
           </item>
-          <item row="13" column="1" colspan="2">
+          <item row="15" column="1" colspan="2">
            <widget class="QLabel" name="labelpath">
             <property name="font">
              <font>
@@ -383,7 +427,7 @@
            </widget>
           </item>
           <item row="9" column="0">
-           <widget class="QLabel" name="label_3">
+           <widget class="QLabel" name="buildDate_LB">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
               <horstretch>0</horstretch>
@@ -397,7 +441,45 @@
              </size>
             </property>
             <property name="text">
-             <string>Software Version:</string>
+             <string>Build:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="10" column="0">
+           <widget class="QLabel" name="uiVersion_LB">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>100</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>UI:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="11" column="0">
+           <widget class="QLabel" name="libVersion_LB">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>100</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="text">
+             <string notr="true">libretroshare:</string>
             </property>
            </widget>
           </item>
@@ -499,28 +581,28 @@
             </item>
            </layout>
           </item>
-          <item row="15" column="0">
+          <item row="17" column="0">
            <widget class="QLabel" name="label">
             <property name="text">
              <string>Export Friendslist:</string>
             </property>
            </widget>
           </item>
-          <item row="15" column="1">
+          <item row="17" column="1">
            <widget class="QPushButton" name="exportfriendslist">
             <property name="text">
              <string>Export friends list</string>
             </property>
            </widget>
           </item>
-          <item row="16" column="0">
+          <item row="18" column="0">
            <widget class="QLabel" name="copyInfo_LB">
             <property name="text">
              <string>Node information:</string>
             </property>
            </widget>
           </item>
-          <item row="16" column="1">
+          <item row="18" column="1">
            <widget class="QPushButton" name="copyInfo_PB">
             <property name="toolTip">
              <string>Copy the information shown on this page to the clipboard</string>
@@ -530,7 +612,7 @@
             </property>
            </widget>
           </item>
-          <item row="14" column="2" rowspan="3">
+          <item row="16" column="2" rowspan="3">
            <spacer name="horizontalSpacer_4">
             <property name="orientation">
              <enum>Qt::Horizontal</enum>

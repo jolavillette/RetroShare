@@ -59,7 +59,7 @@ CryptoPage::CryptoPage(QWidget * parent, Qt::WindowFlags flags)
 
 	// Let the user select and copy every value with the mouse or the keyboard.
 	for(QLabel *value : { ui.name, ui.country, ui.peerid, ui.pgpid, ui.pgpfingerprint,
-	                      ui.version, ui.onlinesince, ui.friendsEdit, ui.labelpath })
+	                      ui.buildDate, ui.uiVersion, ui.libVersion, ui.onlinesince, ui.friendsEdit, ui.labelpath })
 	{
 		value->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
 		value->setCursor(Qt::IBeamCursor);
@@ -120,15 +120,9 @@ void CryptoPage::showEvent ( QShowEvent * /*event*/ )
         rsPeers->getShortInvite(invite,rsPeers->getOwnId(),RetroshareInviteFlags::RADIX_FORMAT | RsPeers::defaultCertificateFlags);
         ui.retroshareId_content_LB->setText(QString::fromUtf8(invite.c_str()));
 		
-        /* [Modified] Show both RetroShare and libretroshare versions */
-        /* We rename the label "Software Version:" to "RetroShare version:" and add the lbretroshare line */
-        /* Using newlines (\n) allows us to display both without modifying the .ui grid layout */
-        ui.label_3->setText(tr("RetroShare version:") + "\n" + tr("libretroshare version:"));
-
-        QString versionText = RsApplication::retroshareVersion(true);
-        versionText += "\n";
-        versionText += QString::fromUtf8(RsInit::libRetroShareVersion());
-        ui.version->setText(versionText);
+        ui.buildDate->setText(RsApplication::buildDate());
+        ui.uiVersion->setText(RsApplication::retroshareVersion());
+        ui.libVersion->setText(RsApplication::libretroshareVersion());
 
         std::list<RsPgpId> ids;
         ids.clear();
@@ -246,18 +240,11 @@ bool CryptoPage::fileSaveAs()
 
 void CryptoPage::copyNodeInfo()
 {
-	// Pair each caption with its value. The version caption and value hold one
-	// line per component (RetroShare, libretroshare), so pair them line by line.
+	// One line per row of the page: the caption, then its value.
 	QStringList lines;
 	auto add = [&lines](const QLabel *caption, const QLabel *value)
 	{
-		const QStringList captions = caption->text().split('\n');
-		const QStringList values = value->text().split('\n');
-		for(int i = 0; i < values.size(); ++i)
-		{
-			const QString c = (i < captions.size() ? captions[i] : captions.last()).trimmed();
-			lines << c + " " + values[i].trimmed();
-		}
+		lines << caption->text().trimmed() + " " + value->text().trimmed();
 	};
 
 	add(ui.label_4, ui.name);
@@ -266,7 +253,9 @@ void CryptoPage::copyNodeInfo()
 	add(ui.label_7, ui.pgpid);
 	add(ui.label_2, ui.pgpfingerprint);
 	add(ui.label_9, ui.friendsEdit);
-	add(ui.label_3, ui.version);
+	add(ui.buildDate_LB, ui.buildDate);
+	add(ui.uiVersion_LB, ui.uiVersion);
+	add(ui.libVersion_LB, ui.libVersion);
 	add(ui.label_16, ui.onlinesince);
 	add(ui.label_5, ui.labelpath);
 

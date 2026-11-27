@@ -90,7 +90,7 @@ HelpDialog::HelpDialog(QWidget *parent) :
 	RsControl::instance()->getLibraries(libraries);
 
     /* [Added] Insert libretroshare version at the top of the libraries list */
-    libraries.push_front(RsLibraryInfo("libretroshare", RsInit::libRetroShareVersion()));
+    libraries.push_front(RsLibraryInfo("libretroshare", RsApplication::libretroshareVersion().toStdString()));
 
 	addLibraries(ui->libraryLayout, "libretroshare", libraries);
 

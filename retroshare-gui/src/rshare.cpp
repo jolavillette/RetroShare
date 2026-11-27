@@ -241,10 +241,38 @@ void RsApplication::slotConnectionEstablished()
     }
 }
 
+/* `git describe` gives "v0.6.7.3-2190-g6b1b684d1": keep the commit count and
+ * the commit. A string of another form (an exact tag, no version available) is
+ * returned as it is. */
+static QString withoutVersionTag(QString version)
+{
+	static const QRegularExpression tag("^v?[0-9]+(\\.[0-9]+)*-(?=[0-9]+-g)");
+	return version.remove(tag);
+}
+
 /* The GUI reports its OWN version here (RS_GUI_VERSION, injected from the
  * super-project git describe), independent from libretroshare. libretroshare's
  * version is obtained separately through RsInit::libRetroShareVersion(). */
-QString RsApplication::retroshareVersion(bool) { return RS_GUI_HUMAN_READABLE_VERSION; }
+QString RsApplication::retroshareVersion(bool) { return withoutVersionTag(RS_GUI_HUMAN_READABLE_VERSION); }
+
+QString RsApplication::libretroshareVersion()
+{
+	return withoutVersionTag(QString::fromUtf8(RsInit::libRetroShareVersion()));
+}
+
+QString RsApplication::buildDate()
+{
+	/* __DATE__ is "Nov 26 2026", or "Nov  6 2026" before the 10th */
+	const QDate date = QLocale::c().toDate(QString(__DATE__).simplified(), "MMM d yyyy");
+	return date.toString("yyyyMMdd");
+}
+
+QStringList RsApplication::buildDescription()
+{
+	return { tr("RetroShare Build %1").arg(buildDate()),
+	         QString("UI %1").arg(retroshareVersion()),
+	         QString("libretroshare %1").arg(libretroshareVersion()) };
+}
 
 /** Enters the main event loop and waits until exit() is called. The signal
  * running() will be emitted when the event loop has started. */
