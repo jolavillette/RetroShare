@@ -2365,7 +2365,7 @@ QFrame#titleBarFrame QTextEdit {
 
 /* HomePage */
 
-HomePage QLabel#userCertLabel {
+HomePage QLabel#userCertLabel, HomePage QLabel#addFriendLabel {
 	color: #0099cc;
 }
 

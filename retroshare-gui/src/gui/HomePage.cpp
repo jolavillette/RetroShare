@@ -28,6 +28,7 @@
 
 #include "gui/common/QrCodeDialog.h"
 #include "gui/common/FilesDefs.h"
+#include "gui/RetroShareLink.h"
 #include "gui/msgs/MessageComposer.h"
 #include "gui/connect/ConnectFriendWizard.h"
 #include "gui/connect/ConfCertDialog.h"
@@ -46,6 +47,8 @@
 #include <QDesktopServices>
 #include <QMessageBox>
 #include <QFileDialog>
+#include <QImageReader>
+#include <QMimeData>
 #include <QClipboard>
 #include <QTextStream>
 #include <QTextCodec>
@@ -56,7 +59,8 @@ HomePage::HomePage(QWidget *parent) :
 {
     ui->setupUi(this);
 
-    connect(ui->addButton, SIGNAL(clicked()), this, SLOT(addFriend()));
+    connect(ui->pasteButton, SIGNAL(clicked()), this, SLOT(pasteFriendId()));
+    connect(ui->openFileButton, SIGNAL(clicked()), this, SLOT(openFriendFile()));
     connect(ui->copyIDButton, SIGNAL(clicked()), this, SLOT(copyId()));
     connect(ui->saveButton, SIGNAL(clicked()), this, SLOT(saveCert()));
     connect(ui->emailButton, SIGNAL(clicked()), this, SLOT(runEmailClient()));
@@ -258,7 +262,7 @@ void HomePage::updateOwnCert()
         QString txt;
 
         for(int i=0;i<certificate.size();)
-            if(S.length() < 100)
+            if(S.length() < 64)
                 S += certificate[i++];
             else
             {
@@ -342,12 +346,72 @@ void HomePage::saveCert()
     ts << ui->retroshareid->text();
 }
 
-/** Add a Friends Text Certificate */
-void HomePage::addFriend()
+void HomePage::pasteFriendId()
 {
+    const QClipboard *clipboard = QApplication::clipboard();
+    const QMimeData *data = clipboard->mimeData();
+
+    if(data && data->hasImage())
+    {
+        QString text;
+        if(QrCodeDialog::decode(clipboard->image(), text))
+            addFriendFromText(text);
+        else
+            QMessageBox::information(this, tr("Add a friend"), tr("The picture in the clipboard holds no readable QR code."));
+    }
+    else if(!clipboard->text().trimmed().isEmpty())
+        addFriendFromText(clipboard->text());
+    else
+        QMessageBox::information(this, tr("Add a friend"), tr("The clipboard holds no text and no picture. Copy the Retroshare ID of your friend first."));
+}
+
+void HomePage::openFriendFile()
+{
+    QString fileName;
+    if(!misc::getOpenFileName(this, RshareSettings::LASTDIR_CERT, tr("Open a Retroshare ID"),
+                              tr("Retroshare ID (*.rsc *.txt *.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)"), fileName)
+       || fileName.isEmpty())
+        return;
+
+    // The content decides, not the name: a picture is searched for a QR code,
+    // anything else is read as the text of an ID or certificate.
+    QImageReader reader(fileName);
+    reader.setDecideFormatFromContent(true);
+
+    if(reader.canRead())
+    {
+        QString text;
+        if(QrCodeDialog::decode(reader.read(), text))
+            addFriendFromText(text);
+        else
+            QMessageBox::information(this, tr("Add a friend"), tr("This picture holds no readable QR code."));
+        return;
+    }
+
+    QFile file(fileName);
+    if(!file.open(QIODevice::ReadOnly))
+    {
+        QMessageBox::warning(this, tr("Add a friend"), tr("Cannot read this file."));
+        return;
+    }
+
+    // Far above the size of any certificate.
+    addFriendFromText(QString::fromUtf8(file.read(1024*1024)));
+}
+
+void HomePage::addFriendFromText(const QString& text)
+{
+    QString certificate = text.trimmed();
+
+    RetroShareLink link(certificate);
+    if(link.valid() && link.type() == RetroShareLink::TYPE_CERTIFICATE)
+        certificate = link.radix();
+
+    // The wizard opens on the details of the friend, or on what is wrong
+    // with the text.
     ConnectFriendWizard connwiz (this);
 
-    connwiz.setStartId(ConnectFriendWizard::Page_Text);
+    connwiz.setCertificate(certificate, false);
     connwiz.exec ();
 }
 

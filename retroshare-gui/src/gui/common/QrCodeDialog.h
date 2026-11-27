@@ -22,6 +22,7 @@
 
 #include <QString>
 
+class QImage;
 class QWidget;
 
 namespace QrCodeDialog
@@ -31,4 +32,8 @@ namespace QrCodeDialog
  * certificate is cut in lines for display only. Tells the user when the text
  * is too long for a QR code. */
 void show(QWidget *parent, const QString& title, const QString& text);
+
+/** Reads the first QR code found in @p image into @p text.
+ * @return false when the image holds no readable QR code. */
+bool decode(const QImage& image, QString& text);
 }

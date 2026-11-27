@@ -85,6 +85,10 @@ list(
 	src/util/log.cpp 
 	src/util/misc.cpp 
 	src/util/qrcodegen/qrcodegen.cpp
+	src/util/quirc/decode.c
+	src/util/quirc/identify.c
+	src/util/quirc/quirc.c
+	src/util/quirc/version_db.c
 	src/util/HandleRichText.cpp 
 	src/util/ObjectPainter.cpp 
 	src/util/RsFile.cpp 
@@ -516,6 +520,8 @@ list(
 	src/util/log.h 
 	src/util/misc.h 
 	src/util/qrcodegen/qrcodegen.hpp
+	src/util/quirc/quirc.h
+	src/util/quirc/quirc_internal.h
 	src/util/HandleRichText.h 
 	src/util/FontSizeHandler.h 
 	src/util/ObjectPainter.h 

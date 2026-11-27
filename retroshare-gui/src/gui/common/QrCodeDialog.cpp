@@ -29,14 +29,18 @@
 #include <QImage>
 #include <QLabel>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPixmap>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QVBoxLayout>
 
+#include <cstring>
+#include <memory>
 #include <stdexcept>
 
 #include "util/qrcodegen/qrcodegen.hpp"
+#include "util/quirc/quirc.h"
 
 namespace
 {
@@ -114,4 +118,60 @@ void QrCodeDialog::show(QWidget *parent, const QString& title, const QString& te
 	layout->addWidget(buttons);
 
 	dialog.exec();
+}
+
+bool QrCodeDialog::decode(const QImage& source, QString& text)
+{
+	if (source.isNull())
+		return false;
+
+	/* A photo is far larger than a code needs: the search time grows with
+	 * the number of pixels. */
+	const int maxSide = 2000;
+	QImage image = source;
+	if (image.width() > maxSide || image.height() > maxSide)
+		image = image.scaled(maxSide, maxSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+	/* Transparent pixels would turn black in the grey image. */
+	if (image.hasAlphaChannel())
+	{
+		QImage flat(image.size(), QImage::Format_RGB32);
+		flat.fill(Qt::white);
+		QPainter(&flat).drawImage(0, 0, image);
+		image = flat;
+	}
+	image = image.convertToFormat(QImage::Format_Grayscale8);
+
+	std::unique_ptr<quirc, void (*)(quirc *)> reader(quirc_new(), quirc_destroy);
+	if (!reader || quirc_resize(reader.get(), image.width(), image.height()) != 0)
+		return false;
+
+	uint8_t *pixels = quirc_begin(reader.get(), nullptr, nullptr);
+	for (int y = 0; y < image.height(); ++y)
+		memcpy(pixels + y * image.width(), image.constScanLine(y), image.width());
+	quirc_end(reader.get());
+
+	std::unique_ptr<quirc_code> code(new quirc_code);
+	std::unique_ptr<quirc_data> data(new quirc_data);
+
+	for (int i = 0; i < quirc_count(reader.get()); ++i)
+	{
+		quirc_extract(reader.get(), i, code.get());
+
+		quirc_decode_error_t error = quirc_decode(code.get(), data.get());
+		if (error == QUIRC_ERROR_DATA_ECC)
+		{
+			/* A mirrored picture of the code. */
+			quirc_flip(code.get());
+			error = quirc_decode(code.get(), data.get());
+		}
+
+		if (error == QUIRC_SUCCESS)
+		{
+			text = QString::fromUtf8( reinterpret_cast<const char *>(data->payload),
+			                          data->payload_len );
+			return true;
+		}
+	}
+	return false;
 }
