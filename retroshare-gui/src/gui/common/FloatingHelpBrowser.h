@@ -40,6 +40,9 @@ public slots:
 private slots:
 	void textChanged();
 
+private:
+	void updateText();
+
 protected:
 	virtual void showEvent(QShowEvent *event);
 	virtual void hideEvent(QHideEvent *event);
@@ -51,6 +54,7 @@ protected:
 
 private:
 	QAbstractButton *mButton;
+	QString mHelpText;
 };
 
 #endif // FLOATINGHELPBROWSER_H

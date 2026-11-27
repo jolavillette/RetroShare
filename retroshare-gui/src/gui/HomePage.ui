@@ -361,7 +361,7 @@ private and secure decentralized communication platform.
       <item row="1" column="1">
        <widget class="QToolButton" name="openwebhelp">
         <property name="text">
-         <string>Open Web Help</string>
+         <string>Open the manual</string>
         </property>
         <property name="icon">
          <iconset resource="icons.qrc">

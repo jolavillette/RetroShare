@@ -42,6 +42,7 @@
 #include "rsharesettings.h"
 #include "gui/RsGUIEventManager.h"
 #include "gui/common/FloatingHelpBrowser.h"
+#include "gui/help/browser/helpbrowser.h"
 #include "gui/common/RSElidedItemDelegate.h"
 
 #ifdef RS_WEBUI
@@ -161,26 +162,26 @@ SettingsPage::initStackedWidget()
     ui.stackedWidget->setCurrentIndex(-1);
     ui.stackedWidget->removeWidget(ui.stackedWidget->widget(0));
 
-    addPage(new GeneralPage()); // GENERAL
-    addPage(new CryptoPage()); // NODE
-    addPage(new ServerPage()); // NETWORK
-    addPage(new PeoplePage()); // PEOLPE
-    addPage(new ChatPage()); // CHAT
-    addPage(new MessagePage()); //MESSGE RENAME TO MAIL
-    addPage(new TransferPage()); //FILE TRANSFER
-    addPage(new ChannelPage()); // CHANNELS
-    addPage(new ForumPage()); // FORUMS
-    addPage(new PostedPage()); // POSTED RENAME TO LINKS
-    addPage(new NotifyPage()); // NOTIFY
-    addPage(new settings::PluginsPage() ); // PLUGINS
-    addPage(new AppearancePage()); // APPEARENCE
-    addPage(new SoundPage() ); // SOUND
-    addPage(new ServicePermissionsPage() ); // PERMISSIONS
+    addPage(new GeneralPage(), "settings.general"); // GENERAL
+    addPage(new CryptoPage(), "settings.node"); // NODE
+    addPage(new ServerPage(), "settings.network"); // NETWORK
+    addPage(new PeoplePage(), "settings.people"); // PEOLPE
+    addPage(new ChatPage(), "settings.chat"); // CHAT
+    addPage(new MessagePage(), "settings.mail"); //MESSGE RENAME TO MAIL
+    addPage(new TransferPage(), "settings.files"); //FILE TRANSFER
+    addPage(new ChannelPage(), "settings.channels"); // CHANNELS
+    addPage(new ForumPage(), "settings.forums"); // FORUMS
+    addPage(new PostedPage(), "settings.boards"); // POSTED RENAME TO LINKS
+    addPage(new NotifyPage(), "settings.notify"); // NOTIFY
+    addPage(new settings::PluginsPage(), "settings.plugins"); // PLUGINS
+    addPage(new AppearancePage(), "settings.appearance"); // APPEARENCE
+    addPage(new SoundPage(), "settings.sound"); // SOUND
+    addPage(new ServicePermissionsPage(), "settings.permissions"); // PERMISSIONS
 #ifdef RS_JSONAPI
     JsonApiPage *jsonapi_p = new JsonApiPage() ;
-	addPage(jsonapi_p);
+	addPage(jsonapi_p, "settings.jsonapi");
 #ifdef RS_WEBUI
-    addPage(new WebuiPage());
+    addPage(new WebuiPage(), "settings.webui");
 #endif
 #endif
 
@@ -192,18 +193,20 @@ SettingsPage::initStackedWidget()
 		{
 			ConfigPage* cp = pl->qt_config_page();
 			if(cp != NULL)
-				addPage(cp) ;
+				addPage(cp, "settings.plugins") ;
 		}
 	}
-    addPage(new AboutPage() );
+    addPage(new AboutPage(), "settings.about");
 
 	 // make the first page the default.
 
     setNewPage(General);
 }
 
-void SettingsPage::addPage(ConfigPage *page)
+void SettingsPage::addPage(ConfigPage *page, const QString &helpTopic)
 {
+	HelpBrowser::setWidgetTopic(page, helpTopic);
+
 	ui.stackedWidget->addWidget(page) ;
 
 	QListWidgetItem *item = new QListWidgetItem(QIcon(page->iconPixmap()),page->pageName());
@@ -230,6 +233,10 @@ SettingsPage::setNewPage(int page)
 	ui.listWidget->setCurrentRow(page);
 
 	mHelpBrowser->setHelpText(pagew->helpText());
+
+	// The help topic of the Preferences page is the one of the page it shows.
+	const QString topic = HelpBrowser::widgetTopic(pagew);
+	HelpBrowser::setWidgetTopic(this, topic.isEmpty() ? QString("settings") : topic);
 }
 
 /** Saves changes made to settings. */

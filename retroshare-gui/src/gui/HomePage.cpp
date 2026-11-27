@@ -32,6 +32,7 @@
 #include "gui/connect/ConfCertDialog.h"
 #include <gui/QuickStartWizard.h>
 #include "gui/connect/FriendRecommendDialog.h"
+#include "gui/help/browser/helpbrowser.h"
 #include "settings/rsharesettings.h"
 
 #if QT_VERSION >= QT_VERSION_CHECK(5,0,0)
@@ -386,7 +387,7 @@ void HomePage::webMail()
 
 void HomePage::openWebHelp()
 {
-    QDesktopServices::openUrl(QUrl(QString("https://retrosharedocs.readthedocs.io/en/latest/")));
+    HelpBrowser::showWindow("start");
 }
 
 void HomePage::showEvent(QShowEvent *event)

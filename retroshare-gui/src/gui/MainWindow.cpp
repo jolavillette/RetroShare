@@ -25,6 +25,7 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPixmap>
+#include <QShortcut>
 #include <QStatusBar>
 #include <QString>
 #include <QUrl>
@@ -252,6 +253,9 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
     #endif
 
     initStackedPage();
+
+    /* F1 opens the manual on the page currently displayed */
+    new QShortcut(QKeySequence(QKeySequence::HelpContents), this, SLOT(showContextHelp()));
     connect(ui->listWidget, SIGNAL(currentRowChanged(int)), this, SLOT(setNewPage(int)));
     connect(ui->stackPages, SIGNAL(currentChanged(int)), this, SLOT(setNewPage(int)));
 
@@ -460,37 +464,37 @@ void MainWindow::initStackedPage()
   /* Create the Main pages and actions */
   QActionGroup *grp = new QActionGroup(this);
 
-  addPage(homePage = new HomePage(ui->stackPages), grp, NULL);
+  addPage(homePage = new HomePage(ui->stackPages), grp, NULL, "home");
 
 //#ifdef RS_USE_CIRCLES
 //  CirclesDialog *circlesDialog = NULL;
 //  addPage(circlesDialog = new CirclesDialog(ui->stackPages), grp, &notify);
 //#endif
-  addPage(friendsDialog = new FriendsDialog(ui->stackPages), grp, &notify);
-  addPage(idDialog = new IdDialog(ui->stackPages), grp, &notify);
-  addPage(chatLobbyDialog = new ChatLobbyWidget(ui->stackPages), grp, &notify);
-  addPage(messagesDialog = new MessagesDialog(ui->stackPages), grp, &notify);
-  addPage(transfersDialog = new TransfersDialog(ui->stackPages), grp, &notify);
-  addPage(gxschannelDialog = new GxsChannelDialog(ui->stackPages), grp, &notify);
-  addPage(gxsforumDialog = new GxsForumsDialog(ui->stackPages), grp, &notify);
-  addPage(postedDialog = new PostedDialog(ui->stackPages), grp, &notify);
+  addPage(friendsDialog = new FriendsDialog(ui->stackPages), grp, &notify, "network");
+  addPage(idDialog = new IdDialog(ui->stackPages), grp, &notify, "people");
+  addPage(chatLobbyDialog = new ChatLobbyWidget(ui->stackPages), grp, &notify, "chats");
+  addPage(messagesDialog = new MessagesDialog(ui->stackPages), grp, &notify, "mail");
+  addPage(transfersDialog = new TransfersDialog(ui->stackPages), grp, &notify, "files");
+  addPage(gxschannelDialog = new GxsChannelDialog(ui->stackPages), grp, &notify, "channels");
+  addPage(gxsforumDialog = new GxsForumsDialog(ui->stackPages), grp, &notify, "forums");
+  addPage(postedDialog = new PostedDialog(ui->stackPages), grp, &notify, "boards");
 
   #ifdef RS_USE_NEW_PEOPLE_DIALOG
   PeopleDialog *peopleDialog = NULL;
-  addPage(peopleDialog = new PeopleDialog(ui->stackPages), grp, &notify);
+  addPage(peopleDialog = new PeopleDialog(ui->stackPages), grp, &notify, "people");
   #endif
 #ifdef RS_USE_WIKI
   wikiDialog = NULL;
-  addPage(wikiDialog = new WikiDialog(ui->stackPages), grp, &notify);
+  addPage(wikiDialog = new WikiDialog(ui->stackPages), grp, &notify, "services");
 #endif
 
 #ifdef RS_USE_WIRE
-  addPage(wireDialog = new WireDialog(ui->stackPages), grp, &notify);
+  addPage(wireDialog = new WireDialog(ui->stackPages), grp, &notify, "services");
 #endif
 
 #ifdef RS_USE_PHOTO
   PhotoShare *photoDialog = NULL;
-  addPage(photoDialog = new PhotoShare(ui->stackPages), grp, &notify);
+  addPage(photoDialog = new PhotoShare(ui->stackPages), grp, &notify, "services");
 #endif
 
 
@@ -510,7 +514,7 @@ void MainWindow::initStackedPage()
 		 std::cerr << "  Adding widget page for plugin " << rsPlugins->plugin(i)->getPluginName() << std::endl;
 		 pluginPage->setIconPixmap(icon);
 		 pluginPage->setPageName(QString::fromUtf8(rsPlugins->plugin(i)->getPluginName().c_str()));
-		 addPage(pluginPage, grp, &notify);
+		 addPage(pluginPage, grp, &notify, "plugins." + pluginPage->pageName().toLower());
 	 }
 	 else if(rsPlugins->plugin(i) == NULL)
 		 std::cerr << "  No plugin object !" << std::endl;
@@ -520,7 +524,7 @@ void MainWindow::initStackedPage()
  }
 
 #ifndef RS_RELEASE_VERSION
-  addPage(pluginsPage = new gui::PluginsPage(ui->stackPages), grp, NULL);
+  addPage(pluginsPage = new gui::PluginsPage(ui->stackPages), grp, NULL, "plugins");
 #endif
 
 #undef GETSTARTED_GUI
@@ -536,7 +540,7 @@ void MainWindow::initStackedPage()
 #endif
 
 
-  addPage(newsFeed = new NewsFeed(ui->stackPages), grp, &notify);
+  addPage(newsFeed = new NewsFeed(ui->stackPages), grp, &notify, "log");
 
   //List All notify before Setting was created
   for (auto notifyIt:notify)
@@ -599,8 +603,11 @@ void MainWindow::addAction(QAction *action, FunctionType actionFunction, const c
 }
 
 /** Add the given page to the stackPage and list. */
-void MainWindow::addPage(MainPage *page, QActionGroup *grp, QList<QPair<MainPage*, QPair<QAction*, QListWidgetItem*> > > *notify)
+void MainWindow::addPage(MainPage *page, QActionGroup *grp, QList<QPair<MainPage*, QPair<QAction*, QListWidgetItem*> > > *notify, const QString &helpTopic)
 {
+	if (!helpTopic.isEmpty())
+		HelpBrowser::setWidgetTopic(page, helpTopic);
+
 	QAction *action;
 	ui->stackPages->add(page, action = createPageAction(page->iconPixmap(), page->pageName(), grp));
 
@@ -1554,6 +1561,12 @@ void MainWindow::showHelpDialog()
 void MainWindow::showHelpDialog(const QString &topic)
 {
   HelpBrowser::showWindow(topic);
+}
+
+/** Shows the help browser on the topic of the page currently displayed. */
+void MainWindow::showContextHelp()
+{
+  showHelpDialog(HelpBrowser::widgetTopic(ui->stackPages->currentWidget()));
 }
 
 /** Called when the user changes the UI translation. */

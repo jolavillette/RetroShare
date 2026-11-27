@@ -319,6 +319,8 @@ private slots:
     void showHelpDialog();
     /** Called when a child window requests the given help <b>topic</b>. */
     void showHelpDialog(const QString &topic);
+    /** Shows the help browser on the topic of the page currently displayed. */
+    void showContextHelp();
 
     void showMess();
     void showSettings();
@@ -333,7 +335,7 @@ private slots:
 
 private:
     void initStackedPage();
-    void addPage(MainPage *page, QActionGroup *grp, 	QList<QPair<MainPage *, QPair<QAction *, QListWidgetItem *> > > *notify);
+    void addPage(MainPage *page, QActionGroup *grp, 	QList<QPair<MainPage *, QPair<QAction *, QListWidgetItem *> > > *notify, const QString &helpTopic = QString());
     void createTrayIcon();
     void makeClickable(QWidget *widget);
 #if defined(Q_OS_DARWIN)

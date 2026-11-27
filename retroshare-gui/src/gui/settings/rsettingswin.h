@@ -53,7 +53,7 @@ public:
 protected:
 	~SettingsPage();
 
-	void addPage(ConfigPage*) ;
+	void addPage(ConfigPage*, const QString &helpTopic = QString()) ;
 
 public slots:
 	//! Go to a specific part of the control panel.

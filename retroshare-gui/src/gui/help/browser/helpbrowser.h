@@ -53,6 +53,14 @@ public:
   /** Overrides the default QWidget::show() */
   static void showWindow(const QString &topic);
 
+  /** Attaches the ID of a help topic (e.g., "settings.network") to a page of
+   * the GUI. The topic is stored as a property of the widget, so that pages
+   * provided by plugins need nothing in their class. */
+  static void setWidgetTopic(QWidget *widget, const QString &topic);
+  /** Returns the ID of the help topic attached to a page of the GUI, or an
+   * empty string. */
+  static QString widgetTopic(const QWidget *widget);
+
 private slots:
   /** Called when the user clicks "Find Next" */
   void findNext();
@@ -64,11 +72,10 @@ private slots:
   void contentsItemChanged(QTreeWidgetItem *current, QTreeWidgetItem *prev);
   /** Called when the user selects a different item in the search tree */
   void searchItemChanged(QTreeWidgetItem *current, QTreeWidgetItem *prev);
+  /** Called when the browser displays another page */
+  void sourceChanged(const QUrl &url);
    
 private:
-  /** Returns the language in which help topics should appear, or English
-   * ("en") if no translated help files exist for the current GUI language. */
-  QString language();
   /** Load the contents of the help topics tree from the specified XML file. */
   void loadContentsFromXml(QString xmlFile);
   /** Load the contents of the help topics tree from the given DOM document. */
@@ -77,7 +84,7 @@ private:
   void parseHelpTopic(const QDomElement &element, QTreeWidgetItem *parent);
   /** Returns true if the given Topic element has the necessary attributes. */
   bool isValidTopicElement(const QDomElement &topicElement);
-  /** Builds a resource path to an html file associated with a help topic. */
+  /** Builds the link to the file associated with a help topic. */
   QString getResourcePath(const QDomElement &topicElement);
   /** Searches the current page for the phrase in the Find box */
   void find(bool forward);
@@ -88,7 +95,7 @@ private:
   void currentItemChanged(QTreeWidgetItem *current, QTreeWidgetItem *prev);
   /** Finds a topic in the topic tree. */
   QTreeWidgetItem* findTopicItem(QTreeWidgetItem *startItem, QString topic);
-  /** Shows the help browser and finds a specific a topic in the browser. */
+  /** Displays the page of a topic and selects it in the contents tree. */
   void showTopic(QString topic);
 
   /** List of DOM elements representing topics. */

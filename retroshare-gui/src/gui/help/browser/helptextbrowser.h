@@ -21,8 +21,7 @@
 
 /*
 ** \file helptextbrowser.h
-** \version $Id: helptextbrowser.h 2679 2008-06-10 03:07:10Z edmanm $ 
-** \brief Displays an HTML-based help document
+** \brief Displays a help page stored in the application resources
 */
 
 #ifndef _HELPTEXTBROWSER_H
@@ -39,14 +38,32 @@ class HelpTextBrowser : public QTextBrowser
 public:
   /** Default constructor. */
   HelpTextBrowser(QWidget *parent = 0);
-  /** Loads a resource into the browser. */
+  /** Loads a resource into the browser. Help pages are read from
+   * ":/help/<language>/", English being used for the pages that have no
+   * translation. */
   QVariant loadResource(int type, const QUrl &name);
 
-public slots:
-  /** Called when the displayed document is changed. If <b>url</b> specifies
-   * an external link, then the user will be prompted for whether they want to
-   * open the link in their default browser or not. */
+  /** Returns the resource path of the given help file, in the language of
+   * the GUI when the file exists there, in English otherwise. */
+  static QString resourcePath(const QString &fileName);
+
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+protected:
+  /** Called when the displayed document is changed. An external link is
+   * opened in the Web browser after the user agreed, a help page is loaded. */
+  virtual void doSetSource(const QUrl &url, QTextDocument::ResourceType type = QTextDocument::UnknownResource);
+#else
+public:
+  /** Called when the displayed document is changed. An external link is
+   * opened in the Web browser after the user agreed, a help page is loaded. */
   virtual void setSource(const QUrl &url);
+#endif
+
+private:
+  /** Returns true when <b>url</b> points outside of the help pages. */
+  static bool isExternalLink(const QUrl &url);
+  /** Asks the user and opens <b>url</b> in the default Web browser. */
+  void openExternalLink(const QUrl &url);
 };
 
 #endif

@@ -21,12 +21,12 @@
 
 /*
 ** \file helptextbrowser.cpp
-** \version $Id: helptextbrowser.cpp 2679 2008-06-10 03:07:10Z edmanm $
-** \brief Displays an HTML-based help document
+** \brief Displays a help page stored in the application resources
 */
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QDesktopServices>
 #include "gui/common/vmessagebox.h"
 #include "gui/common/rshtml.h"
@@ -34,76 +34,140 @@
 
 #include "helptextbrowser.h"
 
+/* The help pages are written in Markdown. Qt reads Markdown since 5.14; with
+ * an older Qt, or a Qt built without the Markdown reader, the pages are shown
+ * as plain text. */
+#if QT_VERSION >= QT_VERSION_CHECK(5,14,0)
+#if QT_CONFIG(textmarkdownreader)
+#define HELP_MARKDOWN_READER
+#endif
+#endif
+
+static bool isMarkdownFile(const QUrl &url)
+{
+  return url.path().endsWith(".md", Qt::CaseInsensitive);
+}
 
 /** Default constructor. */
 HelpTextBrowser::HelpTextBrowser(QWidget *parent)
   : QTextBrowser(parent)
 {
+  /* Links are followed here, so that every one of them goes through the
+   * external link check, whatever the Qt version. */
   setOpenExternalLinks(false);
+  setOpenLinks(false);
+  connect(this, &QTextBrowser::anchorClicked, this, [this](const QUrl &url) { setSource(url); });
 }
 
-/** Loads a resource into the browser. If it is an HTML resource, we'll load
- * it as UTF-8, so the special characters in our translations appear properly. */
+/** Returns the resource path of the given help file, in the language of the
+ * GUI when the file exists there, in English otherwise. */
+QString
+HelpTextBrowser::resourcePath(const QString &fileName)
+{
+  QString path = ":/help/" + RsApplication::language() + "/" + fileName;
+  if (!QFile::exists(path))
+    path = ":/help/en/" + fileName;
+  return path;
+}
+
+/** Loads a resource into the browser. Help pages are read as UTF-8 from the
+ * application resources. */
 QVariant
 HelpTextBrowser::loadResource(int type, const QUrl &name)
 {
-  /* If it's an HTML file, we'll handle it ourselves */
-  if (type == QTextDocument::HtmlResource) {
-    QString helpPath = ":/help/";
-    
-    /* Fall back to English if there is no translation of the specified help
-     * page in the current language. */
-    if (!name.path().contains("/")) {
-      QString language = RsApplication::language();
-      if (!QDir(":/help/" + language).exists())
-        language = "en";
-      helpPath += language + "/";
-    }
-    
-    QFile file(helpPath + name.path());
+  if (type == QTextDocument::HtmlResource
+#ifdef HELP_MARKDOWN_READER
+      || type == QTextDocument::MarkdownResource
+#endif
+     ) {
+    QFile file(resourcePath(QFileInfo(name.path()).fileName()));
     if (!file.open(QIODevice::ReadOnly)) {
       return tr("Error opening help file:")+" "+ name.path();
     }
-    return QString::fromUtf8(file.readAll());
+    QString text = QString::fromUtf8(file.readAll());
+
+#ifndef HELP_MARKDOWN_READER
+    if (isMarkdownFile(name)) {
+      /* No Markdown reader: the source is readable as it is. */
+      return "<pre style=\"white-space: pre-wrap;\">" + text.toHtmlEscaped() + "</pre>";
+    }
+#endif
+    return text;
   }
   /* Everything else, just let QTextBrowser take care of it. */
   return QTextBrowser::loadResource(type, name);
 }
 
+/** Returns true when <b>url</b> points outside of the help pages. */
+bool
+HelpTextBrowser::isExternalLink(const QUrl &url)
+{
+  return url.scheme() != "qrc" && !url.isRelative();
+}
 
-/** Called when the displayed document is changed. If <b>url</b> specifies
- * an external link, then the user will be prompted for whether they want to
- * open the link in their default browser or not. */
+/** Asks the user and opens <b>url</b> in the default Web browser. */
+void
+HelpTextBrowser::openExternalLink(const QUrl &url)
+{
+  int ret = VMessageBox::question(this,
+              tr("Opening External Link"),
+              p(tr("RetroShare can open the link you selected in your default "
+                   "Web browser. If your browser is not currently "
+                   "configured to use Tor then the request will not be "
+                   "anonymous.")) +
+              p(tr("Do you want Retroshare to open the link in your Web "
+                   "browser?")),
+              VMessageBox::Yes|VMessageBox::Default,
+              VMessageBox::Cancel|VMessageBox::Cancel);
+
+  if (ret == VMessageBox::Cancel)
+    return;
+
+  bool ok = QDesktopServices::openUrl(url);
+  if (!ok) {
+    VMessageBox::information(this,
+      tr("Unable to Open Link"),
+      tr("RetroShare was unable to open the selected link in your Web browser. "
+         "You can still copy the URL and paste it into your browser."),
+      VMessageBox::Ok);
+  }
+}
+
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+void
+HelpTextBrowser::doSetSource(const QUrl &url, QTextDocument::ResourceType /*type*/)
+{
+  if (isExternalLink(url)) {
+    openExternalLink(url);
+    return;
+  }
+#ifdef HELP_MARKDOWN_READER
+  if (isMarkdownFile(url)) {
+    QTextBrowser::doSetSource(url, QTextDocument::MarkdownResource);
+    return;
+  }
+#endif
+  QTextBrowser::doSetSource(url, QTextDocument::HtmlResource);
+}
+#else
 void
 HelpTextBrowser::setSource(const QUrl &url)
 {
-  if (url.scheme() != "qrc" && !url.isRelative()) {
-    /* External link. Prompt the user for a response. */
-    int ret = VMessageBox::question(this,
-                tr("Opening External Link"),
-                p(tr("RetroShare can open the link you selected in your default "
-                     "Web browser. If your browser is not currently "
-                     "configured to use Tor then the request will not be "
-                     "anonymous.")) +
-                p(tr("Do you want Retroshare to open the link in your Web "
-                     "browser?")),
-                VMessageBox::Yes|VMessageBox::Default, 
-                VMessageBox::Cancel|VMessageBox::Cancel);
-    
-    if (ret == VMessageBox::Cancel)
-      return;
-    
-    bool ok = QDesktopServices::openUrl(url);
-    if (!ok) {
-      VMessageBox::information(this,
-        tr("Unable to Open Link"),
-        tr("RetroShare was unable to open the selected link in your Web browser. "
-           "You can still copy the URL and paste it into your browser."),
-        VMessageBox::Ok);
-    }
-  } else {
-    /* Internal link. Just load it like normal. */
-    QTextBrowser::setSource(url);
+  if (isExternalLink(url)) {
+    openExternalLink(url);
+    return;
   }
+#if QT_VERSION >= QT_VERSION_CHECK(5,14,0)
+#ifdef HELP_MARKDOWN_READER
+  if (isMarkdownFile(url)) {
+    QTextBrowser::setSource(url, QTextDocument::MarkdownResource);
+    return;
+  }
+#endif
+  QTextBrowser::setSource(url, QTextDocument::HtmlResource);
+#else
+  QTextBrowser::setSource(url);
+#endif
 }
+#endif
 
