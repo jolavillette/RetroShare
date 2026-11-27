@@ -3320,7 +3320,7 @@ Attention: Dans vos Préférences de Fichiers, vous avez interdit le télécharg
         <location line="+31"/>
         <location line="+326"/>
         <source>This is your own certificate. You cannot add yourself as a friend.</source>
-        <translation>C&apos;est votre propre certificat! Vous ne voulez pas devenir ami avec vous même. N&apos;est-ce pas?</translation>
+        <translation>C&apos;est votre propre certificat. Vous ne pouvez pas vous ajouter vous-même comme ami.</translation>
     </message>
     <message>
         <location line="-367"/>
