@@ -215,8 +215,8 @@ class RSLinkClipboard
 		//
 		static QString toHtmlSize();		
 
-		// Returns true is no links are found to paste.
-		// Useful for menus.
+		// Returns true if no links are found to paste. Useful for menus: it never waits for the
+		// clipboard, and returns false when the clipboard has changed and was not read since.
 		//
 		static bool empty(RetroShareLink::enumType type = RetroShareLink::TYPE_UNKNOWN);
 

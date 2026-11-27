@@ -2138,6 +2138,14 @@ static const QString& clipboardText()
 	return clipboardTextCache;
 }
 
+// Whether the text of the clipboard can be had without waiting for another program: it was read
+// since the clipboard last changed, or the clipboard is ours and Qt answers from its own copy.
+
+static bool clipboardTextAtHand()
+{
+	return !clipboardTextIsStale || QApplication::clipboard()->ownsClipboard();
+}
+
 void RSLinkClipboard::pasteLinks(QList<RetroShareLink> &links,RetroShareLink::enumType type)
 {
 	return parseClipboard(links,type);
@@ -2174,8 +2182,15 @@ QString RSLinkClipboard::toHtml()
 	return res ;
 }
 
+// The menus ask this to enable their paste action, and a menu must not wait for the clipboard:
+// when its text is not at hand, the answer is "not empty", and the clipboard is read only when
+// the user picks the paste action.
+
 bool RSLinkClipboard::empty(RetroShareLink::enumType type /* = RetroShareLink::TYPE_UNKNOWN*/)
 {
+	if(!clipboardTextAtHand())
+		return false;
+
 	QList<RetroShareLink> links;
 	parseClipboard(links);
 

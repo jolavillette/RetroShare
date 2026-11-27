@@ -1968,6 +1968,9 @@ void TransfersDialog::pasteLink()
 	for(auto &it : links)
 		col.merge_in(it.name(),it.size(),RsFileHash(it.hash().toStdString())) ;
 
+	if(col.count() == 0)
+		return;
+
     RsCollectionDialog::downloadFiles(col);
 }
 
