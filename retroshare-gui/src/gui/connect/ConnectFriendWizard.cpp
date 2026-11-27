@@ -288,7 +288,7 @@ void ConnectFriendWizard::setCertificate(const QString &certificate, bool friend
 
 		if(peerDetails.id == rsPeers->getOwnId())
 		{
-			setField("errorMessage", tr("This is your own certificate! You would not want to make friend with yourself. Wouldn't you?") ) ;
+			setField("errorMessage", tr("This is your own certificate. You cannot add yourself as a friend.") ) ;
 			error = false;
 			setStartId(Page_ErrorMessage);
 		}
@@ -312,7 +312,7 @@ void ConnectFriendWizard::setCertificate(const QString &certificate, bool friend
 
 		if(peerDetails.id == rsPeers->getOwnId())
 		{
-			setField("errorMessage", tr("This is your own certificate! You would not want to make friend with yourself. Wouldn't you?") ) ;
+			setField("errorMessage", tr("This is your own certificate. You cannot add yourself as a friend.") ) ;
 			error = false;
 			setStartId(Page_ErrorMessage);
 		}
@@ -343,7 +343,7 @@ void ConnectFriendWizard::setGpgId(const RsPgpId &gpgId, const RsPeerId &sslId, 
 {
 	if(sslId == rsPeers->getOwnId())
 	{
-		setField("errorMessage", tr("This is your own certificate! You would not want to make friend with yourself. Wouldn't you?") ) ;
+		setField("errorMessage", tr("This is your own certificate. You cannot add yourself as a friend.") ) ;
 		setStartId(Page_ErrorMessage);
 		error = false;
 	}
@@ -669,7 +669,7 @@ bool ConnectFriendWizard::validateCurrentPage()
 
 				if(peerDetails.id == rsPeers->getOwnId())
 				{
-					setField("errorMessage", tr("This is your own certificate! You would not want to make friend with yourself. Wouldn't you?") ) ;
+					setField("errorMessage", tr("This is your own certificate. You cannot add yourself as a friend.") ) ;
 					error = true;
 				}
 

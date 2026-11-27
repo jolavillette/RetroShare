@@ -3319,7 +3319,7 @@ Advertencia: En su opción de Transferencia-de-fichero, establezca permitir desc
         <location line="+24"/>
         <location line="+31"/>
         <location line="+326"/>
-        <source>This is your own certificate! You would not want to make friend with yourself. Wouldn&apos;t you?</source>
+        <source>This is your own certificate. You cannot add yourself as a friend.</source>
         <translation>¿Este es su propio certificado? No querría hacerse amigo de si mismo. ¿No es así?</translation>
     </message>
     <message>

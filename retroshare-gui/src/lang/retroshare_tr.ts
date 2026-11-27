@@ -3319,7 +3319,7 @@ Uyarı: Dosya-Aktarımı ayarlarınızda, doğrudan indirmeye İzin verilmemiş.
         <location line="+24"/>
         <location line="+31"/>
         <location line="+326"/>
-        <source>This is your own certificate! You would not want to make friend with yourself. Wouldn&apos;t you?</source>
+        <source>This is your own certificate. You cannot add yourself as a friend.</source>
         <translation>Bu sizin kendi sertifikanız! Kendi kendinizle arakadaş olmak istemezsiniz. Değil mi?</translation>
     </message>
     <message>

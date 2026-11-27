@@ -3319,7 +3319,7 @@ Figyelmeztetés: az Átvitel beállításainál Nem engedélyezted a közvetlen 
         <location line="+24"/>
         <location line="+31"/>
         <location line="+326"/>
-        <source>This is your own certificate! You would not want to make friend with yourself. Wouldn&apos;t you?</source>
+        <source>This is your own certificate. You cannot add yourself as a friend.</source>
         <translation>Ez a saját tanusítványod! Ugye nem saját magadat akarod ismerősként megadni?!</translation>
     </message>
     <message>
