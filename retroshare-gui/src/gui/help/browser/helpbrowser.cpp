@@ -61,9 +61,11 @@ HelpBrowser::HelpBrowser(QWidget *parent)
 #if defined(Q_OS_MAC)
   ui.actionHome->setShortcut(QString("Shift+Ctrl+H"));
 #endif
-#if !defined(Q_OS_WIN)
-  ui.actionClose->setShortcut(QString("Ctrl+W"));
-#endif
+  /* Esc closes the manual on every system, and so does the close key of the
+   * system (Ctrl+W on Linux, Cmd+W on macOS, Ctrl+F4 on Windows). */
+  QList<QKeySequence> closeKeys = QKeySequence::keyBindings(QKeySequence::Close);
+  closeKeys.prepend(QKeySequence(Qt::Key_Escape));
+  ui.actionClose->setShortcuts(closeKeys);
 
   helpBrowser = this;
 

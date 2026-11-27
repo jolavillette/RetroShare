@@ -10,7 +10,7 @@ menus. Choose a topic in the tree on the left, or use the **Search** tab to
 look for a word in all the pages.
 
 Press **F1** anywhere in the main window to open the manual on the page you
-are looking at. The **?** button at the top of a page shows a short
+are looking at, and **Esc** to close it. The **?** button at the top of a page shows a short
 introduction to it.
 
 ## First steps
