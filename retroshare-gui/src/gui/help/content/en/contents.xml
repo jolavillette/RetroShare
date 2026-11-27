@@ -21,20 +21,56 @@
  ****************************************************************
 -->
 
-<Contents name="RetroShare Help" html="index.html">
-  <Topic id="invite" name="Invite Friends" html="invitefriends.html"/>
-  <Topic id="addfriends" name="Add Friends to RetroShare" html="addfriends.html"/>
-  <Topic id="connectfriends" name="Connect to Friends" html="connectfriends.html"/>
-  <Topic id="advanced" name="Advanced: Open Firewall Port" html="advanced.html"/>
-  <Topic id="config" name="Configuring RetroShare" html="config.html">
-    <Topic id="general" name="General Settings" html="config.html" section="general"/>
-    <Topic id="server" name="Server Settings" html="config.html" section="server"/>
-    <Topic id="directories" name="Directories Settings" html="config.html" section="directories"/>
-    <Topic id="appearance" name="Appearance Settings" html="config.html" section="appearance"/>
+<Contents name="RetroShare Manual" html="index.md">
+  <Topic id="start" name="Getting started" html="start.md">
+    <Topic id="profile" name="Profiles and nodes" html="start-profile.md"/>
+    <Topic id="friends" name="Adding friends" html="start-friends.md"/>
   </Topic>
-
-  <Topic id="commands" name="Commandline Options" html="commandline.html"/>
-  <Topic id="trust" name="Trust Settings" html="peerdetails.html"/>
-  <Topic id="links" name="Helpful Links" html="links.html"/>
+  <Topic id="home" name="Home" html="home.md"/>
+  <Topic id="network" name="Network" html="network.md">
+    <Topic id="details" name="Friend details" html="network-details.md"/>
+  </Topic>
+  <Topic id="people" name="People" html="people.md"/>
+  <Topic id="chats" name="Chats" html="chats.md"/>
+  <Topic id="mail" name="Mail" html="mail.md"/>
+  <Topic id="files" name="Files" html="files.md">
+    <Topic id="transfers" name="Downloads and uploads" html="files-transfers.md"/>
+    <Topic id="search" name="Search" html="files-search.md"/>
+    <Topic id="shared" name="Shared files" html="files-shared.md"/>
+  </Topic>
+  <Topic id="channels" name="Channels" html="channels.md"/>
+  <Topic id="forums" name="Forums" html="forums.md"/>
+  <Topic id="boards" name="Boards" html="boards.md"/>
+  <Topic id="activity" name="Activity" html="activity.md"/>
+  <Topic id="services" name="Optional services" html="services.md"/>
+  <Topic id="settings" name="Preferences" html="settings.md">
+    <Topic id="general" name="General" html="settings-general.md"/>
+    <Topic id="node" name="Node" html="settings-node.md"/>
+    <Topic id="network" name="Network" html="settings-network.md"/>
+    <Topic id="people" name="People" html="settings-people.md"/>
+    <Topic id="chat" name="Chats" html="settings-chat.md"/>
+    <Topic id="mail" name="Mail" html="settings-mail.md"/>
+    <Topic id="files" name="Files" html="settings-files.md"/>
+    <Topic id="channels" name="Channels" html="settings-channels.md"/>
+    <Topic id="forums" name="Forums" html="settings-forums.md"/>
+    <Topic id="boards" name="Boards" html="settings-boards.md"/>
+    <Topic id="notify" name="Notify" html="settings-notify.md"/>
+    <Topic id="plugins" name="Plugins" html="settings-plugins.md"/>
+    <Topic id="appearance" name="Appearance" html="settings-appearance.md"/>
+    <Topic id="sound" name="Sound" html="settings-sound.md"/>
+    <Topic id="permissions" name="Permissions" html="settings-permissions.md"/>
+    <Topic id="jsonapi" name="JSON API" html="settings-jsonapi.md"/>
+    <Topic id="webui" name="Webinterface" html="settings-webui.md"/>
+    <Topic id="about" name="About" html="settings-about.md"/>
+  </Topic>
+  <Topic id="statistics" name="Statistics" html="statistics.md"/>
+  <Topic id="mainwindow" name="Main window, tray icon and status bar" html="mainwindow.md"/>
+  <Topic id="plugins" name="Plugins" html="plugins.md">
+    <Topic id="voip" name="VOIP" html="plugins-voip.md"/>
+    <Topic id="feedreader" name="FeedReader" html="plugins-feedreader.md"/>
+  </Topic>
+  <Topic id="webui" name="Web interface" html="webui.md"/>
+  <Topic id="links" name="RetroShare links" html="links.md"/>
+  <Topic id="commandline" name="Command line options" html="commandline.md"/>
+  <Topic id="glossary" name="Glossary" html="glossary.md"/>
 </Contents>
-

@@ -1,0 +1,8 @@
+# Sources that are not compiled, or whose page is never shown.
+gui/unfinished/
+gui/GetStartedDialog
+gui/QuickStartWizard
+gui/common/FriendList.
+gui/Circles/CirclesDialog
+gui/People/
+gui/FriendServerControl

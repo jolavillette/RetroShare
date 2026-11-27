@@ -540,7 +540,7 @@ void MainWindow::initStackedPage()
 #endif
 
 
-  addPage(newsFeed = new NewsFeed(ui->stackPages), grp, &notify, "log");
+  addPage(newsFeed = new NewsFeed(ui->stackPages), grp, &notify, "activity");
 
   //List All notify before Setting was created
   for (auto notifyIt:notify)
