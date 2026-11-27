@@ -76,22 +76,26 @@ jobs:
             mingw-w64-ucrt-x86_64-bzip2
             mingw-w64-ucrt-x86_64-zlib
 
-      # libretroshare + libsam3 track the tip of their fork branch (--remote, see
-      # .gitmodules: combo / fix/cross-platform-and-security) so the build follows
-      # those throwaway branches even when they are deleted and recreated. The other
-      # submodules stay pinned; librnp needs --recursive for its nested src/libsexpp.
-      - name: Init submodules (libretroshare/libsam3 track fork branch tip)
+      # libretroshare, libbitdht, retroshare-webui and libsam3 track the tip of the
+      # combo branch of their fork (--remote, see .gitmodules), so the build uses the
+      # same combos as the local builds and follows those throwaway branches even
+      # when they are deleted and recreated. The other submodules stay pinned; librnp
+      # needs --recursive for its nested src/libsexpp.
+      - name: Init submodules (the four combos track their fork branch tip)
         run: |
           git submodule update --init \
-            libbitdht/ openpgpsdk/ retroshare-webui/
+            openpgpsdk/
           git submodule update --init --recursive \
             supportlibs/librnp
           git submodule update --init \
             supportlibs/restbed \
             supportlibs/udp-discovery-cpp supportlibs/rapidjson
           git submodule update --init --remote \
-            libretroshare/ supportlibs/libsam3
+            libretroshare/ libbitdht/ retroshare-webui/ supportlibs/libsam3
           git --no-pager -C libretroshare log --max-count 1 --oneline
+          git --no-pager -C libbitdht log --max-count 1 --oneline
+          git --no-pager -C retroshare-webui log --max-count 1 --oneline
+          git --no-pager -C supportlibs/libsam3 log --max-count 1 --oneline
 
       # Mirrors the validated local Windows command (Ninja, shared libretroshare).
       - name: CMake configure
