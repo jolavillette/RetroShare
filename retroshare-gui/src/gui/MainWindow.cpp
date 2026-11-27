@@ -25,7 +25,6 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPixmap>
-#include <QShortcut>
 #include <QStatusBar>
 #include <QString>
 #include <QUrl>
@@ -33,6 +32,7 @@
 #include <QApplication>
 #include <QMenuBar>
 #include <QActionGroup>
+#include <QShortcut>
 
 #include "retroshare/rsplugin.h"
 #include "retroshare/rsconfig.h"
