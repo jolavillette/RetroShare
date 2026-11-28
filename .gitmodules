@@ -17,7 +17,8 @@
 	url = https://github.com/Tencent/rapidjson.git
 [submodule "supportlibs/libsam3"]
 	path = supportlibs/libsam3
-	url = https://github.com/i2p/libsam3.git
+	url = https://github.com/jolavillette/libsam3.git
+	branch = combo
 [submodule "supportlibs/jni.hpp"]
 	path = supportlibs/jni.hpp
 	url = https://github.com/RetroShare/jni.hpp.git
@@ -27,16 +28,16 @@
 	branch = master
 [submodule "libbitdht"]
 	path = libbitdht
-	url = https://github.com/RetroShare/BitDHT.git
-	branch = master
+	url = https://github.com/jolavillette/BitDHT.git
+	branch = combo
 [submodule "libretroshare"]
 	path = libretroshare
-	url = https://github.com/RetroShare/libretroshare.git
-	branch = master
+	url = https://github.com/jolavillette/libretroshare.git
+	branch = combo
 [submodule "retroshare-webui"]
 	path = retroshare-webui
-	url = https://github.com/RetroShare/RSNewWebUI.git
-	branch = master
+	url = https://github.com/jolavillette/RSNewWebUI.git
+	branch = combo
 [submodule "supportlibs/librnp"]
 	path = supportlibs/librnp
 	url = https://github.com/rnpgp/rnp.git
