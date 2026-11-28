@@ -21,7 +21,6 @@
 
 #include "misc.h"
 
-#include "gui/common/FilesDefs.h"
 #include "util/rsdebug.h"
 
 #include <QApplication>
@@ -309,10 +308,13 @@ QPixmap misc::getOpenThumbnailedPicture(QWidget *parent, const QString &caption,
 	if (!getOpenFileName(parent, RshareSettings::LASTDIR_IMAGES, caption, tr("Pictures (*.png *.jpeg *.xpm *.jpg *.tiff *.gif *.webp)"), fileName))
 		return QPixmap();
 
+    // Read from disk, not through the FilesDefs pixmap cache: the file may have been edited since it was last picked.
+    QPixmap picture(fileName);
+
     if(width > 0 && height > 0)
-        return FilesDefs::getPixmapFromQtResourcePath(fileName).scaledToHeight(height, Qt::SmoothTransformation).copy( 0, 0, width, height);
+        return picture.scaledToHeight(height, Qt::SmoothTransformation).copy( 0, 0, width, height);
     else
-        return FilesDefs::getPixmapFromQtResourcePath(fileName);
+        return picture;
 }
 
 bool misc::getOpenFileName(QWidget *parent, RshareSettings::enumLastDir type
