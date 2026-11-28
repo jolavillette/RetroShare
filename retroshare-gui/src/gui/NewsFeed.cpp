@@ -131,7 +131,8 @@ NewsFeed::NewsFeed(QWidget *parent) : MainPage(parent), ui(new Ui::NewsFeed),
 	    "   You can configure which events to show by pressing on <b>Options</b>. </p>"
 	    "<p>The various events shown are:"
 	    "   <ul>"
-	    "    <li>Connection attempts (useful to make friends with new people and control who's trying to reach you)</li>"
+	    "    <li>Connection attempts: nodes that reached your port but are not your friends. \"An unknown peer\" means that you do not have"
+	    "        its profile key, so its name cannot be known; it is not necessarily a deliberate friend request.</li>"
 	    "    <li>Channel, Forum and Board posts</li>"
 	    "    <li>Circle membership requests and invites</li>"
 	    "    <li>New Channels, Forums and Boards you can subscribe to</li>"
@@ -482,6 +483,11 @@ void NewsFeed::handleSecurityEvent(std::shared_ptr<const RsEvent> event)
         return;
 
     auto& e(*pe);
+    
+    // Profiles in the ignore list raise no security notification.
+    if(rsPeers->isIgnored(e.mPgpId))
+        return;
+
     RsFeedTypeFlags flags = (RsFeedTypeFlags)Settings->getNewsFeedFlags();
 
     // 1 - treat the case of unknown PeerID
@@ -515,7 +521,22 @@ void NewsFeed::handleSecurityEvent(std::shared_ptr<const RsEvent> event)
 		addFeedItemIfUnique(new PeerItem(this, NEWSFEED_PEERLIST, e.mSslId, PEER_TYPE_HELLO, false), true );
 		return;
 	}
-	
+
+    // 3 - a friend that authenticated fine but was refused by our own IP
+    // filter: show the IP item with the result of the check, as the library
+    // reported it, and the address it checked.
+
+    if(e.mErrorCode == RsAuthSslError::IP_IS_BLACKLISTED || e.mErrorCode == RsAuthSslError::IP_NOT_WHITELISTED)
+    {
+        if(!!(flags & RsFeedTypeFlags::RS_FEED_TYPE_SECURITY_IP))
+        {
+            uint32_t result = (e.mErrorCode == RsAuthSslError::IP_IS_BLACKLISTED) ? RSBANLIST_CHECK_RESULT_BLACKLISTED
+                                                                                    : RSBANLIST_CHECK_RESULT_NOT_WHITELISTED;
+            addFeedItemIfUnique(new SecurityIpItem(this, e.mSslId, e.mLocator.host(), result,
+                                                   RsFeedTypeFlags::RS_FEED_ITEM_SEC_IP_BLACKLISTED, false), true);
+        }
+        return;
+    }
 
     RsFeedTypeFlags FeedItemType(RsFeedTypeFlags::RS_FEED_TYPE_NONE);
 
@@ -529,10 +550,10 @@ void NewsFeed::handleSecurityEvent(std::shared_ptr<const RsEvent> event)
         FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_WRONG_SIGNATURE; break;
 	case RsAuthSslError::NOT_A_FRIEND:
         FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_CONNECT_ATTEMPT; break;
-	case RsAuthSslError::IP_IS_BLACKLISTED:
-        FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_IP_BLACKLISTED; break;
 	case RsAuthSslError::MISSING_CERTIFICATE:
         FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_MISSING_CERTIFICATE; break;
+	case RsAuthSslError::PEER_CLOSED_AFTER_AUTH:
+        FeedItemType = RsFeedTypeFlags::RS_FEED_ITEM_SEC_PEER_CLOSED_AFTER_AUTH; break;
 	default:
 		return; // display nothing
 	}
@@ -542,7 +563,11 @@ void NewsFeed::handleSecurityEvent(std::shared_ptr<const RsEvent> event)
 
 	addFeedItemIfUnique(new SecurityItem(this, NEWSFEED_SECLIST, e.mPgpId, e.mSslId, det.location, e.mLocator.toString(), FeedItemType, false), true );
 
-    if (Settings->getMessageFlags() & RshareSettings::RS_MESSAGE_CONNECT_ATTEMPT)
+    // The message says "wants to be friends with you": only true of a node
+    // outside the friend list, not of a certificate that failed to validate.
+    if ( (Settings->getMessageFlags() & RshareSettings::RS_MESSAGE_CONNECT_ATTEMPT)
+         && ( FeedItemType == RsFeedTypeFlags::RS_FEED_ITEM_SEC_CONNECT_ATTEMPT
+              || FeedItemType == RsFeedTypeFlags::RS_FEED_ITEM_SEC_MISSING_CERTIFICATE ) )
 		MessageComposer::addConnectAttemptMsg(e.mPgpId, e.mSslId, QString::fromStdString(det.name + "(" + det.location + ")"));
 }
 

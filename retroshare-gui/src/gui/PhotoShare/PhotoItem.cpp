@@ -60,7 +60,8 @@ PhotoItem::PhotoItem(PhotoShareItemHolder *holder, const QString& path, uint32_t
 
     mPhotoDetails.mOrder = order;
 
-    QPixmap qtn = FilesDefs::getPixmapFromQtResourcePath(path);
+    // Read from disk, not through the FilesDefs pixmap cache: the file may have been edited since it was last picked.
+    QPixmap qtn(path);
     mLowResImage = qtn.scaled(512,512, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 
     ui->label_Thumbnail->setPixmap(qtn.scaled(128, 128, Qt::KeepAspectRatio, Qt::SmoothTransformation));

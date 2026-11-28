@@ -25,6 +25,7 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPixmap>
+#include <QPointer>
 #include <QStatusBar>
 #include <QString>
 #include <QUrl>
@@ -32,12 +33,14 @@
 #include <QApplication>
 #include <QMenuBar>
 #include <QActionGroup>
+#include <QShortcut>
 
 #include "retroshare/rsplugin.h"
 #include "retroshare/rsconfig.h"
 #include "retroshare/rsevents.h"
 #include "util/argstream.h"
 #include "util/qtthreadsutils.h"
+#include "util/rsthreads.h"
 
 #if defined(Q_OS_DARWIN)
 #include "gui/common/MacDockIconHandler.h"
@@ -149,6 +152,13 @@
 #define IMAGE_TWOONLINE         ":/icons/logo_2_connected_128.png"
 #define IMAGE_OVERLAY           ":/icons/star_overlay_128.png"
 
+/* Minimum spacing between two systray balloons. D-Bus trays (xfce4-panel, ...) choke on a burst of
+ * showMessage() calls, which a busy chat room used to produce one per message. */
+#define SYSTRAY_MSG_INTERVAL_MS 3000
+
+/* updateStatus() runs every second; every TRAY_ICON_REFRESH_TICKS runs it re-sends the tray icon. */
+#define TRAY_ICON_REFRESH_TICKS 30
+
 #define IMAGE_BWGRAPH           ":/icons/png/bandwidth.png"
 #define IMAGE_COLOR         	":/images/highlight.png"
 #define IMAGE_NEWRSCOLLECTION   ":/images/library.png"
@@ -186,6 +196,13 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
     ui = new Ui::MainWindow;
     trayIcon = NULL;
 
+    mTrayIconRefreshTicks = 0;
+    mPendingSystrayCount = 0;
+    mPendingSystrayMixed = false;
+    mSystrayMsgTimer = new QTimer(this);
+    mSystrayMsgTimer->setSingleShot(true);
+    connect(mSystrayMsgTimer, SIGNAL(timeout()), this, SLOT(flushPendingSystrayMsg()));
+
 	friendsDialog=NULL;
 	idDialog=NULL;
 	chatLobbyDialog=NULL;
@@ -207,6 +224,8 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
     m_bStatusLoadDone = false;
     isIdle = false;
     onlineCount = 0;
+    mFriendCountRequestPending = false;
+    mFriendCountRequestAgain = false;
 
     notifyMenu = NULL;
 
@@ -238,6 +257,9 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
     #endif
 
     initStackedPage();
+
+    /* F1 opens the manual on the page currently displayed */
+    new QShortcut(QKeySequence(QKeySequence::HelpContents), this, SLOT(showContextHelp()));
     connect(ui->listWidget, SIGNAL(currentRowChanged(int)), this, SLOT(setNewPage(int)));
     connect(ui->stackPages, SIGNAL(currentChanged(int)), this, SLOT(setNewPage(int)));
 
@@ -272,7 +294,7 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
     widget->setLayout(hbox);
     statusBar()->addWidget(widget);
 
-    peerstatus = new PeerStatus();
+    peerstatus = new PeerStatus(statusBar());
     peerstatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowPeer", QVariant(true)).toBool());
     statusBar()->addWidget(peerstatus);
 
@@ -280,7 +302,7 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
 	{
         if(RsAccounts::isHiddenNode())
 		{
-			torstatus = new TorStatus();
+			torstatus = new TorStatus(statusBar());
 			torstatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowTor", QVariant(true)).toBool());
 			statusBar()->addWidget(torstatus);
 			torstatus->getTorStatus();
@@ -295,13 +317,13 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
 	{
 		torstatus = NULL ;
 
-		natstatus = new NATStatus();
+		natstatus = new NATStatus(statusBar());
 		if(hiddenmode) natstatus->setVisible(false);
 		else natstatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowNAT", QVariant(true)).toBool());
 		statusBar()->addWidget(natstatus);
 		natstatus->getNATStatus();
 
-		dhtstatus = new DHTStatus();
+		dhtstatus = new DHTStatus(statusBar());
 		if(hiddenmode) dhtstatus->setVisible(false);
 		else dhtstatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowDHT", QVariant(true)).toBool());
 		statusBar()->addWidget(dhtstatus);
@@ -311,32 +333,32 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
 		makeClickable(dhtstatus);
 	}
 
-    hashingstatus = new HashingStatus();
+    hashingstatus = new HashingStatus(statusBar());
     hashingstatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowHashing", QVariant(true)).toBool());
     statusBar()->addPermanentWidget(hashingstatus, 1);
 
-    discstatus = new DiscStatus();
+    discstatus = new DiscStatus(statusBar());
     discstatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowDisc", QVariant(true)).toBool());
     statusBar()->addPermanentWidget(discstatus);
 
-    ratesstatus = new RatesStatus();
+    ratesstatus = new RatesStatus(statusBar());
     ratesstatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowRate", QVariant(true)).toBool());
     statusBar()->addPermanentWidget(ratesstatus);
     makeClickable(ratesstatus);
 
-    opModeStatus = new OpModeStatus();
+    opModeStatus = new OpModeStatus(statusBar());
     opModeStatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowOpMode", QVariant(false)).toBool());
     statusBar()->addPermanentWidget(opModeStatus);
 
-    soundStatus = new SoundStatus();
+    soundStatus = new SoundStatus(statusBar());
     soundStatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowSound", QVariant(true)).toBool());
     statusBar()->addPermanentWidget(soundStatus);
 
-    toasterDisable = new ToasterDisable();
+    toasterDisable = new ToasterDisable(statusBar());
     toasterDisable->setVisible(Settings->valueFromGroup("StatusBar", "ShowToaster", QVariant(true)).toBool());
     statusBar()->addPermanentWidget(toasterDisable);
 
-    sysTrayStatus = new SysTrayStatus();
+    sysTrayStatus = new SysTrayStatus(statusBar());
     sysTrayStatus->setVisible(Settings->valueFromGroup("StatusBar", "ShowSysTrayOnStatusBar", QVariant(false)).toBool());
     statusBar()->addPermanentWidget(sysTrayStatus);
 
@@ -351,7 +373,7 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
     createNotifyIcons();
 
     /* intialize friend count */
-    updateFriends();
+    updateTrayIcon();
 
     loadOwnStatus();
 
@@ -382,7 +404,7 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
             if(!fe)
                 return;
 
-            updateFriends();
+            updateTrayIcon();
         }
         , this );
     }, mEventHandlerId_friends, RsEventType::FRIEND_LIST );
@@ -390,9 +412,46 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags)
 
 }
 
+/* Shutdown diagnostics (debug/shutdown-step-timings, not for upstream). */
+#include <chrono>
+#include <memory>
+#include "util/rsdebug.h"
+#include "util/rsshutdownprobe.h"
+
 /** Destructor. */
 MainWindow::~MainWindow()
 {
+    /* Shutdown diagnostics: one timed line for this body, then one per page.
+     * The pages are children of the page stack and are destroyed after this
+     * body, by the QWidget part of the destruction; each emits destroyed() at
+     * the end of its own destruction, which dates it. Nothing is reordered. */
+    struct ShutdownMarks
+    {
+        std::chrono::steady_clock::time_point last = std::chrono::steady_clock::now();
+        RsShutdownMem mem = RsShutdownMem::now();
+
+        void line(const std::string& what)
+        {
+            const auto now = std::chrono::steady_clock::now();
+            const RsShutdownMem memNow = RsShutdownMem::now();
+            RsInfo() << "shutdown: " << what << " in "
+                     << std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count()
+                     << " ms" << memNow.since(mem);
+            last = now;
+            mem = memNow;
+        }
+    };
+    auto shutdownMarks = std::make_shared<ShutdownMarks>();
+    for(int i = 0; i < ui->stackPages->count(); ++i)
+    {
+        QWidget* page = ui->stackPages->widget(i);
+        const MainPage* mainPage = dynamic_cast<const MainPage*>(page);
+        const std::string name = mainPage ? mainPage->pageName().toStdString()
+                                          : std::string(page->metaObject()->className());
+        QObject::connect(page, &QObject::destroyed, [shutdownMarks, name]()
+        { shutdownMarks->line("main window page " + name + " destroyed"); });
+    }
+
     Settings->setLastPageInMainWindow(ui->stackPages->currentIndex());
     /* Save listWidget position */
     Settings->setValueToGroup("MainWindow", "SplitterState", ui->splitter->saveState());
@@ -429,6 +488,8 @@ MainWindow::~MainWindow()
 #endif
 
     delete(ui);
+
+    shutdownMarks->line("main window destructor body (status bar items, tray, windows released) done");
 }
 
 /** Initialyse Stacked Page*/
@@ -446,37 +507,37 @@ void MainWindow::initStackedPage()
   /* Create the Main pages and actions */
   QActionGroup *grp = new QActionGroup(this);
 
-  addPage(homePage = new HomePage(ui->stackPages), grp, NULL);
+  addPage(homePage = new HomePage(ui->stackPages), grp, NULL, "home");
 
 //#ifdef RS_USE_CIRCLES
 //  CirclesDialog *circlesDialog = NULL;
 //  addPage(circlesDialog = new CirclesDialog(ui->stackPages), grp, &notify);
 //#endif
-  addPage(friendsDialog = new FriendsDialog(ui->stackPages), grp, &notify);
-  addPage(idDialog = new IdDialog(ui->stackPages), grp, &notify);
-  addPage(chatLobbyDialog = new ChatLobbyWidget(ui->stackPages), grp, &notify);
-  addPage(messagesDialog = new MessagesDialog(ui->stackPages), grp, &notify);
-  addPage(transfersDialog = new TransfersDialog(ui->stackPages), grp, &notify);
-  addPage(gxschannelDialog = new GxsChannelDialog(ui->stackPages), grp, &notify);
-  addPage(gxsforumDialog = new GxsForumsDialog(ui->stackPages), grp, &notify);
-  addPage(postedDialog = new PostedDialog(ui->stackPages), grp, &notify);
+  addPage(friendsDialog = new FriendsDialog(ui->stackPages), grp, &notify, "network");
+  addPage(idDialog = new IdDialog(ui->stackPages), grp, &notify, "people");
+  addPage(chatLobbyDialog = new ChatLobbyWidget(ui->stackPages), grp, &notify, "chats");
+  addPage(messagesDialog = new MessagesDialog(ui->stackPages), grp, &notify, "mail");
+  addPage(transfersDialog = new TransfersDialog(ui->stackPages), grp, &notify, "files");
+  addPage(gxschannelDialog = new GxsChannelDialog(ui->stackPages), grp, &notify, "channels");
+  addPage(gxsforumDialog = new GxsForumsDialog(ui->stackPages), grp, &notify, "forums");
+  addPage(postedDialog = new PostedDialog(ui->stackPages), grp, &notify, "boards");
 
   #ifdef RS_USE_NEW_PEOPLE_DIALOG
   PeopleDialog *peopleDialog = NULL;
-  addPage(peopleDialog = new PeopleDialog(ui->stackPages), grp, &notify);
+  addPage(peopleDialog = new PeopleDialog(ui->stackPages), grp, &notify, "people");
   #endif
 #ifdef RS_USE_WIKI
   wikiDialog = NULL;
-  addPage(wikiDialog = new WikiDialog(ui->stackPages), grp, &notify);
+  addPage(wikiDialog = new WikiDialog(ui->stackPages), grp, &notify, "services");
 #endif
 
 #ifdef RS_USE_WIRE
-  addPage(wireDialog = new WireDialog(ui->stackPages), grp, &notify);
+  addPage(wireDialog = new WireDialog(ui->stackPages), grp, &notify, "services");
 #endif
 
 #ifdef RS_USE_PHOTO
   PhotoShare *photoDialog = NULL;
-  addPage(photoDialog = new PhotoShare(ui->stackPages), grp, &notify);
+  addPage(photoDialog = new PhotoShare(ui->stackPages), grp, &notify, "services");
 #endif
 
 
@@ -496,7 +557,12 @@ void MainWindow::initStackedPage()
 		 std::cerr << "  Adding widget page for plugin " << rsPlugins->plugin(i)->getPluginName() << std::endl;
 		 pluginPage->setIconPixmap(icon);
 		 pluginPage->setPageName(QString::fromUtf8(rsPlugins->plugin(i)->getPluginName().c_str()));
-		 addPage(pluginPage, grp, &notify);
+		 // A plugin page may give its own help topic; otherwise it gets one
+		 // under "plugins", named after the plugin.
+		 QString helpTopic = pluginPage->helpTopic();
+		 if (helpTopic.isEmpty())
+			 helpTopic = "plugins." + pluginPage->pageName().toLower();
+		 addPage(pluginPage, grp, &notify, helpTopic);
 	 }
 	 else if(rsPlugins->plugin(i) == NULL)
 		 std::cerr << "  No plugin object !" << std::endl;
@@ -506,7 +572,7 @@ void MainWindow::initStackedPage()
  }
 
 #ifndef RS_RELEASE_VERSION
-  addPage(pluginsPage = new gui::PluginsPage(ui->stackPages), grp, NULL);
+  addPage(pluginsPage = new gui::PluginsPage(ui->stackPages), grp, NULL, "plugins");
 #endif
 
 #undef GETSTARTED_GUI
@@ -522,7 +588,7 @@ void MainWindow::initStackedPage()
 #endif
 
 
-  addPage(newsFeed = new NewsFeed(ui->stackPages), grp, &notify);
+  addPage(newsFeed = new NewsFeed(ui->stackPages), grp, &notify, "activity");
 
   //List All notify before Setting was created
   for (auto notifyIt:notify)
@@ -557,6 +623,7 @@ void MainWindow::initStackedPage()
   // Removed About because it's now in options.
   //addAction(new QAction(QIcon(IMAGE_ABOUT), tr("About"), ui->toolBarAction), &MainWindow::showabout, SLOT(showabout()));
 
+  addAction(new QAction(QIcon(IMG_HELP), tr("Manual"), ui->toolBarAction), &MainWindow::showHelpDialog, SLOT(showHelpDialog()));
   addAction(new QAction(QIcon(IMAGE_QUIT), tr("Quit"), ui->toolBarAction), &MainWindow::doQuit, SLOT(doQuit()));
 
 }
@@ -585,8 +652,11 @@ void MainWindow::addAction(QAction *action, FunctionType actionFunction, const c
 }
 
 /** Add the given page to the stackPage and list. */
-void MainWindow::addPage(MainPage *page, QActionGroup *grp, QList<QPair<MainPage*, QPair<QAction*, QListWidgetItem*> > > *notify)
+void MainWindow::addPage(MainPage *page, QActionGroup *grp, QList<QPair<MainPage*, QPair<QAction*, QListWidgetItem*> > > *notify, const QString &helpTopic)
 {
+	if (!helpTopic.isEmpty())
+		HelpBrowser::setWidgetTopic(page, helpTopic);
+
 	QAction *action;
 	ui->stackPages->add(page, action = createPageAction(page->iconPixmap(), page->pageName(), grp));
 
@@ -660,7 +730,7 @@ void MainWindow::createTrayIcon()
     trayMenu->addAction(QIcon(), tr("Applications"), this, SLOT(showApplWindow()));
 #endif
     trayMenu->addAction(QIcon(IMAGE_PREFERENCES), tr("Options"), this, SLOT(showSettings()));
-    trayMenu->addAction(QIcon(IMG_HELP), tr("Help"), this, SLOT(showHelpDialog()));
+    trayMenu->addAction(QIcon(IMG_HELP), tr("Manual"), this, SLOT(showHelpDialog()));
     trayMenu->addSeparator();
     trayMenu->addAction(QIcon(IMAGE_MINIMIZE), tr("Minimize"), this, SLOT(showMinimized()));
     trayMenu->addAction(QIcon(IMAGE_MAXIMIZE), tr("Maximize"), this, SLOT(showMaximized()));
@@ -719,7 +789,7 @@ void MainWindow::createMenuBar()
     dockMenu->addAction(tr("Bandwidth Graph"), this, SLOT(showBandwidthGraph()));
     dockMenu->addAction(tr("Statistics"), this, SLOT(showStatisticsWindow()));
     dockMenu->addAction(tr("Options"), this, SLOT(showSettings()));
-    dockMenu->addAction(tr("Help"), this, SLOT(showHelpDialog()));
+    dockMenu->addAction(tr("Manual"), this, SLOT(showHelpDialog()));
 
     dockMenu->addSeparator();
     QMenu *statusMenu = dockMenu->addMenu(tr("Status"));
@@ -827,7 +897,41 @@ const QList<UserNotify*> &MainWindow::getUserNotifyList()
 
 void MainWindow::displaySystrayMsg(const QString& title,const QString& msg)
 {
-    trayIcon->showMessage(title, msg, QSystemTrayIcon::Information, 3000);
+    if (!trayIcon)
+        return;
+
+    if (mSystrayMsgTimer->isActive()) {
+        // A balloon is still up: fold this one into the next flush instead of stacking calls.
+        if (mPendingSystrayCount == 0)
+            mPendingSystrayTitle = title;
+        else if (mPendingSystrayTitle != title)
+            mPendingSystrayMixed = true;
+
+        mPendingSystrayMsg = msg;
+        ++mPendingSystrayCount;
+        return;
+    }
+
+    trayIcon->showMessage(title, msg, QSystemTrayIcon::Information, SYSTRAY_MSG_INTERVAL_MS);
+    mSystrayMsgTimer->start(SYSTRAY_MSG_INTERVAL_MS);
+}
+
+void MainWindow::flushPendingSystrayMsg()
+{
+    if (mPendingSystrayCount == 0 || !trayIcon)
+        return;
+
+    // Balloons with different titles were folded together: name none of their sources.
+    QString title = mPendingSystrayMixed ? QString("RetroShare") : mPendingSystrayTitle;
+    QString msg = (mPendingSystrayCount == 1) ? mPendingSystrayMsg : tr("%1 new messages").arg(mPendingSystrayCount);
+
+    mPendingSystrayCount = 0;
+    mPendingSystrayMixed = false;
+    mPendingSystrayTitle.clear();
+    mPendingSystrayMsg.clear();
+
+    trayIcon->showMessage(title, msg, QSystemTrayIcon::Information, SYSTRAY_MSG_INTERVAL_MS);
+    mSystrayMsgTimer->start(SYSTRAY_MSG_INTERVAL_MS);
 }
 
 void MainWindow::updateTrayCombine()
@@ -861,7 +965,7 @@ void MainWindow::updateTrayCombine()
         notifyMenu->menuAction()->setVisible(visible);
 
     // update tray icon
-    updateFriends();
+    updateTrayIcon();
 }
 
 void MainWindow::toggleStatusToolTip(bool toggle){
@@ -876,6 +980,16 @@ void MainWindow::updateStatus()
     // This call is essential to remove locks due to QEventLoop re-entrance while asking gpg passwds. Dont' remove it!
     if(RsAutoUpdatePage::eventsLocked())
         return;
+
+    // The tray icon is otherwise only refreshed on FRIEND_LIST events, and updateTrayIcon()
+    // drops those while events are locked and skips unchanged icons. Re-send it now and then
+    // so that a lost event or an update the tray host dropped does not stick.
+    if (++mTrayIconRefreshTicks >= TRAY_ICON_REFRESH_TICKS) {
+        mTrayIconRefreshTicks = 0;
+        mLastTrayIconKey.clear();
+        updateTrayIcon();
+    }
+
     float downKb = 0;
     float upKb = 0;
     rsConfig->GetCurrentDataRates(downKb, upKb);
@@ -922,13 +1036,52 @@ void MainWindow::updateStatus()
     }
 }
 
-void MainWindow::updateFriends()
+void MainWindow::updateTrayIcon()
 {
 	if(RsAutoUpdatePage::eventsLocked())
 		return ;
 
-    unsigned int friendCount = 0;
-    rsPeers->getPeerCount (&friendCount, &onlineCount, false);
+    requestFriendCount();
+}
+
+void MainWindow::requestFriendCount()
+{
+    // getPeerCount() reads the PGP keyring, whose mutex can be held for a while by the AuthGPG thread:
+    // ask from another thread, and show the result when it comes back.
+
+    if (mFriendCountRequestPending) {
+        mFriendCountRequestAgain = true;
+        return;
+    }
+    mFriendCountRequestPending = true;
+
+    QPointer<MainWindow> self(this);
+
+    RsThread::async([self]()
+    {
+        unsigned int friendCount = 0;
+        unsigned int online = 0;
+        rsPeers->getPeerCount (&friendCount, &online, false);
+
+        RsQThreadUtils::postToObject([self, friendCount, online]()
+        {
+            if (!self)
+                return;
+
+            self->mFriendCountRequestPending = false;
+            self->showFriendCount(friendCount, online);
+
+            if (self->mFriendCountRequestAgain) {
+                self->mFriendCountRequestAgain = false;
+                self->requestFriendCount();
+            }
+        }, qApp);
+    });
+}
+
+void MainWindow::showFriendCount(unsigned int friendCount, unsigned int online)
+{
+    onlineCount = online;
 
     if (peerstatus)
         peerstatus->getPeerStatus(friendCount, onlineCount);
@@ -945,8 +1098,19 @@ void MainWindow::updateFriends()
         trayIconResource = IMAGE_RETROSHARE;
     }
 
+    bool overlay = notifyMenu && notifyMenu->menuAction()->isVisible();
+
+    // Every setIcon() re-sends the pixmap over D-Bus on SNI trays: skip it when nothing changed.
+    // The tray host can still drop an update (seen with xfce4-panel and the Windows shell),
+    // which would leave it on the grey "0 connected" icon: updateStatus() clears the key
+    // every TRAY_ICON_REFRESH_TICKS seconds to force a re-send.
+    QString trayIconKey = trayIconResource + (overlay ? "+" : "");
+    if (trayIconKey == mLastTrayIconKey)
+        return;
+    mLastTrayIconKey = trayIconKey;
+
     QIcon icon;
-    if (notifyMenu && notifyMenu->menuAction()->isVisible()) {
+    if (overlay) {
         QPixmap trayImage(trayIconResource);
         QPixmap overlayImage(IMAGE_OVERLAY);
 
@@ -1487,6 +1651,12 @@ void MainWindow::showHelpDialog(const QString &topic)
   HelpBrowser::showWindow(topic);
 }
 
+/** Shows the help browser on the topic of the page currently displayed. */
+void MainWindow::showContextHelp()
+{
+  showHelpDialog(HelpBrowser::widgetTopic(ui->stackPages->currentWidget()));
+}
+
 /** Called when the user changes the UI translation. */
 void
 MainWindow::retranslateUi()
@@ -1861,7 +2031,7 @@ void MainWindow::setCompactStatusMode(bool compact)
 {
 	//statusComboBox: TODO Show only icon
 	peerstatus->setCompactMode(compact);
-	updateFriends();
+	updateTrayIcon();
     if(!hiddenmode)
     {
 	natstatus->setCompactMode(compact);

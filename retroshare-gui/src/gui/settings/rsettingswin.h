@@ -29,7 +29,6 @@
 #include "ui_settingsw.h"
 #include "util/FontSizeHandler.h"
 
-class FloatingHelpBrowser;
 
 #define PREF_IMAGE_PREFERENCES       ":/icons/png/options.png"
 
@@ -53,7 +52,7 @@ public:
 protected:
 	~SettingsPage();
 
-	void addPage(ConfigPage*) ;
+	void addPage(ConfigPage*, const QString &helpTopic = QString()) ;
 
 public slots:
 	//! Go to a specific part of the control panel.
@@ -70,7 +69,6 @@ private:
 	void initStackedWidget();
 
 private:
-	FloatingHelpBrowser *mHelpBrowser;
 	static int lastPage;
 
 	FontSizeHandler mFontSizeHandler;

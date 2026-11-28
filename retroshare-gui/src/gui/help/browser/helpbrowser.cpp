@@ -27,6 +27,7 @@
 
 #include <QDomDocument>
 #include <QDir>
+#include <QTreeWidgetItemIterator>
 #include <rshare.h>
 #include "gui/settings/rsharesettings.h"
 
@@ -60,9 +61,11 @@ HelpBrowser::HelpBrowser(QWidget *parent)
 #if defined(Q_OS_MAC)
   ui.actionHome->setShortcut(QString("Shift+Ctrl+H"));
 #endif
-#if !defined(Q_OS_WIN)
-  ui.actionClose->setShortcut(QString("Ctrl+W"));
-#endif
+  /* Esc closes the manual on every system, and so does the close key of the
+   * system (Ctrl+W on Linux, Cmd+W on macOS, Ctrl+F4 on Windows). */
+  QList<QKeySequence> closeKeys = QKeySequence::keyBindings(QKeySequence::Close);
+  closeKeys.prepend(QKeySequence(Qt::Key_Escape));
+  ui.actionClose->setShortcuts(closeKeys);
 
   helpBrowser = this;
 
@@ -100,7 +103,10 @@ HelpBrowser::HelpBrowser(QWidget *parent)
   connect(ui.btnSearch, SIGNAL(clicked()), this, SLOT(search()));
   
   /* Load the help topics from XML */
-  loadContentsFromXml(":/help/" + language() + "/contents.xml");
+  loadContentsFromXml(HelpTextBrowser::resourcePath("contents.xml"));
+
+  /* Keep the contents tree on the page reached by a link */
+  connect(ui.txtBrowser, SIGNAL(sourceChanged(QUrl)), this, SLOT(sourceChanged(QUrl)));
 
   /* Show the first help topic in the tree */
   ui.treeContents->setCurrentItem(ui.treeContents->topLevelItem(0));
@@ -110,17 +116,6 @@ HelpBrowser::HelpBrowser(QWidget *parent)
 HelpBrowser::~HelpBrowser()
 {
   helpBrowser = NULL;
-}
-
-/** Returns the language in which help topics should appear, or English
- * ("en") if no translated help files exist for the current GUI language. */
-QString
-HelpBrowser::language()
-{
-  QString lang = RsApplication::language();
-  if (!QDir(":/help/" + lang).exists())
-    lang = "en";
-  return lang;
 }
 
 /** Load the contents of the help topics tree from the specified XML file. */
@@ -199,13 +194,13 @@ HelpBrowser::isValidTopicElement(const QDomElement &topicElement)
           topicElement.hasAttribute(ATTRIBUTE_TOPIC_HTML));
 }
 
-/** Builds a resource path to an html file associated with the given help
- * topic. If the help topic needs an achor, the anchor will be formatted and
- * appended. */
+/** Builds the link to the file associated with the given help topic. The
+ * browser reads the file in the language of the GUI. If the help topic needs
+ * an anchor, the anchor will be formatted and appended. */
 QString
 HelpBrowser::getResourcePath(const QDomElement &topicElement)
 {
-  QString link = language() + "/" + topicElement.attribute(ATTRIBUTE_TOPIC_HTML);
+  QString link = topicElement.attribute(ATTRIBUTE_TOPIC_HTML);
   if (topicElement.hasAttribute(ATTRIBUTE_TOPIC_SECTION)) {
     link += "#" + topicElement.attribute(ATTRIBUTE_TOPIC_SECTION);
   }
@@ -287,8 +282,6 @@ HelpBrowser::findTopicItem(QTreeWidgetItem *startItem, QString topic)
     QTreeWidgetItem *item = startItem->child(i);
     
     if (subtopic == item->data(0, ROLE_TOPIC_ID).toString().toLower()) {
-      /* Found a subtopic match, so expand this item */
-      item->setSelected(true);
       if (!topic.contains(".")) {
         /* Found the exact topic */
         return item;
@@ -300,25 +293,47 @@ HelpBrowser::findTopicItem(QTreeWidgetItem *startItem, QString topic)
   return 0;
 }
 
-/** Shows the help browser. If a sepcified topic was given, the search for
- * that topic's ID (e.g., "log.basic") and display the appropriate page. */
+/** Displays the page of the given topic ID (e.g., "settings.network") and
+ * selects it in the contents tree. A topic that has no page falls back on its
+ * parent topic; an unknown topic leaves the browser on its current page. */
 void
 HelpBrowser::showTopic(QString topic)
 {
-  /* Search for the topic in the contents tree */
-  QTreeWidgetItem *item =
-    findTopicItem(ui.treeContents->topLevelItem(0), topic);
-  
+  QTreeWidgetItem *item = 0;
+
+  while (!item && !topic.isEmpty()) {
+    item = findTopicItem(ui.treeContents->topLevelItem(0), topic);
+    topic = topic.contains(".") ? topic.left(topic.lastIndexOf(".")) : QString();
+  }
+
   if (item) {
-    /* Item was found, so show its location in the hierarchy and select its
-     * tree item. */
-    QTreeWidgetItem* selected = ui.treeContents->selectedItems()[0];
-    if (selected) {
-      selected->setSelected(false);
+    for (QTreeWidgetItem *parent = item->parent(); parent; parent = parent->parent()) {
+      parent->setExpanded(true);
     }
-    ui.treeContents->topLevelItem(0)->setExpanded(true);
-    item->setSelected(true);
-    currentItemChanged(item, selected);
+    ui.treeContents->setCurrentItem(item);
+  }
+}
+
+/** Called when the browser displays another page. Selects the topic of that
+ * page in the contents tree, unless the selected topic already shows it. */
+void
+HelpBrowser::sourceChanged(const QUrl &url)
+{
+  QString file = url.path();
+
+  QTreeWidgetItem *current = ui.treeContents->currentItem();
+  if (current && QUrl(current->data(0, ROLE_TOPIC_QRC_PATH).toString()).path() == file) {
+    return;
+  }
+
+  QTreeWidgetItemIterator it(ui.treeContents);
+  for (; *it; ++it) {
+    if (QUrl((*it)->data(0, ROLE_TOPIC_QRC_PATH).toString()).path() == file) {
+      ui.treeContents->blockSignals(true);
+      ui.treeContents->setCurrentItem(*it);
+      ui.treeContents->blockSignals(false);
+      return;
+    }
   }
 }
 
@@ -445,6 +460,24 @@ HelpBrowser::search()
                                 .arg(ui.treeSearch->topLevelItemCount()));
 }
 
+/* Name of the widget property that holds the help topic of a page */
+#define PROPERTY_HELP_TOPIC "helpTopic"
+
+/** Attaches the ID of a help topic to a page of the GUI. */
+void
+HelpBrowser::setWidgetTopic(QWidget *widget, const QString &topic)
+{
+  widget->setProperty(PROPERTY_HELP_TOPIC, topic);
+}
+
+/** Returns the ID of the help topic attached to a page of the GUI, or an
+ * empty string. */
+QString
+HelpBrowser::widgetTopic(const QWidget *widget)
+{
+  return widget ? widget->property(PROPERTY_HELP_TOPIC).toString() : QString();
+}
+
 /** Overrides the default show method */
 void
 HelpBrowser::showWindow(const QString &topic)
@@ -454,6 +487,8 @@ HelpBrowser::showWindow(const QString &topic)
     /*helpBrowser = */new HelpBrowser();
   }
   helpBrowser->show();
+  helpBrowser->raise();
+  helpBrowser->activateWindow();
 
   /* If a topic was specified, then go ahead and display it. */
   if (!topic.isEmpty()) {

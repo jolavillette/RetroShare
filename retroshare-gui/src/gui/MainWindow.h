@@ -23,6 +23,7 @@
 
 #include <QLineEdit>
 #include <QSystemTrayIcon>
+#include <QTimer>
 #include <set>
 
 #include "retroshare/rsevents.h"
@@ -280,7 +281,7 @@ private slots:
 
     void updateMenu();
     void updateStatus();
-    void updateFriends();
+    void updateTrayIcon();
 
     void toggleVisibility(QSystemTrayIcon::ActivationReason e);
     void toggleVisibilitycontextmenu();
@@ -311,12 +312,15 @@ private slots:
     void showabout();
     void openShareManager();
     void displaySystrayMsg(const QString&,const QString&) ;
+    void flushPendingSystrayMsg();
 
     /** Displays the help browser and displays the most recently viewed help
     * topic. */
     void showHelpDialog();
     /** Called when a child window requests the given help <b>topic</b>. */
     void showHelpDialog(const QString &topic);
+    /** Shows the help browser on the topic of the page currently displayed. */
+    void showContextHelp();
 
     void showMess();
     void showSettings();
@@ -331,7 +335,7 @@ private slots:
 
 private:
     void initStackedPage();
-    void addPage(MainPage *page, QActionGroup *grp, 	QList<QPair<MainPage *, QPair<QAction *, QListWidgetItem *> > > *notify);
+    void addPage(MainPage *page, QActionGroup *grp, 	QList<QPair<MainPage *, QPair<QAction *, QListWidgetItem *> > > *notify, const QString &helpTopic = QString());
     void createTrayIcon();
     void makeClickable(QWidget *widget);
 #if defined(Q_OS_DARWIN)
@@ -363,6 +367,14 @@ private:
 #endif
 
     QSystemTrayIcon *trayIcon;
+    QString mLastTrayIconKey;
+    unsigned int mTrayIconRefreshTicks;
+    // Systray balloons are rate-limited; while one is up, later ones are folded into a single summary.
+    QTimer *mSystrayMsgTimer;
+    QString mPendingSystrayTitle;
+    QString mPendingSystrayMsg;
+    unsigned int mPendingSystrayCount;
+    bool mPendingSystrayMixed;
     QMenu *notifyMenu;
     QMenu *trayMenu;
     QString notifyToolTip;
@@ -386,6 +398,11 @@ private:
     std::set <QObject*> m_apStatusObjects; // added objects for status
     bool m_bStatusLoadDone;
     unsigned int onlineCount;
+    bool mFriendCountRequestPending;	// a request for the friend counts is running in another thread
+    bool mFriendCountRequestAgain;	// a new request was made meanwhile: ask again when it comes back
+
+    void requestFriendCount();
+    void showFriendCount(unsigned int friendCount, unsigned int online);
 
     void loadOwnStatus();
 

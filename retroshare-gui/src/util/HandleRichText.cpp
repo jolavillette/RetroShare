@@ -41,6 +41,7 @@
 #ifdef USE_CMARK
 //Include for CMark
 #include <cmark.h>
+#include <cstdlib>
 #endif
 
 #include <iostream>
@@ -584,11 +585,11 @@ static QString saveSpace(const QString text)
 		if(cursChar==QLatin1Char('>'))         {
 			if(!echapChar && i>0) {outBrackets=true; firstOutBracket=true;}
  		} else if(cursChar==QLatin1Char('\t')) {
-			if(outBrackets && firstOutBracket && (keyName!="style")) { savedSpaceText.replace(i, 1, "&nbsp;&nbsp;"); i+= 11; }
+			if(outBrackets && firstOutBracket && (keyName!="style")) { savedSpaceText.replace(i, 1, "&#160;&#160;"); i+= 11; }
 		} else if(cursChar==QLatin1Char(' '))  {
-			if(outBrackets && firstOutBracket && (keyName!="style")) { savedSpaceText.replace(i, 1, "&nbsp;"); i+= 5; }
+			if(outBrackets && firstOutBracket && (keyName!="style")) { savedSpaceText.replace(i, 1, "&#160;"); i+= 5; }
 		} else if(cursChar==QChar(0xA0))  {
-			if(outBrackets && firstOutBracket && (keyName!="style")) { savedSpaceText.replace(i, 1, "&nbsp;"); i+= 5; }
+			if(outBrackets && firstOutBracket && (keyName!="style")) { savedSpaceText.replace(i, 1, "&#160;"); i+= 5; }
 		} else if(cursChar==QLatin1Char('<'))  {
 			if(!echapChar) {outBrackets=false; getKeyName=true; keyName.clear();}
 		} else firstOutBracket=false;
@@ -603,6 +604,106 @@ static QString saveSpace(const QString text)
 #endif
 
 	return savedSpaceText;
+}
+
+/**
+ * Keep one occurrence of an attribute written twice in a start tag, which XML
+ * rejects. QTextDocument::toHtml() writes two style attributes on a list item
+ * whose character format differs from the document default. The values of a
+ * repeated style attribute are joined; for other attributes the first one
+ * wins, as in HTML.
+ */
+static QString mergeRepeatedAttributes(const QString &xml)
+{
+	static const QRegularExpression tagExp(QStringLiteral("<[A-Za-z][^<>]*>"));
+	static const QRegularExpression attributeExp(QStringLiteral("\\s([^\\s=/>]+)\\s*=\\s*(\"[^\"]*\"|'[^']*')"));
+
+	struct Attribute { int start; int end; QString name; QString value; bool repeated; };
+
+	QString result;
+	int copied = 0;
+	QRegularExpressionMatchIterator tags = tagExp.globalMatch(xml);
+	while (tags.hasNext()) {
+		const QRegularExpressionMatch tag = tags.next();
+		const QString tagText = tag.captured();
+
+		QVector<Attribute> attributes;
+		QHash<QString, int> firstIndex;
+		bool repeated = false;
+		QRegularExpressionMatchIterator it = attributeExp.globalMatch(tagText);
+		while (it.hasNext()) {
+			const QRegularExpressionMatch match = it.next();
+			const QString quoted = match.captured(2);
+			Attribute attribute = { static_cast<int>(match.capturedStart()), static_cast<int>(match.capturedEnd()),
+			                        match.captured(1), quoted.mid(1, quoted.size() - 2), false };
+			const auto first = firstIndex.constFind(attribute.name);
+			if (first == firstIndex.constEnd()) {
+				firstIndex.insert(attribute.name, attributes.size());
+			} else {
+				attribute.repeated = repeated = true;
+				if (attribute.name.compare(QLatin1String("style"), Qt::CaseInsensitive) == 0) {
+					QString &style = attributes[first.value()].value;
+					if (!style.trimmed().isEmpty() && !style.trimmed().endsWith(QLatin1Char(';')))
+						style += QLatin1Char(';');
+					style += attribute.value;
+				}
+			}
+			attributes.append(attribute);
+		}
+		if (!repeated)
+			continue;
+
+		result += xml.mid(copied, tag.capturedStart() - copied);
+		int position = 0;
+		for (const Attribute &attribute : attributes) {
+			result += tagText.mid(position, attribute.start - position);
+			if (!attribute.repeated) {
+				const QChar quote = attribute.value.contains(QLatin1Char('"')) ? QLatin1Char('\'') : QLatin1Char('"');
+				result += QLatin1Char(' ') + attribute.name + QLatin1Char('=') + quote + attribute.value + quote;
+			}
+			position = attribute.end;
+		}
+		result += tagText.mid(position);
+		copied = tag.capturedEnd();
+	}
+	if (copied == 0)
+		return xml;
+
+	result += xml.mid(copied);
+	return result;
+}
+
+/**
+ * Remove from Qt rich text what an XML parser rejects: characters that XML
+ * forbids, the HTML entity &nbsp; and repeated attributes.
+ */
+static QString toWellFormedXml(const QString &html)
+{
+	QString xml;
+	xml.reserve(html.size());
+	for (int i = 0; i < html.size(); ++i) {
+		const QChar c = html.at(i);
+		if (c.isHighSurrogate() && i + 1 < html.size() && html.at(i + 1).isLowSurrogate()) {
+			xml += c;
+			xml += html.at(++i);
+			continue;
+		}
+		const uint u = c.unicode();
+		if ((u >= 0x20 && !c.isSurrogate() && u != 0xFFFE && u != 0xFFFF) || u == 0x9 || u == 0xA || u == 0xD)
+			xml += c;
+	}
+	xml.replace(QLatin1String("&nbsp;"), QLatin1String("&#160;"));
+
+	return mergeRepeatedAttributes(xml);
+}
+
+/**
+ * Parse Qt rich text into @p doc. On an XML error QDomDocument keeps only
+ * what it parsed before the error, so the text is made well-formed first.
+ */
+static bool setHtmlContent(QDomDocument &doc, const QString &html)
+{
+	return static_cast<bool>(doc.setContent(toWellFormedXml(html)));
 }
 
 QString RsHtml::formatText(QTextDocument *textDocument, const QString &text, ulong flag, const QColor &backgroundColor, qreal desiredContrast, int desiredMinimumFontSize)
@@ -624,17 +725,27 @@ QString RsHtml::formatText(QTextDocument *textDocument, const QString &text, ulo
 		QTextBrowser textBrowser;
 		textBrowser.setHtml(text);
 		formattedText = textBrowser.toPlainText();
-		// Parse CommonMark
-		int options = CMARK_OPT_DEFAULT;
+		// Parse CommonMark. Drop raw HTML and javascript:/file: links like
+		// cmark >= 0.29 does by default (the bundled cmark 0.28 keeps them).
+		int options = CMARK_OPT_DEFAULT | CMARK_OPT_VALIDATE_UTF8;
+#ifdef CMARK_OPT_SAFE
+		options |= CMARK_OPT_SAFE;
+#endif
 		cmark_parser *parser = cmark_parser_new(options);
-		cmark_parser_feed(parser, formattedText.toStdString().c_str(),static_cast<size_t>(formattedText.length()));
+		// The length is in bytes of the UTF-8 text, not in QChars: with the
+		// QString length any non ASCII message was cut short.
+		const QByteArray utf8 = formattedText.toUtf8();
+		cmark_parser_feed(parser, utf8.constData(), static_cast<size_t>(utf8.size()));
 		cmark_node *document = cmark_parser_finish(parser);
 		cmark_parser_free(parser);
-		char *result;
-		result = cmark_render_html(document, options);
+		char *result = cmark_render_html(document, options);
 		// Get result as html
 		formattedText = QString::fromUtf8(result);
-		//Clean
+		//Clean: the rendered string was leaked for every message. cmark allocates
+		// it with calloc()/realloc() and is linked statically (libcmark_static), so
+		// free() is the matching call. cmark_get_default_mem_allocator() does not
+		// exist in the bundled cmark 0.28.
+		free(result);
 		cmark_node_free(document);
 		//Get document formed HTML
 		textBrowser.setHtml(formattedText);
@@ -642,10 +753,8 @@ QString RsHtml::formatText(QTextDocument *textDocument, const QString &text, ulo
 	}
 #endif
 
-	QString errorMsg; int errorLine; int errorColumn;
-
 	QDomDocument doc;
-	if (doc.setContent(formattedText, &errorMsg, &errorLine, &errorColumn) == false) {
+	if (!setHtmlContent(doc, formattedText)) {
 
 		// convert text with QTextDocument
 		QTextDocument textDoc;
@@ -657,8 +766,16 @@ QString RsHtml::formatText(QTextDocument *textDocument, const QString &text, ulo
 		formattedText=textDoc.toHtml();
 		formattedText.remove(0,formattedText.indexOf("<"));
 		formattedText=saveSpace(formattedText);
-		doc.setContent(formattedText, &errorMsg, &errorLine, &errorColumn);
 
+		if (!setHtmlContent(doc, formattedText)) {
+			// Show the whole text without its formatting rather than the
+			// part parsed before the error.
+			textDoc.setPlainText(textDoc.toPlainText());
+			formattedText=textDoc.toHtml();
+			formattedText.remove(0,formattedText.indexOf("<"));
+			formattedText=saveSpace(formattedText);
+			setHtmlContent(doc, formattedText);
+		}
 	}
 
 	QDomElement body = doc.documentElement();
@@ -710,13 +827,12 @@ static void findElements(QDomDocument& doc, QDomElement& currentElement, const Q
 
 bool RsHtml::findAnchors(const QString &text, QStringList& urls)
 {
-	QString errorMsg; int errorLine; int errorColumn;
 	QDomDocument doc;
-	if (doc.setContent(text, &errorMsg, &errorLine, &errorColumn) == false) {
+	if (!setHtmlContent(doc, text)) {
 		// convert text with QTextBrowser
 		QTextBrowser textBrowser;
 		textBrowser.setText(text);
-		doc.setContent(textBrowser.toHtml(), &errorMsg, &errorLine, &errorColumn);
+		setHtmlContent(doc, textBrowser.toHtml());
 	}
 
 	QDomElement body = doc.documentElement();
@@ -1179,9 +1295,8 @@ void RsHtml::optimizeHtml(QString &text, unsigned int flag /*= 0*/
 	// Save Space and Tab because doc loose it.
 	text=saveSpace(text);
 
-	QString errorMsg; int errorLine; int errorColumn;
 	QDomDocument doc;
-	if (doc.setContent(text, &errorMsg, &errorLine, &errorColumn) == false) {
+	if (!setHtmlContent(doc, text)) {
 		return;
 	}
 
@@ -1193,6 +1308,10 @@ void RsHtml::optimizeHtml(QString &text, unsigned int flag /*= 0*/
 	::optimizeHtml(doc, body, stylesList, knownStyle);
 	::styleCreate(doc, stylesList, flag, ::getRelativeLuminance(backgroundColor), desiredContrast, desiredMinimumFontSize);
 	text = doc.toString(-1);
+	// A character reference rather than the raw character: the receiver's
+	// saveSpace() turns a raw no-break space that follows a tag into &nbsp;,
+	// which a receiver without toWellFormedXml() fails to parse.
+	text.replace(QChar(0xA0), QLatin1String("&#160;"));
 
 //	std::cerr << "Optimized text to " << text.length() << " bytes , instead of " << originalLength << std::endl;
 }
@@ -1258,7 +1377,7 @@ QString RsHtml::makeQuotedText(RSTextBrowser *browser)
 	QStringList sl = text.split(QRegularExpression("[\r\n]"),QtSkipEmptyParts);
 	text = sl.join("\n> ");
 	text.replace("\n> >","\n>>"); // Don't add space for already quotted lines.
-	text.replace(QChar(-4)," ");//Char used when image on text.
+	text.replace(QChar(QChar::ObjectReplacementCharacter)," ");//Char used when image on text.
 	QString quote = (text.left(1) == ">") ? QString(">") : QString("> ");
 	return quote + text;
 }

@@ -21,10 +21,14 @@
 #include <QGraphicsDropShadowEffect>
 #include <QAbstractButton>
 #include <QShowEvent>
+#include <QMouseEvent>
 
 #include <iostream>
 
 #include "FloatingHelpBrowser.h"
+#include "gui/help/browser/helpbrowser.h"
+
+#define HELP_LINK_SCHEME "help:"
 
 FloatingHelpBrowser::FloatingHelpBrowser(QWidget *parent, QAbstractButton *button)
 	:QTextBrowser(parent), mButton(button)
@@ -34,6 +38,7 @@ FloatingHelpBrowser::FloatingHelpBrowser(QWidget *parent, QAbstractButton *butto
 	setGraphicsEffect(effect);
 
 	setSizePolicy(QSizePolicy(QSizePolicy::Minimum,QSizePolicy::Minimum));
+	setOpenLinks(false);
 	hide();
 
 	connect(this, SIGNAL(textChanged()), this, SLOT(textChanged()));
@@ -45,6 +50,9 @@ FloatingHelpBrowser::FloatingHelpBrowser(QWidget *parent, QAbstractButton *butto
 
 void FloatingHelpBrowser::showEvent(QShowEvent */*event*/)
 {
+	// The help topic of the page may have been set after the help text.
+	updateText();
+
 	if (mButton) {
 		mButton->setChecked(true);
 	}
@@ -57,9 +65,15 @@ void FloatingHelpBrowser::hideEvent(QHideEvent */*event*/)
 	}
 }
 
-void FloatingHelpBrowser::mousePressEvent(QMouseEvent */*event*/)
+void FloatingHelpBrowser::mousePressEvent(QMouseEvent *event)
 {
+	const QString link = anchorAt(event->pos());
+
 	hide();
+
+	if (link.startsWith(HELP_LINK_SCHEME)) {
+		HelpBrowser::showWindow(link.mid(QString(HELP_LINK_SCHEME).length()));
+	}
 }
 
 void FloatingHelpBrowser::textChanged()
@@ -87,10 +101,25 @@ void FloatingHelpBrowser::showHelp(bool state)
 
 void FloatingHelpBrowser::setHelpText(const QString &helpText)
 {
-	if (helpText.isEmpty()) {
+	mHelpText = helpText;
+	updateText();
+}
+
+// Shows the help text, followed by a link to the manual when the page that
+// owns this browser has a help topic.
+void FloatingHelpBrowser::updateText()
+{
+	if (mHelpText.isEmpty()) {
 		clear();
 		return;
 	}
 
-	setHtml("<div align=\"justify\">" + helpText + "</div>");
+	QString html = "<div align=\"justify\">" + mHelpText + "</div>";
+
+	const QString topic = HelpBrowser::widgetTopic(parentWidget());
+	if (!topic.isEmpty()) {
+		html += "<p align=\"right\"><a href=\"" HELP_LINK_SCHEME + topic + "\">" + tr("Read more in the manual") + "</a></p>";
+	}
+
+	setHtml(html);
 }

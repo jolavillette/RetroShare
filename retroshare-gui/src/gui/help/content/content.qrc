@@ -2,21 +2,52 @@
   <qresource prefix="/help">
     <!-- English -->
     <file>en/contents.xml</file>
-    <file>en/index.html</file>
-    <file>en/invitefriends.html</file>
-    <file>en/addfriends.html</file>
-    <file>en/connectfriends.html</file>
-    <file>en/advanced.html</file>
-    <file>en/config.html</file>
-    <file>en/links.html</file>
-    <file>en/commandline.html</file>
-    <file>en/peerdetails.html</file>
-    <!-- German -->
-    <file>de/contents.xml</file>
-    <file>de/index.html</file>
-    <file>de/links.html</file>
-    <file>de/commandline.html</file>
-    <file>de/peerdetails.html</file>
+    <file>en/index.md</file>
+    <file>en/start.md</file>
+    <file>en/start-profile.md</file>
+    <file>en/start-friends.md</file>
+    <file>en/home.md</file>
+    <file>en/network.md</file>
+    <file>en/network-details.md</file>
+    <file>en/people.md</file>
+    <file>en/chats.md</file>
+    <file>en/mail.md</file>
+    <file>en/files.md</file>
+    <file>en/files-transfers.md</file>
+    <file>en/files-search.md</file>
+    <file>en/files-shared.md</file>
+    <file>en/channels.md</file>
+    <file>en/forums.md</file>
+    <file>en/boards.md</file>
+    <file>en/activity.md</file>
+    <file>en/services.md</file>
+    <file>en/settings.md</file>
+    <file>en/settings-general.md</file>
+    <file>en/settings-node.md</file>
+    <file>en/settings-network.md</file>
+    <file>en/settings-people.md</file>
+    <file>en/settings-chat.md</file>
+    <file>en/settings-mail.md</file>
+    <file>en/settings-files.md</file>
+    <file>en/settings-channels.md</file>
+    <file>en/settings-forums.md</file>
+    <file>en/settings-boards.md</file>
+    <file>en/settings-notify.md</file>
+    <file>en/settings-plugins.md</file>
+    <file>en/settings-appearance.md</file>
+    <file>en/settings-sound.md</file>
+    <file>en/settings-permissions.md</file>
+    <file>en/settings-jsonapi.md</file>
+    <file>en/settings-webui.md</file>
+    <file>en/settings-about.md</file>
+    <file>en/statistics.md</file>
+    <file>en/mainwindow.md</file>
+    <file>en/plugins.md</file>
+    <file>en/plugins-voip.md</file>
+    <file>en/plugins-feedreader.md</file>
+    <file>en/webui.md</file>
+    <file>en/links.md</file>
+    <file>en/commandline.md</file>
+    <file>en/glossary.md</file>
   </qresource>
 </RCC>
-

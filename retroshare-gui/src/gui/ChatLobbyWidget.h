@@ -31,6 +31,7 @@
 #include <retroshare/rschats.h>
 
 #include <QAbstractButton>
+#include <QElapsedTimer>
 #include <QTreeWidget>
 
 #define IMAGE_CHATLOBBY			    ":/icons/png/chat-lobbies.png"
@@ -77,6 +78,9 @@ public:
 
 	uint unreadCount();
 
+	// true while the page creates the dialog of an auto-subscribed room on its own initiative
+	static bool creatingDialogInBackground() { return mCreatingDialogInBackground; }
+
 signals:
 	void unreadCountChanged(uint unreadCount);
 
@@ -90,9 +94,10 @@ protected slots:
 	void itemDoubleClicked(QTreeWidgetItem *item, int column);
 	void updateCurrentLobby() ;
     void handleChatLobbyEvent(uint64_t lobby_id, RsChatLobbyEventCode event_type, const RsGxsId &gxs_id, const QString& str);
+    void handleLobbyHistoryEvent(const RsChatLobbyEvent* ev);
     void readChatLobbyInvites();
 	void showLobby(QTreeWidgetItem *lobby_item) ;
-	void showBlankPage(ChatLobbyId id, bool subscribed = false) ;
+	void showBlankPage(ChatLobbyId id, bool subscribed = false, bool hostedElsewhere = false) ;
     void unsubscribeChatLobby(ChatLobbyId id) ;
     void createIdentityAndSubscribe();
     void subscribeChatLobbyAs() ;
@@ -113,13 +118,17 @@ private slots:
 
 	void updateNotify(ChatLobbyId id, unsigned int count) ;
 	void idChooserCurrentIndexChanged(int index);
+	void createNextPendingLobbyDialog();
 
 private:
 	void autoSubscribeLobby(QTreeWidgetItem *item);
+	void scheduleLobbyDialog(ChatLobbyId id);
     void subscribeChatLobby(ChatLobbyId id) ;
     void subscribeChatLobbyAtItem(QTreeWidgetItem *item) ;
 
 	bool filterItem(QTreeWidgetItem *item, const QString &text, int filterColumn);
+
+	void updateUnreadCounters();
 
 	RSTreeWidgetItemCompareRole *compareRole;
 	QTreeWidgetItem *privateLobbyItem;
@@ -131,6 +140,8 @@ private:
 	ChatTabWidget *tabWidget ;
 
 	std::map<ChatLobbyId,ChatLobbyInfoStruct> _lobby_infos ;
+
+	std::map<ChatLobbyId,unsigned int> _unread_counts ;	// unread messages per room, for the tree counters
 
 	std::map<QTreeWidgetItem*,time_t> _icon_changed_map ;
 
@@ -149,9 +160,17 @@ private:
 
 	FontSizeHandler mFontSizeHandler;
 
+	// lobbyChanged() refreshes the list at most once per LIST_REFRESH_MIN_INTERVAL_MS
+	QElapsedTimer mLastListRefresh;
+	bool mListRefreshPending = false;
+
 	/* UI - from Designer */
 	Ui::ChatLobbyWidget ui;
 
     RsEventsHandlerId_t mEventHandlerId;
+
+	// subscribed rooms waiting for their dialog, created one per pass of the event loop
+	std::list<ChatLobbyId> mPendingLobbyDialogs ;
+	static bool mCreatingDialogInBackground ;
 };
 

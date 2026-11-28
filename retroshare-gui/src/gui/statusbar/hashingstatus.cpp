@@ -18,6 +18,10 @@
  *                                                                             *
  *******************************************************************************/
 
+#include <algorithm>
+
+#include <QFileInfo>
+#include <QFontMetrics>
 #include <QLayout>
 #include <QLabel>
 #include <QMovie>
@@ -47,9 +51,14 @@ HashingStatus::HashingStatus(QWidget *parent)
 
     movie->jumpToNextFrame(); // to calculate the real width
     statusHashing = new ElidedLabel(this);
+    statusHashing->setOnlyPlainText(true);	// file names and "< 1m" are not HTML: a '<' would swallow the rest of the text
     hbox->addWidget(statusHashing);
 
     _compactMode = false;
+    mPaused = false;
+    mFileInProgress = false;
+    mRunActive = false;
+    mScanShown = false;
 
     setLayout(hbox);
 
@@ -76,6 +85,7 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         break;
 
     case RsSharedDirectoriesEventCode::HASHING_PROCESS_RESUMED:
+        mPaused = false;
         statusHashing->setText(mLastText);						// fallthrough
 #ifdef DEBUG_HASHING_STATUS
         std::cerr << "HashStatusEventHandler: received event " << (void*)fe->mEventCode << ": " ;
@@ -92,6 +102,14 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         hashloader->setMovie(movie) ;
         movie->start() ;
 
+        if(fe->mEventCode == RsSharedDirectoriesEventCode::HASHING_PROCESS_STARTED)
+            mRunActive = true;
+
+        // A run starts with the first file queued by the scan of the shared directories, and nothing is hashed
+        // until that scan is over. Not on a resume, which comes through here with its text already set.
+        if(statusHashing->text().isEmpty())
+            statusHashing->setText(tr("Scanning shared directories..."));
+
         statusHashing->setVisible(!_compactMode) ;
     }
     break;
@@ -105,6 +123,7 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         movie->stop() ;
         hashloader->setPixmap(FilesDefs::getPixmapFromQtResourcePath(":/images/resume.png")) ;
 
+        mPaused = true;
         mLastText = statusHashing->text();
         statusHashing->setText(QObject::tr("[Hashing is paused]"));
         setToolTip(QObject::tr("Click to resume the hashing process"));
@@ -118,6 +137,10 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
         std::cerr << "HASHING FINISHED" << std::endl;
 #endif
         movie->stop() ;
+        mPaused = false;
+        mFileInProgress = false;
+        mRunActive = false;
+        mScanShown = false;
         statusHashing->setText(QString());
         statusHashing->hide() ;
         setToolTip(QString());
@@ -127,19 +150,148 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
 
     case RsSharedDirectoriesEventCode::HASHING_FILE:
     {
-        QString msg = QString::number((unsigned long int)fe->mHashCounter+1) + "/" + QString::number((unsigned long int)fe->mTotalFilesToHash);
+        // All sizes in bytes. The totals cover the whole hashing run, the files already done included.
 
-        msg += " (" + misc::friendlyUnit(fe->mTotalHashedSize) + " - "
-                + QString::number(int(fe->mTotalHashedSize/double(fe->mTotalSizeToHash)*100.0)) + "%"
-                + ((fe->mHashingSpeed>0)?("," + QString::number((double)fe->mHashingSpeed,'f',2) + " MB/s)"):(QString()))
-                + " : " + QString::fromUtf8(fe->mFilePath.c_str()) ;
+        const uint64_t total_size = fe->mTotalSizeToHash;
+        const uint64_t done_size = std::min(fe->mTotalHashedSize, total_size);
+        const uint64_t file_number = fe->mHashCounter+1;
 
-        statusHashing->setText(tr("Hashing file") + " " + msg);
-        setToolTip(msg + "\n"+QObject::tr("Click to pause the hashing process"));
+        const QString path = QString::fromUtf8(fe->mFilePath.c_str());
+        const QString separator = QString(" ") + QChar(0x00B7) + " ";
+        QStringList parts;
+
+        // Last event of a run: every file is done, and the hashing thread waits a few seconds for more before it
+        // stops. Showing the last file at 100 % with the animation would read as a file still being hashed.
+        mScanShown = false;
+        mFileInProgress = fe->mHashCounter < fe->mTotalFilesToHash;
+
+        if(!mFileInProgress)
+        {
+            parts << (fe->mTotalFilesToHash == 1 ? tr("1 file") : tr("%1 files").arg(fe->mTotalFilesToHash));
+            parts << misc::friendlyUnit(total_size);
+
+            if(fe->mTotalIsProvisional)
+                parts << tr("scanning...");
+
+            const QString text = tr("Hashing done") + separator + parts.join(separator);
+
+            if(mPaused)
+            {
+                mLastText = text;
+                break;
+            }
+
+            if(!fe->mTotalIsProvisional)
+            {
+                movie->stop() ;
+                hashloader->hide() ;
+            }
+            statusHashing->setText(text);
+            statusHashing->setVisible(!_compactMode) ;
+            setToolTip(text);
+            break;
+        }
+
+        if(fe->mTotalIsProvisional)
+        {
+            // The shared directories are still being scanned, so the totals still grow: a ratio to them
+            // would go backwards. Only what is done is shown.
+
+            parts << QString::number(file_number);
+            parts << tr("%1 done").arg(misc::friendlyUnit(fe->mTotalHashedSize));
+        }
+        else
+        {
+            parts << QString::number(std::min(file_number, fe->mTotalFilesToHash)) + "/" + QString::number(fe->mTotalFilesToHash);
+            parts << misc::friendlyUnit(done_size) + " / " + misc::friendlyUnit(total_size);
+
+            if(total_size > 0)
+                parts << QString::number(int(done_size * 100.0 / total_size)) + " %";
+        }
+
+        if(fe->mHashingSpeedBytes > 0)
+        {
+            parts << misc::friendlyUnit(fe->mHashingSpeedBytes) + "/s";
+
+            if(!fe->mTotalIsProvisional && total_size > done_size)
+                parts << tr("%1 left").arg(misc::userFriendlyDuration((total_size - done_size) / fe->mHashingSpeedBytes));
+        }
+
+        if(fe->mTotalIsProvisional)
+            parts << tr("scanning...");
+
+        const QString progress = parts.join(separator);
+
+        // The name comes last, so that the figures do not move when the file changes. It is shortened to what is
+        // left of the label: the label cuts what does not fit at its right end, which would be the name.
+        const QString before = tr("Hashing file") + " " + progress + " : ";
+        const QString msg = progress + " : " + QFileInfo(path).fileName();
+        const QString text = before + fitFileName(before, QFileInfo(path).fileName());
+
+        // The file being hashed when the pause is asked is hashed to its end, and keeps sending its progress.
+        if(mPaused)
+        {
+            mLastText = text;
+            break;
+        }
+
+        // The animation was stopped if a previous batch of this run was shown as done.
+        if(movie->state() != QMovie::Running)
+        {
+            hashloader->show() ;
+            hashloader->setMovie(movie) ;
+            movie->start() ;
+        }
+
+        statusHashing->setText(text);
+        statusHashing->setVisible(!_compactMode) ;
+        setToolTip(progress + "\n" + path + "\n" + QObject::tr("Click to pause the hashing process"));
 #ifdef DEBUG_HASHING_STATUS
         std::cerr << "HashStatusEventHandler: received event " << (void*)fe->mEventCode << ": " ;
         std::cerr << "HASHING FILE " << msg.toStdString() << std::endl;
 #endif
+    }
+    break;
+
+    case RsSharedDirectoriesEventCode::SCANNING_FILE:
+    {
+        // Sent once per second while the shared directories are gone through. The hashing waits for the end of
+        // that scan, except for a file that was already being hashed: its progress keeps the text.
+        if(mFileInProgress || mPaused)
+            break;
+
+        const QString path = QString::fromUtf8(fe->mFilePath.c_str());
+        const QString separator = QString(" ") + QChar(0x00B7) + " ";
+        const QString count = tr("%1 files").arg(fe->mScannedFilesCount);
+        const QString before = tr("Scanning shared files") + separator + count + " : ";
+
+        if(movie->state() != QMovie::Running)
+        {
+            hashloader->show() ;
+            hashloader->setMovie(movie) ;
+            movie->start() ;
+        }
+
+        mScanShown = true;
+        statusHashing->setText(before + fitFileName(before, QFileInfo(path).fileName()));
+        statusHashing->setVisible(!_compactMode) ;
+        setToolTip(count + "\n" + path);
+    }
+    break;
+
+    case RsSharedDirectoriesEventCode::OWN_DIR_LIST_UPDATED:
+    {
+        // End of the scan. When it queued files, the hashing starts now and its progress replaces the text.
+        // When it did not, nothing follows: the text of the scan must not stay.
+        if(mScanShown && !mRunActive)
+        {
+            mScanShown = false;
+            movie->stop() ;
+            statusHashing->setText(QString());
+            statusHashing->hide() ;
+            setToolTip(QString());
+            hashloader->hide() ;
+        }
     }
     break;
 
@@ -154,6 +306,26 @@ void HashingStatus::handleEvent_main_thread(std::shared_ptr<const RsEvent> event
     break;
 
     };
+}
+
+QString HashingStatus::fitFileName(const QString& text_before, const QString& name) const
+{
+    // Width left for the name once text_before is written. The label only shows a text that is strictly
+    // narrower than itself, hence the small margin.
+
+    const QFontMetrics fm(statusHashing->font());
+#if QT_VERSION < QT_VERSION_CHECK(5,11,0)
+    const int before_width = fm.width(text_before);
+#else
+    const int before_width = fm.horizontalAdvance(text_before);
+#endif
+    const int label_width = statusHashing->contentsRect().width();
+
+    // Not laid out yet: no width to fit in.
+    if(label_width <= 0)
+        return (name.length() > 40) ? (name.left(20) + QChar(0x2026) + name.right(19)) : name;
+
+    return fm.elidedText(name, Qt::ElideMiddle, std::max(0, label_width - before_width - 4));
 }
 
 HashingStatus::~HashingStatus()

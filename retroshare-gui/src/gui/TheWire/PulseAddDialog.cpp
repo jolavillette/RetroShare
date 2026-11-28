@@ -575,7 +575,8 @@ void PulseAddDialog::addImage(const QString &path)
 	std::cerr << "PulseAddDialog::addImage() loading image from: " << path.toStdString();
 	std::cerr << std::endl;
 
-    QPixmap qtn = FilesDefs::getPixmapFromQtResourcePath(path);
+    // Read from disk, not through the FilesDefs pixmap cache: the file may have been edited since it was last picked.
+    QPixmap qtn(path);
 	if (qtn.isNull()) {
 		std::cerr << "PulseAddDialog::addImage() Invalid Image";
 		std::cerr << std::endl;

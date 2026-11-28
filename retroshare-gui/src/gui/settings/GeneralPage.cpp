@@ -18,7 +18,11 @@
  *                                                                             *
  *******************************************************************************/
 
+#include <QGroupBox>
+#include <QLabel>
 #include <QMessageBox>
+#include <QPushButton>
+#include <QVBoxLayout>
 #include <iostream>
 #include <rshare.h>
 #include "retroshare/rsinit.h"
@@ -101,9 +105,53 @@ GeneralPage::GeneralPage(QWidget * parent, Qt::WindowFlags flags) :
     connect(ui.checkAdvanced,                               SIGNAL(toggled(bool)),     this,SLOT(updateAdvancedMode())) ;
     connect(ui.registerRetroShareProtocol,                  SIGNAL(toggled(bool)),     this,SLOT(updateRegisterRSProtocol())) ;
 
+    // Databases: compaction of the GXS databases at next start, see
+    // RsInit::compactGxsDatabases(). Added here rather than in the .ui file.
+    QGroupBox *dbGBox = new QGroupBox(tr("Databases"), this);
+    QVBoxLayout *dbGBoxVLayout = new QVBoxLayout(dbGBox);
+    mDbCompactionLabel = new QLabel(dbGBox);
+    mDbCompactionLabel->setWordWrap(true);
+    mDbCompactionButton = new QPushButton(dbGBox);
+    dbGBoxVLayout->addWidget(mDbCompactionLabel);
+    dbGBoxVLayout->addWidget(mDbCompactionButton, 0, Qt::AlignLeft);
+
+    // Before the trailing vertical spacer of the page.
+    if(QBoxLayout *pageLayout = qobject_cast<QBoxLayout*>(layout()))
+        pageLayout->insertWidget(qMax(0, pageLayout->count() - 1), dbGBox);
+
+    connect(mDbCompactionButton, SIGNAL(clicked()), this, SLOT(toggleGxsDatabaseCompaction()));
+    updateGxsDatabaseCompaction();
+
 	// hide advanced checkbox, since the option is not used.
 
 	ui.advGBox->hide();
+}
+
+void GeneralPage::updateGxsDatabaseCompaction()
+{
+    const uint64_t size_mb = RsInit::gxsDatabasesSize() / (1024 * 1024);
+
+    QString text = tr("The forums, channels, boards and identities take %1 MB on disk. "
+                      "Compacting the databases gives back the space of deleted posts and "
+                      "makes them faster to read at startup. It runs at the next start of "
+                      "RetroShare, before the main window opens, and can take several "
+                      "minutes for large databases.").arg(size_mb);
+
+    if(RsInit::isGxsDatabaseCompactionRequested())
+    {
+        text += "\n\n" + tr("The databases will be compacted at the next start.");
+        mDbCompactionButton->setText(tr("Cancel the compaction"));
+    }
+    else
+        mDbCompactionButton->setText(tr("Compact at next start"));
+
+    mDbCompactionLabel->setText(text);
+}
+
+void GeneralPage::toggleGxsDatabaseCompaction()
+{
+    RsInit::setGxsDatabaseCompactionRequested(!RsInit::isGxsDatabaseCompactionRequested());
+    updateGxsDatabaseCompaction();
 }
 
 /** Destructor */

@@ -24,10 +24,58 @@
 #include "RsCollectionDialog.h"
 #include "RsUrlHandler.h"
 
+#ifdef Q_OS_WIN
+#include <string>
+#include <thread>
+#include <QDir>
+#include "util/rsdebug.h"
+#include <windows.h>
+#include <shellapi.h>
+#include <objbase.h>
+#endif
+
 bool RsUrlHandler::openUrl(const QUrl& url)
 {
 	if(url.scheme() == QString("file") && url.toLocalFile().endsWith("."+RsCollection::ExtensionString))
         return RsCollectionDialog::openExistingCollection(url.toLocalFile());
+
+#ifdef Q_OS_WIN
+	// Opening a local file goes through ShellExecute, which returns only once
+	// Windows is done with it: a UAC or SmartScreen prompt for an executable,
+	// an "Open with" chooser, a virus scan. On the GUI thread, that froze the
+	// RetroShare window for as long as the prompt stayed up. Launch from a
+	// short-lived thread instead. The outcome is not known when this returns,
+	// so a failure can only be logged.
+	if(url.isLocalFile())
+	{
+		const std::wstring path = QDir::toNativeSeparators(url.toLocalFile()).toStdWString();
+
+		std::thread([path]()
+		{
+			// The shell may hand the file over to COM-based extensions.
+			const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
+			SHELLEXECUTEINFOW info = {};
+			info.cbSize = sizeof(info);
+			info.fMask = SEE_MASK_NOASYNC;	// this thread ends right after the call
+			info.lpFile = path.c_str();
+			info.nShow = SW_SHOWNORMAL;
+
+			if(!ShellExecuteExW(&info))
+			{
+				const DWORD err = GetLastError();
+				if(err != ERROR_CANCELLED)	// not when the user declined a prompt
+					RsWarn() << "Could not open " << QString::fromStdWString(path).toStdString()
+					         << ": Windows error " << err;
+			}
+
+			if(SUCCEEDED(com))
+				CoUninitialize();
+		}).detach();
+
+		return true;
+	}
+#endif
 
 	return QDesktopServices::openUrl(url) ;
 }

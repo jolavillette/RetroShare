@@ -21,6 +21,7 @@
 #include "ConfCertDialog.h"
 
 #include <QMessageBox>
+#include <QPushButton>
 #include <QDateTime>
 #include <QMenu>
 #include <QClipboard>
@@ -37,6 +38,7 @@
 
 #include "gui/help/browser/helpbrowser.h"
 #include "gui/common/PeerDefs.h"
+#include "gui/common/QrCodeDialog.h"
 #include "gui/common/StatusDefs.h"
 #include "gui/RetroShareLink.h"
 #include "gui/common/AvatarDefs.h"
@@ -98,6 +100,14 @@ ConfCertDialog::ConfCertDialog(const RsPeerId& id, const RsPgpId &pgp_id, QWidge
     connect(ui._shouldAddSignatures_CB, SIGNAL(toggled(bool)), this, SLOT(loadInvitePage()));
     connect(ui._includeIPHistory_CB, SIGNAL(toggled(bool)), this, SLOT(loadInvitePage()));
     connect(ui._shortFormat_CB, SIGNAL(toggled(bool)), this, SLOT(loadInvitePage()));
+
+    // The ID or certificate shown, as a QR code another node can scan.
+    QPushButton *qrCodeButton = new QPushButton(tr("QR code"), this);
+    ui.rs_cert_CB_HL->addWidget(qrCodeButton);
+    connect(qrCodeButton, &QPushButton::clicked, this, [this]()
+    {
+        QrCodeDialog::show(this, ui.stabWidget->tabText(PageCertificate), ui.userCertificateText->toPlainText());
+    });
 
     ui.avatar->setFrameType(AvatarWidget::NORMAL_FRAME);
 

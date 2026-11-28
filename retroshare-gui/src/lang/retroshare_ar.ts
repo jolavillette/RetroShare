@@ -3166,7 +3166,7 @@ Warning: In your File-Transfer option, you select allow direct download to No.</
         <location line="+135"/>
         <location line="+419"/>
         <location line="+40"/>
-        <source>This is your own certificate! You would not want to make friend with yourself. Wouldn&apos;t you?</source>
+        <source>This is your own certificate. You cannot add yourself as a friend.</source>
         <translation type="unfinished"/>
     </message>
     <message>

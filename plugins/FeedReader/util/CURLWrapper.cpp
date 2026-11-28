@@ -23,13 +23,17 @@
 
 #define USERAGENT "Mozilla/5.0 (rv:109.0) Gecko/20100101 Firefox/112.0"
 
-CURLWrapper::CURLWrapper(const std::string &proxy)
+CURLWrapper::CURLWrapper(const std::string &proxy, std::function<bool()> abortCheck)
+	: mAbortCheck(abortCheck)
 {
 	mCurl = curl_easy_init();
 	if (mCurl) {
-		curl_easy_setopt(mCurl, CURLOPT_NOPROGRESS, 0);
-//		curl_easy_setopt(mCurl, CURLOPT_PROGRESSFUNCTION, progressCallback);
-//		curl_easy_setopt(mCurl, CURLOPT_PROGRESSDATA, feedReader);
+		/* The progress callback lets a stopping thread abort a slow transfer
+		 * instead of waiting for CURLOPT_TIMEOUT, and replaces the built-in
+		 * progress meter that libcurl otherwise prints on stderr. */
+		curl_easy_setopt(mCurl, CURLOPT_NOPROGRESS, 0L);
+		curl_easy_setopt(mCurl, CURLOPT_XFERINFOFUNCTION, xferInfoCallback);
+		curl_easy_setopt(mCurl, CURLOPT_XFERINFODATA, this);
 		curl_easy_setopt(mCurl, CURLOPT_FOLLOWLOCATION, 1);
 		curl_easy_setopt(mCurl, CURLOPT_CONNECTTIMEOUT, 60);
 		curl_easy_setopt(mCurl, CURLOPT_TIMEOUT, 120);
@@ -45,6 +49,14 @@ CURLWrapper::~CURLWrapper()
 	if (mCurl) {
 		curl_easy_cleanup(mCurl);
 	}
+}
+
+int CURLWrapper::xferInfoCallback(void *clientp, curl_off_t /*dltotal*/, curl_off_t /*dlnow*/, curl_off_t /*ultotal*/, curl_off_t /*ulnow*/)
+{
+	CURLWrapper *wrapper = (CURLWrapper*) clientp;
+
+	/* non-zero aborts the transfer */
+	return (wrapper->mAbortCheck && wrapper->mAbortCheck()) ? 1 : 0;
 }
 
 static size_t writeFunctionString (void *ptr, size_t size, size_t nmemb, void *stream)
@@ -93,7 +105,6 @@ CURLcode CURLWrapper::downloadBinary(const std::string &link, std::vector<unsign
 		return CURLE_FAILED_INIT;
 	}
 
-	curl_easy_setopt(mCurl, CURLOPT_NOPROGRESS, 1);
 	curl_easy_setopt(mCurl, CURLOPT_URL, link.c_str());
 	curl_easy_setopt(mCurl, CURLOPT_WRITEFUNCTION, writeFunctionBinary);
 	curl_easy_setopt(mCurl, CURLOPT_WRITEDATA, &data);

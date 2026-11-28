@@ -206,3 +206,17 @@ target_include_directories(VOIP PRIVATE
 
 # --- Installation ---
 install(TARGETS VOIP DESTINATION lib/retroshare/plugins)
+
+# The plugin plays its call sounds from <data directory>/sounds: install them
+# there, with the sounds of RetroShare-GUI (see retroshare-gui/CMakeLists.txt,
+# same conditions). Their credits go next to the GUI's, under a name of their
+# own.
+if(RS_SERVICE_DESKTOP AND UNIX AND NOT APPLE AND RS_DATA_DIR)
+	install(
+		FILES gui/sounds/incomingcall.wav gui/sounds/outgoingcall.wav
+		DESTINATION "${RS_DATA_DIR}/sounds" )
+	install(
+		FILES gui/sounds/CREDITS
+		DESTINATION "${RS_DATA_DIR}/sounds"
+		RENAME CREDITS-VOIP )
+endif()

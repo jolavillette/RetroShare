@@ -51,7 +51,7 @@ struct RsGUIConfigOptions: public RsConfigOptions
 {
     RsGUIConfigOptions()
         : optResetParams(false), logLevel("Off"), argc(0)
-    {}
+    { argv[0] = argv[1] = nullptr; }
 
     bool optResetParams;		// reset all GUI parameters
 
@@ -65,7 +65,7 @@ struct RsGUIConfigOptions: public RsConfigOptions
     QString guiStyleSheetFile;  // CSS Style for the GUI
 
     int argc ;					// stores argc parameter. Only used by the creator of QApplication
-    char *argv[1] ;				// stores argv parameter. Only used by the creator of QApplication
+    char *argv[2] ;				// argv[0] and a null terminator. Only used by the creator of QApplication
 };
 
 class RsApplication : public QApplication
@@ -78,8 +78,16 @@ public:
   /** Destructor. */
   ~RsApplication();
 
-  /** Return the version info */
+  /** Version of the GUI: the number of commits since the last version tag and
+   * the commit, for example "2190-g6b1b684d1". The tag itself is not shown. */
   static QString retroshareVersion(bool=true);
+  /** Version of libretroshare, in the same form */
+  static QString libretroshareVersion();
+  /** Day of the build as YYYYMMDD */
+  static QString buildDate();
+  /** The three lines that name a build: "RetroShare Build <day>",
+   * "UI <version>" and "libretroshare <version>" */
+  static QStringList buildDescription();
 
   /** Sets the current language. */
   static bool setLanguage(QString languageCode = QString());

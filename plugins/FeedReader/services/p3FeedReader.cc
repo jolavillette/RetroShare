@@ -345,22 +345,41 @@ void p3FeedReader::stop()
 {
 	mStopped = true;
 
+	/* Signal every thread first, then wait for them: each tick sleeps one
+	 * second, so stopping them one at a time costs one second per thread. */
+	{
+		RsStackMutex stack(mPreviewMutex); /******* LOCK STACK MUTEX *********/
+
+		if (mPreviewDownloadThread) mPreviewDownloadThread->askForStop();
+		if (mPreviewProcessThread) mPreviewProcessThread->askForStop();
+	}
+	{
+		RsStackMutex stack(mFeedReaderMtx); /******* LOCK STACK MUTEX *********/
+
+		for (std::list<p3FeedReaderThread*>::iterator it = mThreads.begin(); it != mThreads.end(); ++it)
+			(*it)->askForStop();
+	}
+
 	{
 		RsStackMutex stack(mPreviewMutex); /******* LOCK STACK MUTEX *********/
 
 		stopPreviewThreads_locked();
 	}
 
+	/* Wait for the threads WITHOUT holding mFeedReaderMtx: a thread finishing
+	 * a download calls onDownloadSuccess()/onDownloadError(), which take that
+	 * mutex, so joining it under the lock deadlocks the shutdown for ever. */
+	std::list<p3FeedReaderThread*> threads;
 	{
 		RsStackMutex stack(mFeedReaderMtx); /******* LOCK STACK MUTEX *********/
 
-		/* stop threads */
-		std::list<p3FeedReaderThread*>::iterator it;
-		for (it = mThreads.begin(); it != mThreads.end(); ++it) {
-			(*it)->fullstop();
-			delete(*it);
-		}
-		mThreads.clear();
+		threads.swap(mThreads);
+	}
+
+	/* stop threads */
+	for (std::list<p3FeedReaderThread*>::iterator it = threads.begin(); it != threads.end(); ++it) {
+		(*it)->fullstop();
+		delete(*it);
 	}
 }
 
@@ -1523,7 +1542,9 @@ void p3FeedReader::cleanFeeds()
 		mLastClean = currentTime;
 
 		if (removedMsgIds.size()) {
-			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_NOW);
+			// The results of the automatic feed updates are saved within a minute, not at once: every save
+			// rewrites the whole configuration file, and each feed update asked for several of them.
+			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_OFTEN);
 
 			if (mNotify) {
 				std::list<std::pair<uint32_t, std::string> >::iterator it;
@@ -1838,7 +1859,7 @@ void p3FeedReader::onDownloadSuccess(uint32_t feedId, const std::string &content
 			fi->icon = icon;
 
 			if (!preview) {
-				IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_NOW);
+				IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_OFTEN);
 			}
 		}
 
@@ -1889,7 +1910,7 @@ void p3FeedReader::onDownloadError(uint32_t feedId, RsFeedReaderErrorState resul
 #endif
 
 		if (!fi->preview) {
-			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_NOW);
+			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_OFTEN);
 		}
 	}
 
@@ -2001,7 +2022,7 @@ void p3FeedReader::onProcessSuccess_filterMsg(uint32_t feedId, std::list<RsFeedR
 		fi->errorString.clear();
 
 		if (!fi->preview) {
-			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_NOW);
+			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_OFTEN);
 		}
 	}
 }
@@ -2324,7 +2345,7 @@ void p3FeedReader::onProcessSuccess_addMsgs(uint32_t feedId, std::list<RsFeedRea
 			fi->errorState = errorState;
 			fi->lastUpdate = time(NULL);
 
-			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_NOW);
+			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_OFTEN);
 		}
 	}
 
@@ -2366,7 +2387,7 @@ void p3FeedReader::onProcessError(uint32_t feedId, RsFeedReaderErrorState result
 #endif
 
 		if (!fi->preview) {
-			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_NOW);
+			IndicateConfigChanged(RsConfigMgr::CheckPriority::SAVE_OFTEN);
 		}
 	}
 

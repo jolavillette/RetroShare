@@ -229,6 +229,27 @@ void RsGUIEventManager::enable()
 	_enabled = true ;
 }
 
+void RsGUIEventManager::notifyDistantChatMessage(ChatDialog *dialog, const ChatMessage &msg, bool newConversation)
+{
+    if(_disableAllToaster || !dialog || !msg.incoming || !msg.chat_id.isDistantChatId())
+        return;
+
+    ChatWidget *chatWidget = dialog->getChatWidget();
+
+    if(chatWidget && chatWidget->isActive())  // do not show when active
+        return;
+
+    // A new distant conversation is always announced: its window opens minimized
+    // and Windows/macOS refuse to bring it to the foreground, so the contact
+    // would otherwise go unnoticed. Later messages follow the private chat setting.
+    if(!newConversation && !(((RsNotifyPopupFlags)Settings->getNotifyFlags()) & RsNotifyPopupFlags::RS_POPUP_CHAT))
+        return;
+
+    ToasterItem *toaster = new ToasterItem(new ChatToaster(msg.chat_id, dialog->getTitle(), QString::fromUtf8(msg.msg.c_str())));
+    toaster->widget->setWindowFlags(Qt::ToolTip | Qt::WindowStaysOnTopHint);
+    waitingToasterList.push_back(toaster);
+}
+
 void RsGUIEventManager::sync_handleIncomingEvent(std::shared_ptr<const RsEvent> event)
 {
     auto ev6 = dynamic_cast<const RsSystemEvent*>(event.get());
@@ -330,7 +351,7 @@ void RsGUIEventManager::async_handleIncomingEvent(std::shared_ptr<const RsEvent>
         {
             if (ev5->mCid.isPeerId() && (!!(popupflags & RsNotifyPopupFlags::RS_POPUP_CHAT)) && !_disableAllToaster)
             {
-                // TODO: fix for distant chat, look up if dstant chat uses RS_POPUP_CHAT
+                // Distant chat toasters are handled in notifyDistantChatMessage()
                 ChatDialog *chatDialog = ChatDialog::getChat(ev5->mCid);
                 ChatWidget *chatWidget;
 

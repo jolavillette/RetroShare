@@ -3318,7 +3318,7 @@ Varoitus: Tiedostonsiirto-asetuksissa Salli suora lataus on asetettu Ei.</transl
         <location line="+24"/>
         <location line="+31"/>
         <location line="+326"/>
-        <source>This is your own certificate! You would not want to make friend with yourself. Wouldn&apos;t you?</source>
+        <source>This is your own certificate. You cannot add yourself as a friend.</source>
         <translation>Tämä on oma varmenteesi! Et haluaisi olla oma ystäväsi. Ethän?</translation>
     </message>
     <message>

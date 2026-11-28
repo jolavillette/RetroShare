@@ -35,6 +35,7 @@ class MimeTextEdit : public RSTextEdit
 
 public:
 	MimeTextEdit(QWidget *parent = 0);
+	~MimeTextEdit() override;
 
 	//Form here: http://qt-project.org/doc/qt-4.8/tools-customcompleter.html
 	void setCompleter(QCompleter *completer);

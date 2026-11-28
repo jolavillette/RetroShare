@@ -21,6 +21,7 @@
 #include <algorithm>
 
 #include <QShortcut>
+#include <QTimer>
 #include <QWidgetAction>
 #include <QDateTime>
 #include <QPainter>
@@ -226,6 +227,11 @@ NewFriendList::NewFriendList(QWidget */*parent*/) : /* RsAutoUpdatePage(5000,par
     mEventHandlerId_peer=0; // forces initialization
     mEventHandlerId_gssp=0; // forces initialization
 
+    mRefreshTimer = new QTimer(this);
+    mRefreshTimer->setSingleShot(true);
+    mRefreshTimer->setInterval(1000);
+    connect(mRefreshTimer, &QTimer::timeout, this, &NewFriendList::forceUpdateDisplay);
+
 //    rsEvents->registerEventsHandler( [this](std::shared_ptr<const RsEvent> e) { handleEvent(e); }, mEventHandlerId_pssc, RsEventType::PEER_STATE_CHANGED );
     rsEvents->registerEventsHandler( [this](std::shared_ptr<const RsEvent> e) { handleEvent(e); }, mEventHandlerId_peer, RsEventType::FRIEND_LIST );
     rsEvents->registerEventsHandler( [this](std::shared_ptr<const RsEvent> e) { handleEvent(e); }, mEventHandlerId_gssp, RsEventType::GOSSIP_DISCOVERY );
@@ -305,7 +311,17 @@ void NewFriendList::handleEvent(std::shared_ptr<const RsEvent> /*e*/)
 	// /!\ The function we're in is called from a different thread. It's very important
 	//     to use this trick in order to avoid data races.
 
-	RsQThreadUtils::postToObject( [=]() { forceUpdateDisplay() ; }, this ) ;
+	// Each rebuild detaches the model, rebuilds it from the library and restores the tree. When
+	// the tree is fully expanded (any search expands it) that takes hundreds of ms, and peers keep
+	// sending such events, so rebuilding once per event piles them up and freezes the GUI.
+	// Start the timer only if it is not already running: the list is refreshed at most once per
+	// second, and never later than one second after the first event of a burst.
+
+	RsQThreadUtils::postToObject( [this]()
+	{
+		if(!mRefreshTimer->isActive())
+			mRefreshTimer->start();
+	}, this ) ;
 }
 
 NewFriendList::~NewFriendList()

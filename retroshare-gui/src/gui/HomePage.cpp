@@ -25,13 +25,15 @@
 
 #include "util/qtthreadsutils.h"
 #include "util/misc.h"
+#include "gui/help/browser/helpbrowser.h"
 
+#include "gui/common/QrCodeDialog.h"
 #include "gui/common/FilesDefs.h"
+#include "gui/RetroShareLink.h"
 #include "gui/msgs/MessageComposer.h"
 #include "gui/connect/ConnectFriendWizard.h"
 #include "gui/connect/ConfCertDialog.h"
 #include <gui/QuickStartWizard.h>
-#include "gui/connect/FriendRecommendDialog.h"
 #include "settings/rsharesettings.h"
 
 #if QT_VERSION >= QT_VERSION_CHECK(5,0,0)
@@ -42,9 +44,12 @@
 #include <string>
 #include <QTime>
 #include <QMenu>
+#include <QPushButton>
 #include <QDesktopServices>
 #include <QMessageBox>
 #include <QFileDialog>
+#include <QImageReader>
+#include <QMimeData>
 #include <QClipboard>
 #include <QTextStream>
 #include <QTextCodec>
@@ -55,40 +60,28 @@ HomePage::HomePage(QWidget *parent) :
 {
     ui->setupUi(this);
 
-    connect(ui->addButton, SIGNAL(clicked()), this, SLOT(addFriend()));
+    connect(ui->pasteButton, SIGNAL(clicked()), this, SLOT(pasteFriendId()));
+    connect(ui->openFileButton, SIGNAL(clicked()), this, SLOT(openFriendFile()));
     connect(ui->copyIDButton, SIGNAL(clicked()), this, SLOT(copyId()));
+    connect(ui->saveButton, SIGNAL(clicked()), this, SLOT(saveCert()));
+    connect(ui->emailButton, SIGNAL(clicked()), this, SLOT(runEmailClient()));
 
-    QAction *WebMailAction = new QAction(QIcon(),tr("Invite via WebMail"), this);
-    connect(WebMailAction, SIGNAL(triggered()), this, SLOT(webMail()));
+    // The two format buttons exclude each other: one signal is enough.
+    connect(ui->fullCertButton, SIGNAL(toggled(bool)), this, SLOT(updateOwnCert()));
 
-    QAction *RecAction = new QAction(QIcon(),tr("Recommend friends to each others"), this);
-    connect(RecAction, SIGNAL(triggered()), this, SLOT(recommendFriends()));
+    connect(ui->qrCodeButton, &QPushButton::clicked, this, [this]()
+    {
+        // The code carries what the page shows: the short ID, or the whole
+        // certificate when the full format is chosen.
+        QString invite, description;
+        getOwnCert(invite, description);
+        QrCodeDialog::show(this, tr("Retroshare ID"), invite);
+    });
 
-    QAction *SaveAction = new QAction(QIcon(),tr("Save to File"), this);
-    connect(SaveAction, SIGNAL(triggered()), this, SLOT(saveCert()));
+    // A hidden node has no address to choose: the options button stays away.
+    ui->optionsButton->setVisible(!RsAccounts::isHiddenNode());
 
-    QAction *SendAction = new QAction(QIcon(),tr("Send via Email"), this);
-    connect(SendAction, SIGNAL(triggered()), this, SLOT(runEmailClient()));
-
-    QAction *CopyIdAction = new QAction(QIcon(),tr("Copy your Retroshare ID to Clipboard"), this);
-    connect(CopyIdAction, SIGNAL(triggered()), this, SLOT(copyId()));
-
-    QMenu *menu = new QMenu();
-    menu->addAction(CopyIdAction);
-
-    menu->addSeparator();
-    menu->addAction(SaveAction);
-    menu->addAction(SendAction);
-    menu->addAction(WebMailAction);
-    menu->addAction(RecAction);
-    menu->addSeparator();
-
-    mUseOldFormatact = new QAction(QIcon(), tr("Use old certificate format"),this);
-    mUseOldFormatact->setToolTip(tr("Displays the certificate format used up to version 0.6.5\nOld Retroshare nodes will not understand the\nnew short format"));
-    connect(mUseOldFormatact, SIGNAL(triggered()), this, SLOT(updateOwnCert()));
-    mUseOldFormatact->setCheckable(true);
-    mUseOldFormatact->setChecked(false);
-    menu->addAction(mUseOldFormatact);
+    QMenu *menu = new QMenu(this);
 
     if(!RsAccounts::isHiddenNode())
     {
@@ -117,7 +110,7 @@ HomePage::HomePage(QWidget *parent) :
         menu->addAction(mIncludeIPHistoryact);
     }
 
-    ui->shareButton->setMenu(menu);
+    ui->optionsButton->setMenu(menu);
 
     connect(ui->openwebhelp,SIGNAL(clicked()), this,SLOT(openWebHelp())) ;
 
@@ -246,7 +239,7 @@ void HomePage::getOwnCert(QString& invite,QString& description) const
 
     invite_flags |= RetroshareInviteFlags::SLICE_TO_80_CHARS;
 
-    if(!mUseOldFormatact->isChecked())
+    if(!ui->fullCertButton->isChecked())
     {
         std::string short_invite;
         rsPeers->getShortInvite(short_invite,rsPeers->getOwnId(),invite_flags | RetroshareInviteFlags::RADIX_FORMAT);
@@ -255,7 +248,7 @@ void HomePage::getOwnCert(QString& invite,QString& description) const
     else
         invite = QString::fromStdString(rsPeers->GetRetroshareInvite(detail.id,invite_flags));
 
-    description = ConfCertDialog::getCertificateDescription(detail,false,!mUseOldFormatact->isChecked(),invite_flags);
+    description = ConfCertDialog::getCertificateDescription(detail,false,!ui->fullCertButton->isChecked(),invite_flags);
 }
 
 void HomePage::updateOwnCert()
@@ -264,13 +257,13 @@ void HomePage::updateOwnCert()
 
     getOwnCert(certificate,description);
 
-    if(!mUseOldFormatact->isChecked())	// in this case we have to split the cert for a better display
+    if(!ui->fullCertButton->isChecked())	// in this case we have to split the cert for a better display
     {
         QString S;
         QString txt;
 
         for(int i=0;i<certificate.size();)
-            if(S.length() < 100)
+            if(S.length() < 64)
                 S += certificate[i++];
             else
             {
@@ -314,11 +307,6 @@ static void sendMail(const QString &sAddress, const QString &sSubject, const QSt
     QDesktopServices::openUrl (url);
 }
 
-void HomePage::recommendFriends()
-{
-    FriendRecommendDialog::showIt() ;
-}
-
 void HomePage::runEmailClient()
 {
     sendMail("", tr("RetroShare Invite"), ui->retroshareid->text());
@@ -359,20 +347,72 @@ void HomePage::saveCert()
     ts << ui->retroshareid->text();
 }
 
-/** Add a Friends Text Certificate */
-void HomePage::addFriend()
+void HomePage::pasteFriendId()
 {
-    ConnectFriendWizard connwiz (this);
+    const QClipboard *clipboard = QApplication::clipboard();
+    const QMimeData *data = clipboard->mimeData();
 
-    connwiz.setStartId(ConnectFriendWizard::Page_Text);
-    connwiz.exec ();
+    if(data && data->hasImage())
+    {
+        QString text;
+        if(QrCodeDialog::decode(clipboard->image(), text))
+            addFriendFromText(text);
+        else
+            QMessageBox::information(this, tr("Add a friend"), tr("The picture in the clipboard holds no readable QR code."));
+    }
+    else if(!clipboard->text().trimmed().isEmpty())
+        addFriendFromText(clipboard->text());
+    else
+        QMessageBox::information(this, tr("Add a friend"), tr("The clipboard holds no text and no picture. Copy the Retroshare ID of your friend first."));
 }
 
-void HomePage::webMail()
+void HomePage::openFriendFile()
 {
+    QString fileName;
+    if(!misc::getOpenFileName(this, RshareSettings::LASTDIR_CERT, tr("Open a Retroshare ID"),
+                              tr("Retroshare ID (*.rsc *.txt *.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)"), fileName)
+       || fileName.isEmpty())
+        return;
+
+    // The content decides, not the name: a picture is searched for a QR code,
+    // anything else is read as the text of an ID or certificate.
+    QImageReader reader(fileName);
+    reader.setDecideFormatFromContent(true);
+
+    if(reader.canRead())
+    {
+        QString text;
+        if(QrCodeDialog::decode(reader.read(), text))
+            addFriendFromText(text);
+        else
+            QMessageBox::information(this, tr("Add a friend"), tr("This picture holds no readable QR code."));
+        return;
+    }
+
+    QFile file(fileName);
+    if(!file.open(QIODevice::ReadOnly))
+    {
+        QMessageBox::warning(this, tr("Add a friend"), tr("Cannot read this file."));
+        return;
+    }
+
+    // Far above the size of any certificate.
+    addFriendFromText(QString::fromUtf8(file.read(1024*1024)));
+}
+
+void HomePage::addFriendFromText(const QString& text)
+{
+    QString certificate = text.trimmed();
+
+    RetroShareLink link(certificate);
+    if(link.valid() && link.type() == RetroShareLink::TYPE_CERTIFICATE)
+        certificate = link.radix();
+
+    // The wizard opens on the details of the friend, or on what is wrong
+    // with the text.
     ConnectFriendWizard connwiz (this);
 
-    connwiz.setStartId(ConnectFriendWizard::Page_WebMail);
+    connwiz.setCertificate(certificate, false);
     connwiz.exec ();
 }
 
@@ -386,7 +426,7 @@ void HomePage::webMail()
 
 void HomePage::openWebHelp()
 {
-    QDesktopServices::openUrl(QUrl(QString("https://retrosharedocs.readthedocs.io/en/latest/")));
+    HelpBrowser::showWindow("start");
 }
 
 void HomePage::showEvent(QShowEvent *event)

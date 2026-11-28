@@ -62,10 +62,9 @@ private slots:
 	void copyCert();
 	void copyId();
 	void saveCert();
-	void addFriend();
-	void webMail();
+	void pasteFriendId();
+	void openFriendFile();
 	void openWebHelp() ;
-	void recommendFriends();
 	void updateHomeLogo();
 
 private:
@@ -75,11 +74,11 @@ private:
     QAction *mIncludeIPHistoryact;
     QAction *mIncludeExtIPact;
     QAction *mIncludeLocIPact;
-    QAction *mUseOldFormatact;
 
     RsEventsHandlerId_t mEventHandlerId;
 
     void handleEvent(std::shared_ptr<const RsEvent> event);
+    void addFriendFromText(const QString& text);
 };
 
 #endif // HomePage_H

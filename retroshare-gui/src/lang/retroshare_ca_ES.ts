@@ -3318,7 +3318,7 @@ Avís: En les opcions de Transferència d&apos;arxius, has marcat descarrega dir
         <location line="+24"/>
         <location line="+31"/>
         <location line="+326"/>
-        <source>This is your own certificate! You would not want to make friend with yourself. Wouldn&apos;t you?</source>
+        <source>This is your own certificate. You cannot add yourself as a friend.</source>
         <translation>Aquest és el teu certificat! No vols fer-te amic amb tu mateix, oi?</translation>
     </message>
     <message>

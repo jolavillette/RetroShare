@@ -38,6 +38,12 @@
 #include <X11/Xutil.h>
 #include <X11/extensions/scrnsaver.h>
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+
 static XErrorHandler old_handler = 0;
 extern "C" int xerrhandler(Display* dpy, XErrorEvent* err)
 {
@@ -47,24 +53,73 @@ extern "C" int xerrhandler(Display* dpy, XErrorEvent* err)
 	return (*old_handler)(dpy, err);
 }
 
+// Display of the Qt application, or null when Qt does not run on X11.
+static Display *qtDisplay()
+{
+#if QT_VERSION >= QT_VERSION_CHECK (6, 0, 0)
+	QNativeInterface::QX11Application *nativeInterface = qGuiApp->nativeInterface<QNativeInterface::QX11Application>();
+	return nativeInterface ? nativeInterface->display() : nullptr;
+#elif QT_VERSION >= QT_VERSION_CHECK(5,0,0)
+	return QX11Info::isPlatformX11() ? QX11Info::display() : nullptr;
+#else
+	return QApplication::desktop()->screen()->x11Info().display();
+#endif
+}
+
+// XScreenSaverQueryInfo() is a round trip to the X server: the caller waits for
+// the reply. Asked every second from the GUI thread, it froze the whole window
+// for as long as the server took to answer (seconds on a busy remote display).
+// The question is therefore asked by a worker thread, on a connection of its
+// own, and the GUI thread only reads the last answer.
 class IdlePlatform::Private
 {
 public:
-	Private() {}
+	Private() : display(nullptr), ss_info(nullptr), stop(false), idleSeconds(0) {}
 
-	XScreenSaverInfo *ss_info;
+	void run()
+	{
+		for(;;) {
+			int idle = 0;
+			if(XScreenSaverQueryInfo(display, DefaultRootWindow(display), ss_info))
+				idle = ss_info->idle / 1000;
+			idleSeconds.store(idle);
+
+			std::unique_lock<std::mutex> lock(mtx);
+			if(cv.wait_for(lock, std::chrono::seconds(1), [this]{ return stop; }))
+				return;
+		}
+	}
+
+	Display *display;          // own connection, used by the worker only once it runs
+	XScreenSaverInfo *ss_info; // idem
+
+	std::thread worker;
+	std::mutex mtx;            // protects stop
+	std::condition_variable cv;
+	bool stop;
+
+	std::atomic<int> idleSeconds;
 };
 
 IdlePlatform::IdlePlatform()
 {
 	d = new Private;
-	d->ss_info = 0;
 }
 
 IdlePlatform::~IdlePlatform()
 {
+	if(d->worker.joinable()) {
+		{
+			std::lock_guard<std::mutex> lock(d->mtx);
+			d->stop = true;
+		}
+		d->cv.notify_one();
+		d->worker.join();
+	}
 	if(d->ss_info)
 		XFree(d->ss_info);
+	if(d->display)
+		XCloseDisplay(d->display);
 	if(old_handler) {
 		XSetErrorHandler(old_handler);
 		old_handler = 0;
@@ -77,37 +132,33 @@ bool IdlePlatform::init()
 	if(d->ss_info)
 		return true;
 
+	Display *appDisplay = qtDisplay();
+	if(!appDisplay)
+		return false;
+
+	// The connection is opened, and the extension registered on it, here on the
+	// GUI thread: the worker then only sends its query on it.
+	d->display = XOpenDisplay(DisplayString(appDisplay));
+	if(!d->display)
+		return false;
+
 	old_handler = XSetErrorHandler(xerrhandler);
 
 	int event_base, error_base;
-#if QT_VERSION >= QT_VERSION_CHECK (6, 0, 0)
-    QNativeInterface::QX11Application *nativeInterface = qGuiApp->nativeInterface<QNativeInterface::QX11Application>();
-    if (nativeInterface && XScreenSaverQueryExtension(nativeInterface->display(), &event_base, &error_base)) {
-#elif QT_VERSION >= QT_VERSION_CHECK(5,0,0)
-	if(QX11Info::isPlatformX11() && XScreenSaverQueryExtension(QX11Info::display(), &event_base, &error_base)) {
-#else
-	if(XScreenSaverQueryExtension(QApplication::desktop()->screen()->x11Info().display(), &event_base, &error_base)) {
-#endif
-		d->ss_info = XScreenSaverAllocInfo();
-		return true;
-	}
-	return false;
+	if(!XScreenSaverQueryExtension(d->display, &event_base, &error_base))
+		return false;
+
+	d->ss_info = XScreenSaverAllocInfo();
+	if(!d->ss_info)
+		return false;
+
+	d->worker = std::thread(&Private::run, d);
+	return true;
 }
 
 int IdlePlatform::secondsIdle()
 {
-	if(!d->ss_info)
-		return 0;
-#if QT_VERSION >= QT_VERSION_CHECK (6, 0, 0)
-    QNativeInterface::QX11Application *nativeInterface = qGuiApp->nativeInterface<QNativeInterface::QX11Application>();
-    if(!nativeInterface || !XScreenSaverQueryInfo(nativeInterface->display(), DefaultRootWindow(nativeInterface->display()), d->ss_info))
-#elif QT_VERSION >= QT_VERSION_CHECK(5,0,0)
-	if(!QX11Info::isPlatformX11() || !XScreenSaverQueryInfo(QX11Info::display(), QX11Info::appRootWindow(), d->ss_info))
-#else
-	if(!XScreenSaverQueryInfo(QApplication::desktop()->screen()->x11Info().display(), QX11Info::appRootWindow(), d->ss_info))
-#endif
-		return 0;
-	return d->ss_info->idle / 1000;
+	return d->idleSeconds.load();
 }
 
 #else // windows

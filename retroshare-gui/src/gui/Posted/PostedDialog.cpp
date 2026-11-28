@@ -236,9 +236,16 @@ void PostedDialog::groupInfoToGroupItemInfo(const RsGxsGenericGroupData *groupDa
 
     if(postedGroupData->mGroupImage.mSize > 0)
     {
-	QPixmap image;
-	GxsIdDetails::loadPixmapFromData(postedGroupData->mGroupImage.mData, postedGroupData->mGroupImage.mSize, image,GxsIdDetails::ORIGINAL);
-	groupItemInfo.icon        = image;
+        GroupImage& groupImage = mGroupImages[postedGroupData->mMeta.mGroupId];
+
+        if(groupImage.pixmap.isNull() || groupImage.publishTs != postedGroupData->mMeta.mPublishTs || groupImage.dataSize != postedGroupData->mGroupImage.mSize)
+        {
+            groupImage.pixmap = QPixmap();
+            GxsIdDetails::loadPixmapFromData(postedGroupData->mGroupImage.mData, postedGroupData->mGroupImage.mSize, groupImage.pixmap,GxsIdDetails::ORIGINAL);
+            groupImage.publishTs = postedGroupData->mMeta.mPublishTs;
+            groupImage.dataSize = postedGroupData->mGroupImage.mSize;
+        }
+        groupItemInfo.icon = groupImage.pixmap;
     }
     else
     groupItemInfo.icon        = GxsIdDetails::makeDefaultGroupIcon(postedGroupData->mMeta.mGroupId, ":icons/board.png", GxsIdDetails::ORIGINAL);

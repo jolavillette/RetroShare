@@ -123,14 +123,14 @@ bool pgpid_item_model::getDetails(int row, RsPeerDetails& detail) const
     if((unsigned)row >= neighs.size())
         return false;
 
-    if(mCachedId != neighs[row])
+    if(mCachedRow != row)
     {
         if (!rsPeers->getGPGDetails(neighs[row], mCachedDetails))
         {
-            mCachedId.clear();
+            mCachedRow = -1;
             return false;
         }
-        mCachedId = neighs[row];
+        mCachedRow = row;
     }
 
     detail = mCachedDetails;
@@ -333,7 +333,7 @@ void pgpid_item_model::data_updated(std::list<RsPgpId> &new_neighs)
     new_neighs.unique(); //remove possible dups
     neighs.assign(new_neighs.begin(), new_neighs.end());
     new_size = neighs.size();
-    mCachedId.clear();
+    mCachedRow = -1;
 
     //reflect actual row count in model
     if(old_size < new_size)

@@ -27,6 +27,7 @@
 #include <QFileOpenEvent>
 #include <QLocale>
 #include <QLocalSocket>
+#include <QPalette>
 #include <QRegularExpression>
 #include <QSharedMemory>
 #include <QShortcut>
@@ -36,6 +37,12 @@
 #include <QTextStream>
 #include <QTimer>
 #include <QScreen>
+#include <QClipboard>
+#include <QKeyEvent>
+#include <QMimeData>
+#include <QMouseEvent>
+#include <QPlainTextEdit>
+#include <QTextEdit>
 #ifdef __APPLE__
 #include <QUrl>
 #endif
@@ -101,6 +108,84 @@ void qt_msg_handler(QtMsgType type, const char *msg)
   }
 }
 
+namespace {
+
+/* Drops a paste whose data has no format at all before it reaches a text editor.
+ * In Qt 6.4, QWidgetTextControl::insertFromMimeData() reads the first format of
+ * the pasted data without checking that there is one (QTBUG-111758), so such a
+ * paste crashes every QTextEdit and QPlainTextEdit. Some applications
+ * (spreadsheets, the X2Go selection bridge) serve clipboard data with no
+ * format; there is nothing to insert from it anyway. */
+class EmptyPasteFilter : public QObject
+{
+public:
+    explicit EmptyPasteFilter(QObject *parent) : QObject(parent) {}
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        switch (event->type())
+        {
+        case QEvent::MouseButtonRelease:
+            // A middle click pastes the X11 selection; the click lands on the editor's viewport.
+            if (static_cast<QMouseEvent*>(event)->button() == Qt::MiddleButton
+                    && isEditorViewport(watched)
+                    && QGuiApplication::clipboard()->supportsSelection()
+                    && hasNoFormat(QClipboard::Selection))
+                return true;
+            break;
+        case QEvent::KeyPress:
+        {
+            const QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
+            if (keyEvent->matches(QKeySequence::Paste) && isEditor(watched)
+                    && hasNoFormat(pasteMode(keyEvent)))
+                return true;
+            break;
+        }
+        default:
+            break;
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    static bool isEditor(const QObject *object)
+    {
+        if (const QTextEdit *edit = qobject_cast<const QTextEdit*>(object))
+            return edit->textInteractionFlags() & Qt::TextEditable;
+        if (const QPlainTextEdit *edit = qobject_cast<const QPlainTextEdit*>(object))
+            return edit->textInteractionFlags() & Qt::TextEditable;
+        return false;
+    }
+
+    static bool isEditorViewport(const QObject *object)
+    {
+        const QWidget *widget = qobject_cast<const QWidget*>(object);
+        if (!widget)
+            return false;
+        const QAbstractScrollArea *area = qobject_cast<const QAbstractScrollArea*>(widget->parentWidget());
+        return area && area->viewport() == widget && isEditor(area);
+    }
+
+    // The clipboard QWidgetTextControl pastes from for this key event.
+    static QClipboard::Mode pasteMode(const QKeyEvent *keyEvent)
+    {
+        if (QGuiApplication::clipboard()->supportsSelection()
+                && keyEvent->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier)
+                && keyEvent->key() == Qt::Key_Insert)
+            return QClipboard::Selection;
+        return QClipboard::Clipboard;
+    }
+
+    static bool hasNoFormat(QClipboard::Mode mode)
+    {
+        const QMimeData *data = QGuiApplication::clipboard()->mimeData(mode);
+        return data && data->formats().isEmpty();
+    }
+};
+
+} // namespace
+
 /** Constructor. Parses the command-line arguments, resets RsApplication's
  * configuration (if requested), and sets up the GUI style and language
  * translation.
@@ -114,6 +199,14 @@ RsApplication::RsApplication(const RsGUIConfigOptions& conf)
     mStartupTime = QDateTime::currentDateTime();
     localServer = NULL;
     options = conf;
+
+    /* Sets the X11 WM_CLASS class "RetroShare" (the instance is argv[0]'s basename, e.g.
+       "retroshare-gui") and, below, the Wayland app id; must be set before the first window
+       is created. */
+    setApplicationName("RetroShare");
+#if QT_VERSION >= QT_VERSION_CHECK (5, 7, 0)
+    setDesktopFileName("retroshare");
+#endif
 
     // So we start a Local Server to listen for connections from new process
     localServer= new QLocalServer();
@@ -131,6 +224,9 @@ RsApplication::RsApplication(const RsGUIConfigOptions& conf)
 #else
     qInstallMsgHandler(qt_msg_handler);
 #endif
+
+    /* A paste without any format would crash the text editors, see EmptyPasteFilter. */
+    installEventFilter(new EmptyPasteFilter(this));
 
 #ifndef __APPLE__
 
@@ -241,10 +337,38 @@ void RsApplication::slotConnectionEstablished()
     }
 }
 
+/* `git describe` gives "v0.6.7.3-2190-g6b1b684d1": keep the commit count and
+ * the commit. A string of another form (an exact tag, no version available) is
+ * returned as it is. */
+static QString withoutVersionTag(QString version)
+{
+	static const QRegularExpression tag("^v?[0-9]+(\\.[0-9]+)*-(?=[0-9]+-g)");
+	return version.remove(tag);
+}
+
 /* The GUI reports its OWN version here (RS_GUI_VERSION, injected from the
  * super-project git describe), independent from libretroshare. libretroshare's
  * version is obtained separately through RsInit::libRetroShareVersion(). */
-QString RsApplication::retroshareVersion(bool) { return RS_GUI_HUMAN_READABLE_VERSION; }
+QString RsApplication::retroshareVersion(bool) { return withoutVersionTag(RS_GUI_HUMAN_READABLE_VERSION); }
+
+QString RsApplication::libretroshareVersion()
+{
+	return withoutVersionTag(QString::fromUtf8(RsInit::libRetroShareVersion()));
+}
+
+QString RsApplication::buildDate()
+{
+	/* __DATE__ is "Nov 26 2026", or "Nov  6 2026" before the 10th */
+	const QDate date = QLocale::c().toDate(QString(__DATE__).simplified(), "MMM d yyyy");
+	return date.toString("yyyyMMdd");
+}
+
+QStringList RsApplication::buildDescription()
+{
+	return { tr("RetroShare Build %1").arg(buildDate()),
+	         QString("UI %1").arg(retroshareVersion()),
+	         QString("libretroshare %1").arg(libretroshareVersion()) };
+}
 
 /** Enters the main event loop and waits until exit() is called. The signal
  * running() will be emitted when the event loop has started. */
@@ -398,6 +522,30 @@ void RsApplication::resetLanguageAndStyle()
 //   Language depended stylesheet
 //     <Internal|External>_<locale>.lqss
 
+/* Rich-text links (<a href> in QLabel, QTextBrowser, chat and post bodies) take
+ * their colour from QPalette::Link when the HTML is parsed; a stylesheet cannot
+ * override it. The platform default (pure blue) is nearly invisible on the dark
+ * sheet's #19232D background, so give that sheet a readable link colour and put
+ * the platform colours back for any other sheet. */
+static void applyLinkPalette(const QString &sheetName)
+{
+    static const QColor platformLink = qApp->palette().color(QPalette::Link);
+    static const QColor platformLinkVisited = qApp->palette().color(QPalette::LinkVisited);
+
+    QPalette palette = qApp->palette();
+    if (sheetName == ":Standard_Dark") {
+        palette.setColor(QPalette::Link, QColor(0x25, 0x9A, 0xE9)); // the sheet's accent colour
+        palette.setColor(QPalette::LinkVisited, QColor(0xA9, 0x8B, 0xDD));
+    } else {
+        palette.setColor(QPalette::Link, platformLink);
+        palette.setColor(QPalette::LinkVisited, platformLinkVisited);
+    }
+
+    if (palette != qApp->palette()) {
+        qApp->setPalette(palette);
+    }
+}
+
 void RsApplication::loadStyleSheet(const QString &sheetName)
 {
     QString locale = QLocale().name();
@@ -465,6 +613,11 @@ void RsApplication::loadStyleSheet(const QString &sheetName)
         }
     }
 
+    // Applying a style sheet re-polishes every widget of the application, which takes seconds. Nothing to do
+    // when the sheet is the one already in force (the preferences call this on a mere click on the list).
+    if (styleSheet == qApp->styleSheet())
+        return;
+
 #ifdef Q_OS_WIN
     QSettings settings("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",QSettings::NativeFormat);
     if(/*sheetName == ":default" && */settings.value("AppsUseLightTheme")==0){
@@ -495,6 +648,7 @@ void RsApplication::loadStyleSheet(const QString &sheetName)
         qApp->setStyleSheet("QToolTip { color: #ffffff; background-color: #2a82da; border: 1px solid white; }");
     } 
 #endif
+    applyLinkPalette(sheetName);
     qApp->setStyleSheet(styleSheet);
 }
 

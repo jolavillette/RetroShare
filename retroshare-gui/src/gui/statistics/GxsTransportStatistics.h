@@ -62,10 +62,12 @@ private slots:
 	void personDetails();
 	void showAuthorInPeople();
 	void settingsChanged();
+	void groupExpanded(QTreeWidgetItem *item);
 
 private:
 	void updateDisplay() ;
 	void loadGroups();
+	void fillGroupMessages(QTreeWidgetItem *item, const RsGxsTransGroupStatistics& stat);
 
 	void processSettings(bool bLoad);
 	bool m_bProcessSettings;
